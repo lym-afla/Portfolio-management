@@ -190,5 +190,13 @@ function forwardParams(params: object): void {
   display: grid;
   gap: 12px;
   min-width: 0;
+  /* Grid/flex children default to min-width:auto — without this the widest
+     child (canvas or legend) pins the panel open and clips siblings on
+     desktop→mobile resize; every level of the chain must be shrinkable. */
+}
+
+.nav-chart-panel__pilot > * {
+  min-width: 0;
+  max-width: 100%;
 }
 </style>

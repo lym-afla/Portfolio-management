@@ -1,7 +1,7 @@
 // Controlled interaction model for the NAV pilot (C3). One source of truth
 // for series visibility, inspected period and viewport; zoom never changes
 // values, queries or IRR horizons.
-import type { ChartDocument, ChartSeries } from './contracts'
+import type { ChartDocument, ChartPeriod, ChartSeries } from './contracts'
 
 export interface ChartInteraction {
   visibleSeriesIds: readonly string[]
@@ -51,4 +51,17 @@ export function seriesControlName(series: ChartSeries): string {
   if (series.metric === 'irr_inception') return 'Since-inception IRR (annualized)'
   if (series.metric === 'irr_interval') return 'Interval IRR (annualized)'
   return series.label
+}
+
+// Per-series horizon text: the since-inception IRR always spans inception to
+// the endpoint; the interval IRR uses the server-provided interval bounds
+// (inception semantics at the first sample).
+export function seriesHorizon(series: ChartSeries, period: ChartPeriod): string | null {
+  if (series.metric === 'irr_inception') return `Inception to ${period.endDate}`
+  if (series.metric === 'irr_interval') {
+    return period.interval.kind === 'inception'
+      ? `Inception to ${period.interval.endDate}`
+      : `${period.interval.startDate} – ${period.interval.endDate}`
+  }
+  return null
 }

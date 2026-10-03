@@ -119,6 +119,16 @@ const fixtures = new Map([
       const irr = [null, 1.2, 1.1, 2.4, 3.1, 2.8, 3.9, 4.2, 4.6]
       const rolling = [null, null, 1.8, 2.1, 2.6, 2.4, 3.0, 3.3, 3.5]
       const raw = (plot) => String(Math.round(plot * 1000))
+      // Synthetic displays mirror the real backend currency_format output:
+      // thousands separators, configured precision and signed parentheses —
+      // fixtures must stay faithful to the observed wire contract.
+      const grouped = (text) => text.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+      const money = (plot) => {
+        const whole = Math.round(plot * 1000)
+        const sign = whole < 0 ? '(' : ''
+        const close = whole < 0 ? ')' : ''
+        return `${sign}$${grouped(String(Math.abs(whole)))}.00${close}`
+      }
       const ok = (value, plot, display) => ({ value, plotValue: plot, status: 'ok', reason: 'observed', display })
       const unavailable = () => ({ value: null, plotValue: null, status: 'not_available', reason: 'solver_unavailable', display: 'N/A' })
       const irrPoints = (values) => values.map((value) => (value === null ? unavailable() : ok(`0.0${String(value).replace('.', '')}`, `0.0${String(value).replace('.', '')}`, `${value}%`)))
@@ -179,7 +189,7 @@ const fixtures = new Map([
             {
               id: 'metric:nav', label: 'NAV', metric: 'nav', role: 'bar', axis: 'money',
               unit: { kind: 'money', currency: 'USD', plotDivisor: '1000' },
-              points: navPlot.map((plot) => ok(raw(plot), String(plot), `$${raw(plot)}.00`)),
+              points: navPlot.map((plot) => ok(raw(plot), String(plot), money(plot))),
             },
             {
               id: 'metric:irr_inception', label: 'IRR (RHS)', metric: 'irr_inception', role: 'line', axis: 'return',
@@ -190,7 +200,7 @@ const fixtures = new Map([
               unit: { kind: 'ratio', plotDivisor: '1' }, points: irrPoints(rolling),
             },
           ],
-          totals: navPlot.map((plot) => ok(raw(plot), String(plot), `$${raw(plot)}.00`)),
+          totals: navPlot.map((plot) => ok(raw(plot), String(plot), money(plot))),
         },
       }
     })(),

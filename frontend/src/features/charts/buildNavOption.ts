@@ -14,19 +14,33 @@ import type { EChartsOption } from 'echarts'
 import type { ChartDocument, ChartSeries, ChartUnit, ChartValue } from './contracts'
 import { toPlotNumber } from './renderBoundary'
 import { irrLineStyle, seriesColor } from './seriesStyles'
-import type { ChartInteraction } from './interaction'
+import { seriesControlName, seriesHorizon, type ChartInteraction } from './interaction'
 
 function escapeHtml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
-function unitLabel(unit: ChartUnit): string {
+/** Axis label: the money axis names its plotting scale (e.g. USD thousands). */
+function axisUnitLabel(unit: ChartUnit): string {
   if (unit.kind === 'money') {
     return unit.plotDivisor === '1000' ? `${unit.currency} thousands` : unit.currency
   }
   if (unit.kind === 'ratio') return '%'
   if (unit.kind === 'percent_of_nominal') return '% of nominal'
   return 'quantity'
+}
+
+/** Value label: exact amounts are named in their stated unit, never the plotting scale. */
+function valueUnitLabel(unit: ChartUnit): string {
+  if (unit.kind === 'money') return unit.currency
+  if (unit.kind === 'ratio') return '%'
+  if (unit.kind === 'percent_of_nominal') return '% of nominal'
+  return 'quantity'
+}
+
+/** Presentation-only ratio→percentage tick label; plotted values are untouched. */
+function percentTickLabel(value: number): string {
+  return `${parseFloat((value * 100).toFixed(2))}%`
 }
 
 function valueLine(point: ChartValue | undefined): string {
@@ -61,7 +75,7 @@ export function buildNavOption(document: ChartDocument, interaction: ChartIntera
     }
   }
   const moneyUnit = document.series.find((entry) => entry.axis === 'money')?.unit
-  const moneyAxisName = moneyUnit ? unitLabel(moneyUnit) : undefined
+  const moneyAxisName = moneyUnit ? axisUnitLabel(moneyUnit) : undefined
   return {
     aria: { enabled: true },
     animation: false,
@@ -76,7 +90,7 @@ export function buildNavOption(document: ChartDocument, interaction: ChartIntera
     }],
     yAxis: [
       moneyAxisName ? { type: 'value', name: moneyAxisName } : { type: 'value' },
-      { type: 'value', scale: true, name: '%' },
+      { type: 'value', scale: true, name: '%', axisLabel: { formatter: percentTickLabel } },
     ],
     dataZoom: [
       { type: 'inside', xAxisIndex: 0, startValue: interaction.viewport ? undefined : 0, endValue: interaction.viewport ? undefined : 100, start: startValue, end: endValue },
@@ -101,8 +115,13 @@ function navTooltip(
   for (const param of list) {
     const series = param?.seriesId ? seriesById.get(param.seriesId) : undefined
     if (!series) continue
+    // Exact IRR control names and per-series horizons match the inspection
+    // panel; exact amounts carry their stated unit, never the plotting scale.
+    const label = seriesControlName(series)
+    const horizon = seriesHorizon(series, period)
+    const horizonText = horizon ? ` <em>(${escapeHtml(horizon)})</em>` : ''
     lines.push(
-      `${escapeHtml(series.label)}: ${escapeHtml(valueLine(series.points[index]))} <em>(${escapeHtml(unitLabel(series.unit))})</em>`,
+      `${escapeHtml(label)}: ${escapeHtml(valueLine(series.points[index]))} <em>(${escapeHtml(valueUnitLabel(series.unit))})</em>${horizonText}`,
     )
   }
   const total = document.totals?.[index]

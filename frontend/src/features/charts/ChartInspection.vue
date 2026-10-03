@@ -57,8 +57,8 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { ChartDocument, ChartPeriod, ChartSeries, ChartValue } from './contracts'
-import { seriesControlName, type ChartInteraction } from './interaction'
+import type { ChartDocument, ChartPeriod, ChartValue } from './contracts'
+import { seriesControlName, seriesHorizon, type ChartInteraction } from './interaction'
 
 const props = defineProps<{
   document: ChartDocument
@@ -82,12 +82,6 @@ function valueDetail(point: ChartValue | undefined): string | null {
   if (!point || point.status === 'ok') return null
   const subtotal = 'knownSubtotal' in point ? `; known subtotal ${point.knownSubtotal}` : ''
   return `${point.status} (${point.reason})${subtotal}`
-}
-
-function seriesHorizon(series: ChartSeries, period: ChartPeriod): string | null {
-  if (series.metric === 'irr_inception') return `Inception to ${period.endDate}`
-  if (series.metric === 'irr_interval') return horizonText(period)
-  return null
 }
 
 const inspectedValues = computed(() => {
@@ -119,11 +113,6 @@ function unitText(kind: string, currency?: string): string {
   if (kind === 'ratio') return 'annualized percentage'
   if (kind === 'percent_of_nominal') return '% of nominal'
   return 'quantity'
-}
-
-function horizonText(period: ChartPeriod): string {
-  if (period.interval.kind === 'inception') return `Inception to ${period.interval.endDate}`
-  return `${period.interval.startDate} – ${period.interval.endDate}`
 }
 
 function orderedViewport(first: string, last: string) {

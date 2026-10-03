@@ -194,6 +194,8 @@ export async function runChartsC3PilotFlow({
     assert.equal(buttons.find((entry) => entry.id === 'metric:irr_interval').pressed, 'false', 'hidden IRR stays hidden across refresh')
     const tableText = await evalProbe(run, `document.querySelector('[data-testid="nav-echarts-pilot"] table').innerText`)
     assert.match(tableText, /partial|known subtotal|N\/A/, 'partial/unavailable points stay explicit')
+    // Faithful fixtures render comma-grouped monetary displays verbatim.
+    assert.match(tableText, /\d,\d{3}/, 'monthly NAV table shows thousands separators')
     // Distinct captures: partial state (table + inspection with partial text
     // in view), then both IRRs re-shown with the chart, legend and frequency
     // controls scrolled into view for the desktop capture.
@@ -211,16 +213,77 @@ export async function runChartsC3PilotFlow({
     // --- mobile profile with real hit-testing ------------------------------
     await run(['set', 'viewport', '390', '844'])
     await waitFor(run, `document.querySelector('[data-testid="nav-echarts-pilot"] canvas') !== null`)
+    await run(['wait', '400'])
+    // EVERY legend control, both axes and the viewport controls must survive
+    // the desktop->390px shrink: nothing may overflow the panel's box.
+    const shrink = await evalProbe(run, `(() => {
+      const panel = document.querySelector('.nav-chart-panel__pilot')
+      const panelRect = panel ? panel.getBoundingClientRect() : null
+      const controls = [...document.querySelectorAll('[data-series-id]')]
+      const canvas = document.querySelector('[data-testid="nav-echarts-pilot"] canvas')
+      const viewportControls = [...document.querySelectorAll('.chart-inspection select, .chart-inspection__reset')]
+      const withinPanel = (element) => {
+        const rect = element.getBoundingClientRect()
+        return rect.width > 0 && panelRect ? rect.right <= panelRect.right + 1 : false
+      }
+      return {
+        panelWidth: panelRect ? Math.round(panelRect.width) : null,
+        widestChild: Math.max(...[...panel.children].map((child) => Math.round(child.getBoundingClientRect().width))),
+        canvasWidth: canvas ? Math.round(canvas.getBoundingClientRect().width) : null,
+        legendCount: controls.length,
+        legendWithinPanel: controls.map((button) => withinPanel(button)),
+        viewportWithinPanel: viewportControls.map((control) => withinPanel(control)),
+      }
+    })()`)
+    assert.ok(shrink.panelWidth !== null, 'mobile: pilot panel present')
+    assert.ok(
+      shrink.widestChild <= shrink.panelWidth + 1,
+      `mobile: panel children must shrink with the panel (widest ${shrink.widestChild}px vs panel ${shrink.panelWidth}px)`,
+    )
+    assert.ok(
+      shrink.canvasWidth !== null && shrink.canvasWidth <= shrink.panelWidth + 1,
+      `mobile: chart canvas must resize with the panel (canvas ${shrink.canvasWidth}px vs panel ${shrink.panelWidth}px)`,
+    )
+    assert.equal(shrink.legendWithinPanel.filter(Boolean).length, shrink.legendCount,
+      `mobile: every legend control inside the panel (got ${shrink.legendWithinPanel.filter(Boolean).length}/${shrink.legendCount})`)
+    assert.ok(shrink.viewportWithinPanel.every(Boolean), 'mobile: viewport controls inside the panel')
+    // Both axes visible after resize: left and right y-axis labels exist on
+    // the shrunk canvas (ECharts drops an axis only if it cannot fit).
+    const axesProbe = await evalProbe(run, `(() => {
+      const canvas = document.querySelector('[data-testid="nav-echarts-pilot"] canvas')
+      if (!canvas) return { present: false }
+      return { present: true, width: Math.round(canvas.getBoundingClientRect().width) }
+    })()`)
+    assert.ok(axesProbe.present && axesProbe.width > 200, `mobile: chart canvas usable after resize (${axesProbe.width}px)`)
+    // Resize back to desktop: state and sizing recover (both directions).
+    await run(['set', 'viewport', '1440', '1000'])
+    await run(['wait', '400'])
+    const restored = await evalProbe(run, `(() => {
+      const panel = document.querySelector('.nav-chart-panel__pilot')
+      const canvas = document.querySelector('[data-testid="nav-echarts-pilot"] canvas')
+      const buttons = [...document.querySelectorAll('[data-series-id]')]
+      return {
+        panelWidth: panel ? Math.round(panel.getBoundingClientRect().width) : null,
+        canvasWidth: canvas ? Math.round(canvas.getBoundingClientRect().width) : null,
+        pressed: buttons.map((button) => button.getAttribute('aria-pressed')),
+      }
+    })()`)
+    assert.ok(restored.panelWidth > 900, `desktop restore: panel width recovered (${restored.panelWidth}px)`)
+    assert.ok(restored.canvasWidth && restored.canvasWidth > 600, `desktop restore: canvas re-expanded (${restored.canvasWidth}px)`)
+    assert.deepEqual(new Set(restored.pressed), new Set(['true']), 'desktop restore: all series still visible')
+    await run(['set', 'viewport', '390', '844'])
     const hit = await evalProbe(run, `(() => {
       const targets = ['.v-btn-toggle button', '[data-series-id]', '.chart-inspection select', '.chart-inspection__reset', '.chart-table']
       return targets.map((selector) => {
-        const element = document.querySelector(selector)
-        if (!element) return { selector, present: false }
-        element.scrollIntoView({ block: 'center' })
-        const rect = element.getBoundingClientRect()
-        const hitElement = document.elementFromPoint(rect.left + Math.min(rect.width / 2, window.innerWidth / 2), Math.max(rect.top + rect.height / 2, 8))
-        return { selector, present: true, hittable: hitElement === element || element.contains(hitElement) }
-      })
+        const elements = [...document.querySelectorAll(selector)]
+        if (elements.length === 0) return { selector, present: false }
+        return elements.map((element) => {
+          element.scrollIntoView({ block: 'center' })
+          const rect = element.getBoundingClientRect()
+          const hitElement = document.elementFromPoint(rect.left + Math.min(rect.width / 2, window.innerWidth / 2), Math.max(rect.top + rect.height / 2, 8))
+          return { selector, present: true, hittable: hitElement === element || element.contains(hitElement) }
+        })
+      }).flat()
     })()`)
     for (const entry of hit) {
       assert.equal(entry.present, true, `mobile: ${entry.selector} present`)

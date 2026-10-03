@@ -184,3 +184,164 @@ describe('finding 5: panel initializes visible series with an existing result', 
     wrapper.unmount()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Review round 2: percentage axis ticks, tooltip unit/horizon correctness,
+// and verbatim comma-formatted monetary displays (rendering never reformats
+// or Number-converts exact server strings).
+
+describe('round 2: return-axis ticks format raw ratios as percentages', () => {
+  it('formats 0.05 as 5% and keeps plotted values unchanged', () => {
+    const document = parsedDocument()
+    const before = structuredClone(document)
+    const option = buildNavOption(document, defaultInteraction(document)) as {
+      yAxis?: Array<{ name?: string; axisLabel?: { formatter?: (value: number) => string } }>
+      series?: Array<{ id: string; data: Array<number | null> }>
+    }
+    const formatter = option.yAxis![1].axisLabel?.formatter
+    expect(formatter).toBeTypeOf('function')
+    expect(formatter!(0.05)).toBe('5%')
+    expect(formatter!(0.1234)).toBe('12.34%')
+    expect(formatter!(-0.02)).toBe('-2%')
+    expect(formatter!(0)).toBe('0%')
+    // Tick formatting is presentation only: plotted data and the validated
+    // document are untouched.
+    const money = option.series!.find((entry) => entry.id === 'asset_type:Stock')!
+    expect(money.data[0]).toBe(100)
+    expect(document).toEqual(before)
+  })
+})
+
+describe('round 2: tooltip units and horizons', () => {
+  const tooltipFor = (document: ChartDocument, periodIndex: number) => {
+    const option = buildNavOption(document, defaultInteraction(document)) as {
+      tooltip?: { formatter?: (params: unknown) => string }
+    }
+    const formatter = option.tooltip?.formatter
+    expect(formatter).toBeTypeOf('function')
+    return formatter!([{ axisValue: document.periods[periodIndex].key, seriesId: document.series[0].id }])!
+  }
+
+  it('never labels exact amounts with the plotting scale', () => {
+    const document = parsedDocument()
+    const tooltip = tooltipFor(document, 0)
+    expect(tooltip).toContain('USD 100,000.00')
+    expect(tooltip).not.toContain('USD 100,000.00 (USD thousands)')
+    expect(tooltip).not.toContain('thousands)')
+    // The scaled label stays on the money axis only.
+    const option = buildNavOption(document, defaultInteraction(document)) as {
+      yAxis?: Array<{ name?: string }>
+    }
+    expect(String(option.yAxis![0].name)).toMatch(/thousands/i)
+  })
+
+  it('uses the annualized IRR names with per-series horizons', () => {
+    const document = parsedDocument()
+    const option = buildNavOption(document, defaultInteraction(document)) as {
+      tooltip?: { formatter?: (params: unknown) => string }
+    }
+    const formatter = option.tooltip!.formatter!
+    const second = document.periods[1]
+    const tooltip = formatter([{ axisValue: second.key, seriesId: 'metric:irr_inception' }, { axisValue: second.key, seriesId: 'metric:irr_interval' }])!
+    expect(tooltip).toContain('Since-inception IRR (annualized)')
+    expect(tooltip).toContain(`Inception to ${second.endDate}`)
+    expect(tooltip).toContain('Interval IRR (annualized)')
+    expect(tooltip).toContain(`${second.interval.startDate} – ${second.interval.endDate}`)
+    const first = document.periods[0]
+    const firstTooltip = formatter([{ axisValue: first.key, seriesId: 'metric:irr_inception' }])!
+    expect(firstTooltip).toContain(`Inception to ${first.endDate}`)
+  })
+})
+
+describe('round 2: monetary displays render verbatim with separators', () => {
+  const FORMAT_WIRE = {
+    labels: ['Jun-26', 'Jul-26'],
+    datasets: [
+      { label: 'NAV', type: 'bar' as const, yAxisID: 'y', data: [10000, -1234567.89] },
+      { label: 'IRR (RHS)', type: 'line' as const, yAxisID: 'y1', data: [0.05, null] },
+      { label: 'Rolling IRR (RHS)', type: 'line' as const, yAxisID: 'y1', data: [null, 0] },
+    ],
+    currency: 'USDk',
+    chartV2: {
+      version: 2,
+      kind: 'nav' as const,
+      outcome: 'partial' as const,
+      partition: 'complete' as const,
+      context: { accountSelection: { type: 'all', id: null }, accountIds: [], effectiveDate: '2026-07-31', currency: 'USD', digits: 2 },
+      periods: [
+        { key: 'nav:2026-06-30', endDate: '2026-06-30', displayLabel: 'Jun-26', interval: { startDate: null, endDate: '2026-06-30', kind: 'inception' as const }, partialPeriod: false },
+        { key: 'nav:2026-07-31', endDate: '2026-07-31', displayLabel: 'Jul-26', interval: { startDate: '2026-07-01', endDate: '2026-07-31', kind: 'sample_interval' as const }, partialPeriod: false },
+      ],
+      series: [
+        {
+          id: 'metric:nav', label: 'NAV', metric: 'nav', role: 'bar' as const, axis: 'money' as const,
+          unit: { kind: 'money' as const, currency: 'USD', plotDivisor: '1000' },
+          points: [
+            { value: '10000.0000', plotValue: '10.0000', status: 'ok' as const, reason: 'observed' as const, display: 'USD 10,000.00' },
+            { value: '-1234567890.1234', plotValue: '-1234567.8901234', status: 'ok' as const, reason: 'observed' as const, display: '(USD 1,234,567,890.12)' },
+          ],
+        },
+        {
+          id: 'metric:irr_inception', label: 'IRR (RHS)', metric: 'irr_inception', role: 'line' as const, axis: 'return' as const,
+          unit: { kind: 'ratio' as const, plotDivisor: '1' },
+          points: [
+            { value: '0.05', plotValue: '0.05', status: 'ok' as const, reason: 'observed' as const, display: '5.0%' },
+            { value: '0.123456789012345678901234567890', plotValue: '0.123456789012345678901234567890', status: 'ok' as const, reason: 'observed' as const, display: '12.345678901234567890123456789012%' },
+          ],
+        },
+        {
+          id: 'metric:irr_interval', label: 'Rolling IRR (RHS)', metric: 'irr_interval', role: 'line' as const, axis: 'return' as const,
+          unit: { kind: 'ratio' as const, plotDivisor: '1' },
+          points: [
+            { value: null, plotValue: null, status: 'not_available' as const, reason: 'solver_unavailable' as const, display: 'N/A' },
+            { value: '0', plotValue: '0', status: 'ok' as const, reason: 'zero_exposure' as const, display: '0.0%' },
+          ],
+        },
+      ],
+      totals: [
+        { value: '10000.0000', plotValue: '10.0000', status: 'ok' as const, reason: 'observed' as const, display: 'USD 10,000.00' },
+        { value: null, plotValue: null, knownSubtotal: '9007199254740993.123456789', status: 'partial' as const, reason: 'missing_price' as const, display: 'USD 9,007,199,254,740,993.12' },
+      ],
+    },
+  }
+
+  function formatDocument(): ChartDocument {
+    const parsed = parseNavEnvelope(FORMAT_WIRE)
+    if (parsed.capability !== 'v2') throw new Error('expected v2')
+    return parsed.document
+  }
+
+  it('keeps separators, negatives, precision and partial text exact in the table', async () => {
+    const document = formatDocument()
+    const table = await import('../ChartDataTable.vue')
+    const wrapper = mount(table.default, {
+      props: { document, interaction: defaultInteraction(document) },
+    })
+    const text = wrapper.find('table').text()
+    expect(text).toContain('USD 10,000.00')
+    expect(text).toContain('(USD 1,234,567,890.12)')
+    expect(text).toContain('5.0%')
+    // A 32-significant-digit display beyond Number's safe range stays verbatim.
+    expect(text).toContain('12.345678901234567890123456789012%')
+    expect(text).toContain('USD 9,007,199,254,740,993.12')
+    expect(text).toContain('known subtotal 9007199254740993.123456789')
+    wrapper.unmount()
+  })
+
+  it('keeps separators exact in inspection and tooltips without Number conversion', async () => {
+    const document = formatDocument()
+    const inspection = await import('../ChartInspection.vue')
+    const inspectionText = mount(inspection.default, {
+      props: { document, interaction: { ...defaultInteraction(document), inspectedPeriodKey: document.periods[1].key } },
+    }).text()
+    expect(inspectionText).toContain('(USD 1,234,567,890.12)')
+    expect(inspectionText).toContain('USD 9,007,199,254,740,993.12')
+    expect(inspectionText).toContain('known subtotal 9007199254740993.123456789')
+    const option = buildNavOption(document, defaultInteraction(document)) as {
+      tooltip?: { formatter?: (params: unknown) => string }
+    }
+    const tooltip = option.tooltip!.formatter!([{ axisValue: document.periods[0].key, seriesId: 'metric:nav' }])!
+    expect(tooltip).toContain('USD 10,000.00')
+    expect(tooltip).not.toContain('USD 10000')
+  })
+})
