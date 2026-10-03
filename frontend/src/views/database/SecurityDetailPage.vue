@@ -1,5 +1,8 @@
 <template>
-  <v-container fluid class="pa-0">
+  <WorkspacePage
+    :title="security?.name || 'Security'"
+    :description="security ? `${security.ISIN || 'No ISIN'} · ${security.instrument_type} · ${security.currency}` : 'Security detail'"
+  >
     <v-alert v-if="loadError" type="error" class="mb-4">Unable to load part of this security. Change the selection or try again.</v-alert>
     <!-- Account filter -->
     <v-row class="mb-4">
@@ -42,9 +45,8 @@
     <template v-else-if="security">
       <v-row>
         <v-col cols="12" md="6">
-          <v-card>
-            <v-card-title>Basic Information</v-card-title>
-            <v-card-text>
+          <WorkspaceSection heading-id="security-basic" title="Basic Information">
+            <div>
               <v-list>
                 <v-list-item>
                   <v-list-item-title>ISIN:</v-list-item-title>
@@ -71,13 +73,12 @@
                   }}</v-list-item-subtitle>
                 </v-list-item>
               </v-list>
-            </v-card-text>
-          </v-card>
+            </div>
+          </WorkspaceSection>
         </v-col>
         <v-col cols="12" md="6">
-          <v-card>
-            <v-card-title>Performance Metrics</v-card-title>
-            <v-card-text>
+          <WorkspaceSection heading-id="security-performance" title="Performance Metrics">
+            <div>
               <!-- Table format for better readability -->
               <v-table density="compact">
                 <thead>
@@ -159,16 +160,15 @@
                   </tr>
                 </tbody>
               </v-table>
-            </v-card-text>
-          </v-card>
+            </div>
+          </WorkspaceSection>
         </v-col>
       </v-row>
 
       <v-row v-if="security.instrument_type === 'Crypto'">
         <v-col cols="12">
-          <v-card>
-            <v-card-title>Crypto Rewards</v-card-title>
-            <v-card-text>
+          <WorkspaceSection heading-id="security-crypto" title="Crypto Rewards">
+            <div>
               <v-table density="compact">
                 <tbody>
                   <tr>
@@ -181,17 +181,16 @@
                   </tr>
                 </tbody>
               </v-table>
-            </v-card-text>
-          </v-card>
+            </div>
+          </WorkspaceSection>
         </v-col>
       </v-row>
 
       <!-- Bond-specific Information -->
       <v-row v-if="security.instrument_type === 'Bond' && security.bond_data">
         <v-col cols="12">
-          <v-card>
-            <v-card-title>Bond Information</v-card-title>
-            <v-card-text>
+          <WorkspaceSection heading-id="security-bond" title="Bond Information">
+            <div>
               <v-row>
                 <!-- Basic Bond Details -->
                 <v-col cols="12" md="6">
@@ -328,16 +327,15 @@
                   </v-table>
                 </v-col>
               </v-row>
-            </v-card-text>
-          </v-card>
+            </div>
+          </WorkspaceSection>
         </v-col>
       </v-row>
 
       <v-row v-if="chartOptionsLoaded">
         <v-col cols="12">
-          <v-card>
-            <v-card-title>Price History</v-card-title>
-            <v-card-text>
+          <WorkspaceSection heading-id="security-price-history" title="Price History">
+            <div>
               <TimelineSelector
                 v-model="selectedPeriod"
                 :effective-current-date="effectiveCurrentDate"
@@ -350,16 +348,15 @@
                   :options="priceChartOptions"
                 />
               </div>
-            </v-card-text>
-          </v-card>
+            </div>
+          </WorkspaceSection>
         </v-col>
       </v-row>
 
       <v-row v-if="chartOptionsLoaded">
         <v-col cols="12">
-          <v-card>
-            <v-card-title>Position History</v-card-title>
-            <v-card-text>
+          <WorkspaceSection heading-id="security-position-history" title="Position History">
+            <div>
               <TimelineSelector
                 v-model="selectedPeriod"
                 :effective-current-date="effectiveCurrentDate"
@@ -372,20 +369,19 @@
                   :options="positionChartOptions"
                 />
               </div>
-            </v-card-text>
-          </v-card>
+            </div>
+          </WorkspaceSection>
         </v-col>
       </v-row>
 
       <v-row>
         <v-col cols="12">
-          <v-card>
-            <v-card-title>Transaction History</v-card-title>
+          <WorkspaceSection heading-id="security-transactions" title="Transaction History">
             <TimelineSelector
               v-model="selectedPeriod"
               :effective-current-date="effectiveCurrentDate"
             />
-            <v-card-text>
+            <div>
               <v-data-table
                 :headers="transactionHeaders"
                 :items="transactions"
@@ -442,8 +438,8 @@
                   </div>
                 </template>
               </v-data-table>
-            </v-card-text>
-          </v-card>
+            </div>
+          </WorkspaceSection>
         </v-col>
       </v-row>
     </template>
@@ -451,7 +447,7 @@
     <template v-else>
       <v-alert type="error">Security not found or error loading data.</v-alert>
     </template>
-  </v-container>
+  </WorkspacePage>
 </template>
 
 <script setup>
@@ -492,6 +488,8 @@ import {
 } from 'date-fns'
 
 import TransactionRow from '@/components/transactions/TransactionRow.vue'
+import WorkspacePage from '@/components/workspace/WorkspacePage.vue'
+import WorkspaceSection from '@/components/workspace/WorkspaceSection.vue'
 
 defineOptions({ name: 'SecurityDetailPage' })
 
@@ -572,24 +570,6 @@ const transactionHeaders = [
 const pageCount = computed(() =>
   Math.ceil(totalTransactions.value / transactionOptions.value.itemsPerPage)
 )
-
-const getTransactionDescription = (item) => {
-  if (
-    item.type.includes('Cash') ||
-    item.type === 'Dividend' ||
-    item.type.includes('Coupon')
-  ) {
-    return item.type
-  } else if (item.type === 'Close') {
-    return `${item.quantity} of ${item.price}`
-  } else {
-    return `${item.quantity} @ ${item.price}`
-  }
-}
-
-const updateChartPeriod = (period) => {
-  selectedPeriod.value = period
-}
 
 const getStartDate = (period) => {
   const currentDate = new Date(effectiveCurrentDate.value)
@@ -672,7 +652,7 @@ const getLastAvailableDataPoint = (data, targetDate) => {
 }
 
 const priceChartData = computed(() => {
-  let chartData = filteredPriceHistory.value.map((item) => ({
+  const chartData = filteredPriceHistory.value.map((item) => ({
     x: new Date(item.date),
     y: item.price,
   }))
@@ -704,7 +684,7 @@ const priceChartData = computed(() => {
 })
 
 const positionChartData = computed(() => {
-  let chartData = filteredPositionHistory.value.map((item) => ({
+  const chartData = filteredPositionHistory.value.map((item) => ({
     x: new Date(item.date),
     y: item.position,
   }))
