@@ -1,38 +1,32 @@
 <template>
-  <v-container class="fill-height" fluid>
+  <v-container class="fill-height auth-surface" fluid>
     <v-row align="center" justify="center">
-      <v-col cols="12" sm="8" md="4">
-        <v-card class="pa-4">
-          <v-card-title class="headline">Register</v-card-title>
-          <v-card-text>
-            <RegisterForm
-              ref="registerForm"
-              @register="handleRegister"
-              :loading="loading"
-              :errors="errors"
-            />
-          </v-card-text>
-          <v-card-actions>
-            <v-spacer />
-            <span
-              >Already have an account?
-              <router-link to="/login">Login</router-link></span
-            >
-          </v-card-actions>
-        </v-card>
+      <v-col cols="12" sm="8" md="5" lg="4">
+        <WorkspacePage title="Register" description="Create a new portfolio workspace account.">
+          <RegisterForm
+            ref="registerForm"
+            @register="handleRegister"
+            :loading="loading"
+            :errors="errors"
+          />
+          <p class="workspace-meta mt-4 mb-0 text-center">
+            Already have an account?
+            <router-link to="/login">Login</router-link>
+          </p>
+        </WorkspacePage>
       </v-col>
     </v-row>
 
     <!-- Success Dialog -->
     <v-dialog v-model="showSuccessDialog" max-width="400">
       <v-card>
-        <v-card-title class="headline">Registration Successful</v-card-title>
+        <v-card-title class="text-h6">Registration Successful</v-card-title>
         <v-card-text>
           {{ successMessage }}
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn color="primary" text @click="redirectToLogin">
+          <v-btn color="primary" variant="tonal" @click="redirectToLogin">
             Go to Login
           </v-btn>
         </v-card-actions>
@@ -46,6 +40,7 @@ import { ref, onBeforeUnmount, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { register } from '@/services/api'
 import RegisterForm from '@/components/RegisterForm.vue'
+import WorkspacePage from '@/components/workspace/WorkspacePage.vue'
 import logger from '@/utils/logger'
 
 const emit = defineEmits(['update-page-title'])
@@ -103,8 +98,8 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.v-card-actions a {
+.auth-surface :deep(a) {
   text-decoration: none;
-  color: #1976d2;
+  color: rgb(var(--v-theme-primary));
 }
 </style>

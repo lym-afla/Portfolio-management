@@ -1,11 +1,13 @@
 <template>
-  <v-dialog v-model="dialog" max-width="800px">
-    <v-card>
-      <v-card-title>
+  <v-dialog v-model="dialog" max-width="800px" aria-labelledby="price-import-title">
+    <v-card :id="focusCardId">
+      <v-card-title id="price-import-title">
         <span class="text-h5">Import Prices</span>
       </v-card-title>
       <v-card-text>
         <v-form @submit.prevent="submitForm">
+          <section aria-label="Target">
+            <h3 class="text-subtitle-1 font-weight-medium mb-2">Target</h3>
           <v-autocomplete
             v-model="securities"
             :items="securitiesList"
@@ -57,6 +59,9 @@
             </template>
           </v-autocomplete>
 
+          </section>
+          <section aria-label="Dates" class="mt-4">
+            <h3 class="text-subtitle-1 font-weight-medium mb-2">Dates</h3>
           <v-radio-group v-model="dateType" row>
             <v-radio label="Date Range" value="range" />
             <v-radio label="Single Date" value="single" />
@@ -109,14 +114,21 @@
             />
           </template>
 
-          <v-btn
-            type="submit"
-            color="primary"
-            class="mt-4 w-100"
-            :loading="isSubmitting"
-          >
-            Import Prices
-          </v-btn>
+          </section>
+          <div class="d-flex flex-wrap ga-2 mt-4">
+            <v-btn data-testid="dialog-cancel" :disabled="isSubmitting" @click="cancelImport">
+              Cancel
+            </v-btn>
+            <v-btn
+              type="submit"
+              color="primary"
+              variant="tonal"
+              class="flex-grow-1"
+              :loading="isSubmitting"
+            >
+              Import Prices
+            </v-btn>
+          </div>
         </v-form>
       </v-card-text>
     </v-card>
@@ -181,7 +193,7 @@
       </v-card-text>
       <v-card-actions>
         <v-spacer />
-        <v-btn color="blue darken-1" text @click="closeSummaryDialog"
+        <v-btn color="primary" variant="tonal" @click="closeSummaryDialog"
           >Close</v-btn
         >
       </v-card-actions>
@@ -197,6 +209,7 @@ import { format } from 'date-fns'
 import ProgressDialog from '@/components/dialogs/ProgressDialog.vue'
 import { useErrorHandler } from '@/composables/useErrorHandler'
 import logger from '@/utils/logger'
+import { useDialogFormFocus } from '@/composables/useDialogFormFocus'
 
 const props = defineProps({
   modelValue: Boolean,
@@ -207,6 +220,14 @@ const dialog = computed({
   get: () => props.modelValue,
   set: (value) => emit('update:modelValue', value),
 })
+const { cardId: focusCardId } = useDialogFormFocus(dialog, 'price-import')
+
+// Named cancellation mirrors the scrim/Escape path: no completion event,
+// the form resets for the next open.
+const cancelImport = () => {
+  dialog.value = false
+  cleanupForm()
+}
 
 const dateType = ref('range')
 const securitiesList = ref([])
@@ -264,20 +285,17 @@ const { handleSubmit, resetForm, errors } = useForm({
   },
 })
 
-const { value: securities, errorMessage: securitiesError } =
-  useField('securities')
-const { value: accounts, errorMessage: accountsError } = useField('accounts')
-const { value: startDate, errorMessage: startDateError } =
-  useField('startDate')
-const { value: endDate, errorMessage: endDateError } = useField('endDate')
-const { value: frequency, errorMessage: frequencyError } =
-  useField('frequency')
-const { value: singleDate, errorMessage: singleDateError } =
-  useField('singleDate')
+// The rendered error text comes from the shared `errors` computed below;
+// only the field values are needed from these registrations.
+const { value: securities } = useField('securities')
+const { value: accounts } = useField('accounts')
+const { value: startDate } = useField('startDate')
+const { value: endDate } = useField('endDate')
+const { value: frequency } = useField('frequency')
+const { value: singleDate } = useField('singleDate')
 
 const generalError = ref('')
 const isSubmitting = ref(false)
-const isImporting = ref(false)
 const progress = ref(0)
 const importSummary = ref(null)
 const detailedSummary = ref([])

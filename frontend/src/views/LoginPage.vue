@@ -1,24 +1,18 @@
 <template>
-  <v-container class="fill-height" fluid>
+  <v-container class="fill-height auth-surface" fluid>
     <v-row align="center" justify="center">
-      <v-col cols="12" sm="8" md="4">
-        <v-card class="pa-4">
-          <v-card-title class="headline">Login</v-card-title>
-          <v-card-text>
-            <LoginForm
-              ref="loginForm"
-              @submit="handleLogin"
-              :loading="loading"
-            />
-          </v-card-text>
-          <v-card-actions>
-            <v-spacer />
-            <span
-              >Don't have an account?
-              <router-link to="/register">Register</router-link></span
-            >
-          </v-card-actions>
-        </v-card>
+      <v-col cols="12" sm="8" md="5" lg="4">
+        <WorkspacePage title="Login" description="Sign in to your portfolio workspace.">
+          <LoginForm
+            ref="loginForm"
+            @submit="handleLogin"
+            :loading="loading"
+          />
+          <p class="workspace-meta mt-4 mb-0 text-center">
+            Don't have an account?
+            <router-link to="/register">Register</router-link>
+          </p>
+        </WorkspacePage>
       </v-col>
     </v-row>
   </v-container>
@@ -27,9 +21,9 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-// import axios from 'axios'
 import { useAuthStore } from '@/stores/auth'
 import LoginForm from '@/components/LoginForm.vue'
+import WorkspacePage from '@/components/workspace/WorkspacePage.vue'
 import logger from '@/utils/logger'
 
 // Shape of the credentials emitted by LoginForm's @submit event.
@@ -87,8 +81,8 @@ const handleLogin = async (credentials: LoginCredentials) => {
 </script>
 
 <style scoped>
-.v-card-actions a {
+.auth-surface :deep(a) {
   text-decoration: none;
-  color: #1976d2;
+  color: rgb(var(--v-theme-primary));
 }
 </style>

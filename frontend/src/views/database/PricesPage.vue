@@ -4,12 +4,21 @@
       Unable to load prices or filters. The displayed data may be from the previous request.
       <v-btn data-testid="prices-retry" :disabled="!context.canRead" @click="retryFailedResources">Retry</v-btn>
     </v-alert>
-    <v-overlay :model-value="loading" class="align-center justify-center">
-      <v-progress-circular color="primary" indeterminate size="64" />
-    </v-overlay>
+    <WorkspaceSection
+      heading-id="prices-section"
+      title="Prices"
+      description="Price history per security and date; each pair is quoted in the security's trading currency."
+    >
+      <template #actions>
+        <WorkspaceActions
+          :primary="{ id: 'add-price', label: 'Add Price Entry', icon: 'mdi-plus' }"
+          :secondary="[{ id: 'import-prices', label: 'Import Prices', icon: 'mdi-upload' }]"
+          :overflow="[{ id: 'add-security', label: 'Add Security', icon: 'mdi-plus' }]"
+          @action="handleWorkspaceAction"
+        />
+      </template>
 
-    <v-card class="mb-4">
-      <v-card-text class="pa-4">
+      <section aria-label="Price filters" class="mb-4">
         <v-row>
           <v-col cols="12" md="4">
             <v-autocomplete
@@ -104,59 +113,13 @@
             <v-text-field v-model="dateTo" label="End Date" type="date" />
           </v-col>
           <v-col cols="12" md="4" class="d-flex align-center">
-            <v-btn color="primary" @click="applyFilters" block>
+            <v-btn color="primary" variant="tonal" @click="applyFilters" block>
               Apply Filters
             </v-btn>
           </v-col>
         </v-row>
-      </v-card-text>
-    </v-card>
+      </section>
 
-    <v-card class="mb-4">
-      <v-card-text>
-        <v-row align="center" justify="space-between">
-          <v-col cols="auto">
-            <v-row>
-              <v-col cols="auto">
-                <v-btn color="primary" @click="addSecurity">
-                  <v-icon left>mdi-plus</v-icon>
-                  Add Security
-                </v-btn>
-              </v-col>
-              <v-col cols="auto">
-                <v-btn color="primary" @click="openAddPriceDialog">
-                  <v-icon left>mdi-plus</v-icon>
-                  Add Price Entry
-                </v-btn>
-              </v-col>
-            </v-row>
-          </v-col>
-          <v-col cols="auto">
-            <v-btn color="success" @click="openImportDialog">
-              Import Prices
-            </v-btn>
-          </v-col>
-        </v-row>
-      </v-card-text>
-    </v-card>
-
-    <!-- <v-card class="mb-4">
-      <v-card-title>Price History</v-card-title>
-      <v-card-text>
-        <TimelineSelector
-          v-model="selectedPeriod"
-          :effective-current-date="effectiveCurrentDate"
-        />
-        <LineChart
-          v-if="chartData.datasets.length > 0"
-          :chart-data="chartData"
-          :options="chartOptions"
-        />
-        <p v-else>No price data available. Please apply filters.</p>
-      </v-card-text>
-    </v-card> -->
-
-    <v-card>
       <v-data-table
         :headers="headers"
         :items="priceData"
@@ -184,10 +147,24 @@
           }}</span>
         </template>
         <template #[`item.actions`]="{ item }">
-          <v-icon small class="mr-2" @click="editPrice(item)">
-            mdi-pencil
-          </v-icon>
-          <v-icon small @click="openDeleteDialog(item)"> mdi-delete </v-icon>
+          <div class="d-flex justify-end">
+            <v-btn
+              icon="mdi-pencil"
+              variant="text"
+              size="small"
+              class="workspace-row-action"
+              :aria-label="`Edit price for ${item.security__name} on ${item.date}`"
+              @click="editPrice(item)"
+            />
+            <v-btn
+              icon="mdi-delete"
+              variant="text"
+              size="small"
+              class="workspace-row-action"
+              :aria-label="`Delete price for ${item.security__name} on ${item.date}`"
+              @click="openDeleteDialog(item)"
+            />
+          </div>
         </template>
         <template v-slot:bottom>
           <v-row align="center" class="pa-4">
@@ -221,55 +198,16 @@
           </v-row>
         </template>
       </v-data-table>
-    </v-card>
+    </WorkspaceSection>
 
-    <v-dialog v-model="deleteDialog" max-width="500px">
-      <v-card>
-        <v-card-title>Delete Price Entry</v-card-title>
-        <v-card-text>
-          Are you sure you want to delete this price entry?
-          <v-list dense>
-            <v-list-item>
-              <v-list-item-title>Date:</v-list-item-title>
-              <v-list-item-subtitle>{{
-                deletedItem.date
-              }}</v-list-item-subtitle>
-            </v-list-item>
-            <v-list-item>
-              <v-list-item-title>Security:</v-list-item-title>
-              <v-list-item-subtitle>{{
-                deletedItem.security__name
-              }}</v-list-item-subtitle>
-            </v-list-item>
-            <v-list-item>
-              <v-list-item-title>Price:</v-list-item-title>
-              <v-list-item-subtitle
-                >{{ deletedItem.price }}
-                {{ deletedItem.security__currency }}</v-list-item-subtitle
-              >
-            </v-list-item>
-          </v-list>
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer />
-          <v-btn
-            color="blue darken-1"
-            text
-            @click="closeDeleteDialog"
-            :disabled="isDeleting"
-            >Cancel</v-btn
-          >
-          <v-btn
-            color="red darken-1"
-            text
-            @click="confirmDelete"
-            :loading="isDeleting"
-            :disabled="isDeleting"
-            >Delete</v-btn
-          >
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
+    <ConfirmActionDialog
+      :model-value="deleteDialog"
+      :subject="deleteSubject"
+      :busy="isDeleting"
+      :error="deleteError"
+      @update:model-value="onConfirmDialogChange"
+      @confirm="confirmDelete"
+    />
 
     <PriceFormDialog v-if="showPriceDialogMounted"
       v-model="showPriceDialog"
@@ -302,24 +240,17 @@ import {
   getPriceDetails,
 } from '@/services/api'
 import debounce from 'lodash/debounce'
-// import LineChart from '@/components/charts/LineChart.vue'
-// import TimelineSelector from '@/components/TimelineSelector.vue'
 import { usePortfolioContextStore } from '@/stores/portfolioContext'
 import { usePortfolioRequest } from '@/composables/usePortfolioRequest'
 import { snapshotContext, snapshotTableQuery } from '@/types/query'
 import { useTableSettings } from '@/composables/useTableSettings'
+import WorkspaceSection from '@/components/workspace/WorkspaceSection.vue'
+import WorkspaceActions from '@/components/workspace/WorkspaceActions.vue'
+import ConfirmActionDialog from '@/components/workspace/ConfirmActionDialog.vue'
 const PriceFormDialog = defineAppDialog(() => import('@/components/dialogs/PriceFormDialog.vue'))
 const SecurityFormDialog = defineAppDialog(() => import('@/components/dialogs/SecurityFormDialog.vue'))
 const PriceImportDialog = defineAppDialog(() => import('@/components/dialogs/PriceImportDialog.vue'))
-import { getChartOptions, colorPalette } from '@/config/chartConfig'
 import logger from '@/utils/logger'
-import {
-  subDays,
-  subMonths,
-  subYears,
-  startOfYear,
-  differenceInDays,
-} from 'date-fns'
 
 const appStore = useAppStore()
 const context = usePortfolioContextStore()
@@ -341,11 +272,13 @@ const selectedAssetTypes = ref([])
 const selectedAccount = ref(null)
 const selectedSecurities = ref([])
 const priceData = computed(() => pricesQuery.data.value?.prices ?? [])
-const loading = ref(false)
 const tableLoading = computed(() => pricesQuery.loading.value)
 const totalItems = computed(() => pricesQuery.data.value?.total_items ?? 0)
 const deleteDialog = ref(false)
 const deletedItem = ref({})
+const deleteTargetId = ref(null)
+const deleteSubject = ref(null)
+const deleteError = ref(null)
 const editingPrice = ref(null)
 const showPriceDialog = ref(false)
 const showPriceDialogMounted = useFirstOpen(showPriceDialog)
@@ -452,6 +385,13 @@ const retryFailedResources = () => {
   if (accountsQuery.error.value) accountsQuery.run(context.committed)
   if (securitiesQuery.error.value) securitiesQuery.run({ context: context.committed, assetTypes: selectedAssetTypes.value, account: selectedAccount.value })
 }
+// Presentation-only action hierarchy: the existing openers stay authoritative.
+const handleWorkspaceAction = (id) => {
+  if (id === 'add-price') openAddPriceDialog()
+  else if (id === 'import-prices') openImportDialog()
+  else if (id === 'add-security') addSecurity()
+}
+
 const openImportDialog = () => {
   showImportDialog.value = true
 }
@@ -474,28 +414,41 @@ const editPrice = async (item) => {
 
 const openDeleteDialog = (item) => {
   deletedItem.value = item
+  deleteTargetId.value = item.id
+  deleteSubject.value = {
+    title: `Delete price for ${item.security__name} on ${item.date}`,
+    confirmLabel: 'Delete price',
+    details: [
+      { label: 'Date', value: item.date ?? '—' },
+      { label: 'Security', value: item.security__name ?? '—' },
+      { label: 'Price', value: `${item.price ?? '—'} ${item.security__currency ?? ''}`.trim() },
+    ],
+  }
+  deleteError.value = null
   deleteDialog.value = true
 }
 
-const closeDeleteDialog = () => {
-  if (!isDeleting.value) {
-    deleteDialog.value = false
-    deletedItem.value = {}
-  }
+const onConfirmDialogChange = (value) => {
+  if (isDeleting.value && value === false) return
+  deleteDialog.value = false
+  deleteError.value = null
 }
 
 const confirmDelete = async () => {
+  if (deleteTargetId.value == null || isDeleting.value) return
   isDeleting.value = true
+  deleteError.value = null
   try {
-    await deletePrice(deletedItem.value.id)
+    await deletePrice(deleteTargetId.value)
+    deleteDialog.value = false
     await fetchPriceData()
   } catch (error) {
     const errorMessage =
       error.response?.data?.message || error.message || 'Unknown error'
+    deleteError.value = `Failed to delete price: ${errorMessage}`
     showError(`Failed to delete price: ${errorMessage}`)
   } finally {
     isDeleting.value = false
-    closeDeleteDialog()
   }
 }
 
@@ -521,176 +474,5 @@ watch([() => context.canRead, () => appStore.dataRefreshTrigger, appliedFilters,
   dateFrom, dateTo, itemsPerPage, currentPage, sortBy], () => {
   if (context.canRead && dateTo.value) fetchPriceData()
 }, { deep: true, immediate: true })
-const chartOptions = ref({})
-const selectedPeriod = ref('1Y')
-const chartOptionsLoaded = ref(false)
-
-const effectiveCurrentDate = computed(() => appStore.effectiveCurrentDate)
-
-const getStartDate = (period) => {
-  const currentDate = new Date(effectiveCurrentDate.value)
-  switch (period) {
-    case '7d':
-      return subDays(currentDate, 7)
-    case '1m':
-      return subMonths(currentDate, 1)
-    case '3m':
-      return subMonths(currentDate, 3)
-    case '6m':
-      return subMonths(currentDate, 6)
-    case '1Y':
-      return subYears(currentDate, 1)
-    case '3Y':
-      return subYears(currentDate, 3)
-    case '5Y':
-      return subYears(currentDate, 5)
-    case 'All':
-      return null
-    default:
-      if (period.startsWith('YTD-')) {
-        return startOfYear(currentDate)
-      }
-      return subYears(currentDate, 1) // Default to 1Y
-  }
-}
-
-const filteredPriceData = computed(() => {
-  const startDate = getStartDate(selectedPeriod.value)
-  if (!startDate) return priceData.value
-  return priceData.value.filter((item) => new Date(item.date) >= startDate)
-})
-
-const getLastAvailableDataPoint = (data, targetDate) => {
-  const sortedData = [...data].sort(
-    (a, b) => new Date(b.date) - new Date(a.date)
-  )
-  return (
-    sortedData.find(
-      (item) => new Date(item.date) <= new Date(targetDate)
-    ) || sortedData[0]
-  )
-}
-
-const chartData = computed(() => {
-  const groupedData = filteredPriceData.value.reduce((acc, item) => {
-    if (!acc[item.security__name]) {
-      acc[item.security__name] = []
-    }
-    acc[item.security__name].push({ x: new Date(item.date), y: item.price })
-    return acc
-  }, {})
-
-  return {
-    datasets: Object.entries(groupedData).map(
-      ([securityName, data], index) => {
-        if (effectiveCurrentDate.value) {
-          const lastDataPoint = getLastAvailableDataPoint(
-            data,
-            effectiveCurrentDate.value
-          )
-          if (lastDataPoint) {
-            data.push({
-              x: new Date(effectiveCurrentDate.value),
-              y: lastDataPoint.y,
-            })
-          }
-        }
-        return {
-          label: securityName,
-          data: data,
-          borderColor: colorPalette[index % colorPalette.length],
-          tension: 0.1,
-        }
-      }
-    ),
-  }
-})
-
-const getTimeConfig = (period) => {
-  const currentDate = new Date(effectiveCurrentDate.value)
-  const startDate = getStartDate(period)
-  const daysDiff = differenceInDays(currentDate, startDate)
-
-  if (daysDiff <= 14) {
-    return { unit: 'day', stepSize: 1 }
-  } else if (daysDiff <= 31) {
-    return { unit: 'day', stepSize: 2 }
-  } else if (daysDiff <= 90) {
-    return { unit: 'week', stepSize: 1 }
-  } else if (daysDiff <= 180) {
-    return { unit: 'month', stepSize: 1 }
-  } else if (daysDiff <= 365) {
-    return { unit: 'month', stepSize: 2 }
-  } else if (daysDiff <= 365 * 2) {
-    return { unit: 'quarter', stepSize: 1 }
-  } else {
-    return { unit: 'year', stepSize: 1 }
-  }
-}
-
-const updateChartOptions = async () => {
-  const baseOptions = await getChartOptions('Price')
-  const timeConfig = getTimeConfig(selectedPeriod.value)
-
-  chartOptions.value = {
-    ...baseOptions.navChartOptions,
-    responsive: true,
-    maintainAspectRatio: false,
-    scales: {
-      x: {
-        type: 'time',
-        time: {
-          unit: timeConfig.unit,
-          stepSize: timeConfig.stepSize,
-          displayFormats: {
-            day: 'd MMM',
-            week: 'd MMM',
-            month: 'MMM yyyy',
-            quarter: 'QQQ yyyy',
-            year: 'yyyy',
-          },
-        },
-        grid: {
-          display: false,
-        },
-        title: {
-          display: false,
-        },
-        max: effectiveCurrentDate.value,
-      },
-      y: {
-        beginAtZero: false,
-        grid: {
-          display: true,
-        },
-        title: {
-          display: true,
-          text: 'Price',
-        },
-      },
-    },
-    plugins: {
-      legend: {
-        display: true,
-      },
-      tooltip: {
-        callbacks: {
-          title: function (context) {
-            return new Date(context[0].parsed.x).toLocaleDateString(
-              'en-US',
-              { year: 'numeric', month: 'short', day: 'numeric' }
-            )
-          },
-        },
-      },
-      datalabels: {
-        display: false,
-      },
-    },
-  }
-  chartOptionsLoaded.value = true
-}
-
-watch(selectedPeriod, updateChartOptions)
 
 </script>

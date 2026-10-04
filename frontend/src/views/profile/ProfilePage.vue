@@ -1,8 +1,18 @@
 <template>
-  <v-card>
-    <v-card-title>User Profile</v-card-title>
-    <v-card-text>
-      <v-list>
+  <WorkspaceSection
+    heading-id="user-details-section"
+    title="User details"
+    description="Identity fields of the signed-in account."
+  >
+    <template #actions>
+      <div class="d-flex flex-wrap ga-2">
+        <v-btn color="primary" @click="editProfile">Edit Profile</v-btn>
+        <v-btn color="secondary" variant="tonal" @click="showChangePasswordDialog"
+          >Change Password</v-btn
+        >
+      </div>
+    </template>
+    <v-list>
         <v-list-item v-for="(value, key) in userInfo" :key="key">
           <template v-slot:title>
             {{ formatLabel(key) }}
@@ -12,13 +22,6 @@
           </template>
         </v-list-item>
       </v-list>
-    </v-card-text>
-    <v-card-actions>
-      <v-btn color="primary" @click="editProfile">Edit Profile</v-btn>
-      <v-btn color="primary" @click="showChangePasswordDialog"
-        >Change Password</v-btn
-      >
-    </v-card-actions>
 
     <!-- Change Password Dialog -->
     <v-dialog v-model="changePasswordDialog" max-width="500px">
@@ -68,7 +71,7 @@
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn color="primary" text @click="closeChangePasswordDialog"
+          <v-btn @click="closeChangePasswordDialog"
             >Close</v-btn
           >
         </v-card-actions>
@@ -78,11 +81,11 @@
     <!-- Success Dialog -->
     <v-dialog v-model="successDialog" max-width="300">
       <v-card>
-        <v-card-title class="text-h5 green--text">Success</v-card-title>
+        <v-card-title class="text-h5 text-success">Success</v-card-title>
         <v-card-text>{{ successMessage }}</v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn color="green" text @click="successDialog = false">Close</v-btn>
+          <v-btn color="success" variant="text" @click="successDialog = false">Close</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -90,15 +93,15 @@
     <!-- Error Dialog -->
     <v-dialog v-model="errorDialog" max-width="300">
       <v-card>
-        <v-card-title class="text-h5 red--text">Error</v-card-title>
+        <v-card-title class="text-h5 text-error">Error</v-card-title>
         <v-card-text>{{ errorMessage }}</v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn color="red" text @click="errorDialog = false">Close</v-btn>
+          <v-btn color="error" variant="text" @click="errorDialog = false">Close</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
-  </v-card>
+  </WorkspaceSection>
 </template>
 
 <script setup>
@@ -107,6 +110,7 @@ import { useRouter } from 'vue-router'
 import { changePassword as apiChangePassword } from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
 import logger from '@/utils/logger'
+import WorkspaceSection from '@/components/workspace/WorkspaceSection.vue'
 
 const componentId = Date.now()
 logger.log('Unknown', `[ProfilePage][${componentId}] Component setup started`)
@@ -226,7 +230,6 @@ const closeChangePasswordDialog = () => {
 const fetchProfile = async () => {
   if (!authStore.user) {
     await authStore.fetchUserData()
-  } else {
   }
 }
 

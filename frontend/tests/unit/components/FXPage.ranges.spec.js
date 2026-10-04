@@ -31,9 +31,40 @@ it('renders a readable missing-rate dash for an absent date/pair cell', async ()
   const table = defineComponent({ props: ['items'], setup(props, { slots }) {
     return () => h('table', props.items.flatMap(item => slots.item({ item })))
   } })
-  const wrapper = mount(FXPage, { shallow: true, global: { plugins: [pinia], stubs: { VDataTable: table } } })
+  // The section wrapper owns the table slot in shallow mode; render it through.
+  const section = { template: '<section><slot /></section>' }
+  const wrapper = mount(FXPage, { shallow: true, global: { plugins: [pinia], stubs: { VDataTable: table, WorkspaceSection: section } } })
   await flushPromises()
   expect(wrapper.findAll('.cell-btn').map(cell => cell.text())).toContain('\u2014')
+  wrapper.unmount()
+})
+
+it('routes a toolbar rows-per-page change through the pagination owner and requests the new page size', async () => {
+  mocks.getFXData.mockResolvedValue({ results: [], count: 0 })
+  const pinia = createPinia()
+  await usePortfolioContextStore(pinia).reconcileContext()
+  const section = { template: '<section><slot /></section>' }
+  const toolbar = defineComponent({
+    name: 'WorkspaceTableToolbar',
+    emits: ['update:query'],
+    template: '<div class="toolbar-stub" />',
+  })
+  const wrapper = mount(FXPage, {
+    shallow: true,
+    global: { plugins: [pinia], stubs: { WorkspaceSection: section, WorkspaceTableToolbar: toolbar } },
+  })
+  await flushPromises()
+  // Initial request uses the default rows-per-page (25).
+  expect(mocks.getFXData.mock.calls.at(-1)[0].itemsPerPage).toBe(25)
+  // Selecting a different row count through the shared toolbar must update
+  // the table-settings owner (state + page reset) and issue a request with
+  // the new page size.
+  wrapper.findComponent({ name: 'WorkspaceTableToolbar' }).vm.$emit('update:query', { itemsPerPage: 50 })
+  await flushPromises()
+  const app = useAppStore(pinia)
+  expect(app.tableSettings.itemsPerPage).toBe(50)
+  expect(app.tableSettings.page).toBe(1)
+  expect(mocks.getFXData.mock.calls.at(-1)[0].itemsPerPage).toBe(50)
   wrapper.unmount()
 })
 

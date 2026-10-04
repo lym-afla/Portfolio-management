@@ -13,11 +13,15 @@ import './assets/workspace.css'
 import './plugins/vee-validate'
 import logger from './utils/logger'
 import { createAppTheme } from './theme'
+import { workspaceDefaults } from './theme/defaults'
 import { appIcons } from './plugins/icons'
 
 const vuetify = createVuetify({
   icons: appIcons,
   theme: createAppTheme(),
+  // App-wide since the D5 route rollout accepted the workspace look; the
+  // former pilot-only provider inside WorkspacePage stays (harmless, scoped).
+  defaults: workspaceDefaults,
 })
 
 // Initialize logger

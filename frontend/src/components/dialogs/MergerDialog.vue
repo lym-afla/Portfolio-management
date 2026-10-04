@@ -5,64 +5,64 @@
         Record Merger
       </v-btn>
     </template>
-    <v-card>
-      <v-card-title>
+    <v-card :id="focusCardId">
+      <v-card-title id="merger-form-title">
         <span class="text-h5">Record Merger</span>
       </v-card-title>
       <v-card-text>
         <v-form ref="formRef" @submit.prevent="submitForm">
-          <!-- Old Security -->
-          <v-autocomplete
-            v-model="form.oldSecurityId"
-            :items="securities"
-            item-title="name"
-            item-value="id"
-            label="Old Security *"
-            clearable
-          />
+          <section aria-label="Merger details">
+            <h3 class="text-subtitle-1 font-weight-medium mb-2">Merger details</h3>
+            <v-autocomplete
+              v-model="form.oldSecurityId"
+              :items="securities"
+              item-title="name"
+              item-value="id"
+              label="Old Security *"
+              clearable
+            />
 
-          <!-- Merger Date -->
-          <v-text-field
-            v-model="form.mergerDate"
-            label="Merger Date *"
-            type="date"
-          />
+            <v-text-field
+              v-model="form.mergerDate"
+              label="Merger Date *"
+              type="date"
+            />
+          </section>
 
-          <!-- New Security (optional for all-cash) -->
-          <v-autocomplete
-            v-model="form.newSecurityId"
-            :items="securities"
-            item-title="name"
-            item-value="id"
-            label="New Security (leave empty for all-cash merger)"
-            clearable
-          />
+          <section aria-label="Consideration" class="mt-4">
+            <h3 class="text-subtitle-1 font-weight-medium mb-2">Consideration</h3>
+            <v-autocomplete
+              v-model="form.newSecurityId"
+              :items="securities"
+              item-title="name"
+              item-value="id"
+              label="New Security (leave empty for all-cash merger)"
+              clearable
+            />
 
-          <!-- Conversion Ratio (required if new security selected) -->
-          <v-text-field
-            v-model="form.conversionRatio"
-            label="Conversion Ratio (new shares per old share)"
-            type="number"
-            step="0.0001"
-            hint="e.g. 0.75 means 1 old share becomes 0.75 new shares"
-            persistent-hint
-            :rules="[validateConversionRatio]"
-          />
+            <v-text-field
+              v-model="form.conversionRatio"
+              label="Conversion Ratio (new shares per old share)"
+              type="number"
+              step="0.0001"
+              hint="e.g. 0.75 means 1 old share becomes 0.75 new shares"
+              persistent-hint
+              :rules="[validateConversionRatio]"
+            />
 
-          <!-- Cash Per Share (optional) -->
-          <v-text-field
-            v-model="form.cashPerShare"
-            label="Cash Per Share (for all-cash or hybrid)"
-            type="number"
-            step="0.01"
-          />
+            <v-text-field
+              v-model="form.cashPerShare"
+              label="Cash Per Share (for all-cash or hybrid)"
+              type="number"
+              step="0.01"
+            />
 
-          <!-- Notes -->
-          <v-textarea
-            v-model="form.notes"
-            label="Notes (optional)"
-            rows="2"
-          />
+            <v-textarea
+              v-model="form.notes"
+              label="Notes (optional)"
+              rows="2"
+            />
+          </section>
         </v-form>
 
         <v-alert v-if="error" type="error" class="mt-4">
@@ -82,10 +82,10 @@
       </v-card-text>
       <v-card-actions>
         <v-spacer />
-        <v-btn color="blue darken-1" text @click="closeDialog">Cancel</v-btn>
+        <v-btn data-testid="dialog-cancel" @click="closeDialog">Cancel</v-btn>
         <v-btn
-          color="blue darken-1"
-          text
+          color="primary"
+          variant="tonal"
           @click="submitForm"
           :loading="isSubmitting"
           :disabled="!isFormValid"
@@ -101,6 +101,7 @@
 import { ref, reactive, shallowRef, computed, watch } from 'vue'
 import { getSecurities } from '@/services/api'
 import { createMerger } from '@/services/api'
+import { useDialogFormFocus } from '@/composables/useDialogFormFocus'
 import logger from '@/utils/logger'
 
 const props = defineProps({ modelValue: { type: Boolean, default: undefined } })
@@ -115,6 +116,7 @@ const dialog = computed({
   },
 })
 const isSubmitting = ref(false)
+const { cardId: focusCardId } = useDialogFormFocus(dialog, 'merger-form')
 const error = ref(null)
 const securities = shallowRef([])
 

@@ -1,37 +1,106 @@
 [
-  {"file":"src/components/AccountGroupManager.vue","line":264,"column":7,"ruleId":"@typescript-eslint/no-unused-vars","message":"'availableAccountsForGroup' is assigned a value but never used. Allowed unused vars must match /^_/u.","severity":1},
-  {"file":"src/components/BrokerTokenManager.vue","line":646,"column":7,"ruleId":"@typescript-eslint/no-unused-vars","message":"'brokerOptions' is assigned a value but never used. Allowed unused vars must match /^_/u.","severity":1},
-  {"file":"src/components/BrokerTokenManager.vue","line":885,"column":10,"ruleId":"@typescript-eslint/no-unused-vars","message":"'getTokenStatusText' is defined but never used. Allowed unused vars must match /^_/u.","severity":1},
-  {"file":"src/components/BrokerTokenManager.vue","line":890,"column":10,"ruleId":"@typescript-eslint/no-unused-vars","message":"'getTokenStatusColor' is defined but never used. Allowed unused vars must match /^_/u.","severity":1},
-  {"file":"src/components/dialogs/PriceImportDialog.vue","line":267,"column":42,"ruleId":"@typescript-eslint/no-unused-vars","message":"'securitiesError' is assigned a value but never used. Allowed unused vars must match /^_/u.","severity":1},
-  {"file":"src/components/dialogs/PriceImportDialog.vue","line":269,"column":40,"ruleId":"@typescript-eslint/no-unused-vars","message":"'accountsError' is assigned a value but never used. Allowed unused vars must match /^_/u.","severity":1},
-  {"file":"src/components/dialogs/PriceImportDialog.vue","line":270,"column":41,"ruleId":"@typescript-eslint/no-unused-vars","message":"'startDateError' is assigned a value but never used. Allowed unused vars must match /^_/u.","severity":1},
-  {"file":"src/components/dialogs/PriceImportDialog.vue","line":272,"column":39,"ruleId":"@typescript-eslint/no-unused-vars","message":"'endDateError' is assigned a value but never used. Allowed unused vars must match /^_/u.","severity":1},
-  {"file":"src/components/dialogs/PriceImportDialog.vue","line":273,"column":41,"ruleId":"@typescript-eslint/no-unused-vars","message":"'frequencyError' is assigned a value but never used. Allowed unused vars must match /^_/u.","severity":1},
-  {"file":"src/components/dialogs/PriceImportDialog.vue","line":275,"column":42,"ruleId":"@typescript-eslint/no-unused-vars","message":"'singleDateError' is assigned a value but never used. Allowed unused vars must match /^_/u.","severity":1},
-  {"file":"src/components/dialogs/PriceImportDialog.vue","line":280,"column":7,"ruleId":"@typescript-eslint/no-unused-vars","message":"'isImporting' is assigned a value but never used. Allowed unused vars must match /^_/u.","severity":1},
-  {"file":"src/config/chartConfig.js","line":206,"column":19,"ruleId":"prefer-const","message":"'label' is never reassigned. Use 'const' instead.","severity":1},
-  {"file":"src/config/chartConfig.js","line":207,"column":19,"ruleId":"prefer-const","message":"'value' is never reassigned. Use 'const' instead.","severity":1},
-  {"file":"src/services/api.ts","line":687,"column":7,"ruleId":"preserve-caught-error","message":"There is no `cause` attached to the symptom error being thrown.","severity":1},
-  {"file":"src/services/api.ts","line":689,"column":7,"ruleId":"preserve-caught-error","message":"There is no `cause` attached to the symptom error being thrown.","severity":1},
-  {"file":"src/services/api.ts","line":1066,"column":7,"ruleId":"preserve-caught-error","message":"There is no `cause` attached to the symptom error being thrown.","severity":1},
-  {"file":"src/services/api.ts","line":1125,"column":7,"ruleId":"preserve-caught-error","message":"There is no `cause` attached to the symptom error being thrown.","severity":1},
-  {"file":"src/services/api.ts","line":1127,"column":7,"ruleId":"preserve-caught-error","message":"There is no `cause` attached to the symptom error being thrown.","severity":1},
-  {"file":"src/utils/authDebug.js","line":269,"column":16,"ruleId":"no-unused-vars","message":"'e' is defined but never used.","severity":1},
-  {"file":"src/utils/authDebug.js","line":286,"column":16,"ruleId":"no-unused-vars","message":"'e' is defined but never used.","severity":1},
-  {"file":"src/views/database/AccountsPage.vue","line":306,"column":7,"ruleId":"@typescript-eslint/no-unused-vars","message":"'addAccount' is assigned a value but never used. Allowed unused vars must match /^_/u.","severity":1},
-  {"file":"src/views/database/PricesPage.vue","line":574,"column":7,"ruleId":"@typescript-eslint/no-unused-vars","message":"'chartData' is assigned a value but never used. Allowed unused vars must match /^_/u.","severity":1},
-  {"file":"src/views/database/SecuritiesPage.vue","line":159,"column":7,"ruleId":"@typescript-eslint/no-unused-vars","message":"'loading' is assigned a value but never used. Allowed unused vars must match /^_/u.","severity":1},
-  {"file":"src/views/database/SecuritiesPage.vue","line":161,"column":7,"ruleId":"@typescript-eslint/no-unused-vars","message":"'dialog' is assigned a value but never used. Allowed unused vars must match /^_/u.","severity":1},
-  {"file":"src/views/database/SecuritiesPage.vue","line":163,"column":7,"ruleId":"@typescript-eslint/no-unused-vars","message":"'editedItem' is assigned a value but never used. Allowed unused vars must match /^_/u.","severity":1},
-  {"file":"src/views/database/SecuritiesPage.vue","line":169,"column":7,"ruleId":"@typescript-eslint/no-unused-vars","message":"'defaultItem' is assigned a value but never used. Allowed unused vars must match /^_/u.","severity":1},
-  {"file":"src/views/database/SecuritiesPage.vue","line":224,"column":7,"ruleId":"@typescript-eslint/no-unused-vars","message":"'formTitle' is assigned a value but never used. Allowed unused vars must match /^_/u.","severity":1},
-  {"file":"src/views/database/SecurityDetailPage.vue","line":576,"column":7,"ruleId":"@typescript-eslint/no-unused-vars","message":"'getTransactionDescription' is assigned a value but never used. Allowed unused vars must match /^_/u.","severity":1},
-  {"file":"src/views/database/SecurityDetailPage.vue","line":590,"column":7,"ruleId":"@typescript-eslint/no-unused-vars","message":"'updateChartPeriod' is assigned a value but never used. Allowed unused vars must match /^_/u.","severity":1},
-  {"file":"src/views/database/SecurityDetailPage.vue","line":675,"column":7,"ruleId":"prefer-const","message":"'chartData' is never reassigned. Use 'const' instead.","severity":1},
-  {"file":"src/views/database/SecurityDetailPage.vue","line":707,"column":7,"ruleId":"prefer-const","message":"'chartData' is never reassigned. Use 'const' instead.","severity":1},
-  {"file":"src/views/profile/ProfilePage.vue","line":229,"column":10,"ruleId":"no-empty","message":"Empty block statement.","severity":1},
-  {"file":"src/views/SummaryPage.vue","line":334,"column":7,"ruleId":"@typescript-eslint/no-unused-vars","message":"'accountPerformanceHeaders' is assigned a value but never used. Allowed unused vars must match /^_/u.","severity":1},
-  {"file":"src/views/SummaryPage.vue","line":346,"column":7,"ruleId":"@typescript-eslint/no-unused-vars","message":"'accountPerformanceSubHeaders' is assigned a value but never used. Allowed unused vars must match /^_/u.","severity":1},
-  {"file":"src/views/SummaryPage.vue","line":421,"column":7,"ruleId":"@typescript-eslint/no-unused-vars","message":"'portfolioBreakdownItems' is assigned a value but never used. Allowed unused vars must match /^_/u.","severity":1}
+  {
+    "file": "src/components/AccountGroupManager.vue",
+    "line": 264,
+    "column": 7,
+    "ruleId": "@typescript-eslint/no-unused-vars",
+    "message": "'availableAccountsForGroup' is assigned a value but never used. Allowed unused vars must match /^_/u.",
+    "severity": 1
+  },
+  {
+    "file": "src/components/BrokerTokenManager.vue",
+    "line": 646,
+    "column": 7,
+    "ruleId": "@typescript-eslint/no-unused-vars",
+    "message": "'brokerOptions' is assigned a value but never used. Allowed unused vars must match /^_/u.",
+    "severity": 1
+  },
+  {
+    "file": "src/components/BrokerTokenManager.vue",
+    "line": 885,
+    "column": 10,
+    "ruleId": "@typescript-eslint/no-unused-vars",
+    "message": "'getTokenStatusText' is defined but never used. Allowed unused vars must match /^_/u.",
+    "severity": 1
+  },
+  {
+    "file": "src/components/BrokerTokenManager.vue",
+    "line": 890,
+    "column": 10,
+    "ruleId": "@typescript-eslint/no-unused-vars",
+    "message": "'getTokenStatusColor' is defined but never used. Allowed unused vars must match /^_/u.",
+    "severity": 1
+  },
+  {
+    "file": "src/config/chartConfig.js",
+    "line": 206,
+    "column": 19,
+    "ruleId": "prefer-const",
+    "message": "'label' is never reassigned. Use 'const' instead.",
+    "severity": 1
+  },
+  {
+    "file": "src/config/chartConfig.js",
+    "line": 207,
+    "column": 19,
+    "ruleId": "prefer-const",
+    "message": "'value' is never reassigned. Use 'const' instead.",
+    "severity": 1
+  },
+  {
+    "file": "src/services/api.ts",
+    "line": 687,
+    "column": 7,
+    "ruleId": "preserve-caught-error",
+    "message": "There is no `cause` attached to the symptom error being thrown.",
+    "severity": 1
+  },
+  {
+    "file": "src/services/api.ts",
+    "line": 689,
+    "column": 7,
+    "ruleId": "preserve-caught-error",
+    "message": "There is no `cause` attached to the symptom error being thrown.",
+    "severity": 1
+  },
+  {
+    "file": "src/services/api.ts",
+    "line": 1066,
+    "column": 7,
+    "ruleId": "preserve-caught-error",
+    "message": "There is no `cause` attached to the symptom error being thrown.",
+    "severity": 1
+  },
+  {
+    "file": "src/services/api.ts",
+    "line": 1125,
+    "column": 7,
+    "ruleId": "preserve-caught-error",
+    "message": "There is no `cause` attached to the symptom error being thrown.",
+    "severity": 1
+  },
+  {
+    "file": "src/services/api.ts",
+    "line": 1127,
+    "column": 7,
+    "ruleId": "preserve-caught-error",
+    "message": "There is no `cause` attached to the symptom error being thrown.",
+    "severity": 1
+  },
+  {
+    "file": "src/utils/authDebug.js",
+    "line": 269,
+    "column": 16,
+    "ruleId": "no-unused-vars",
+    "message": "'e' is defined but never used.",
+    "severity": 1
+  },
+  {
+    "file": "src/utils/authDebug.js",
+    "line": 286,
+    "column": 16,
+    "ruleId": "no-unused-vars",
+    "message": "'e' is defined but never used.",
+    "severity": 1
+  }
 ]

@@ -1,33 +1,37 @@
 <template>
-  <v-container fluid class="pa-0">
+  <div>
+    <WorkspaceSection
+      heading-id="fx-section"
+      title="FX rates"
+      description="Exchange-rate grid by date and currency pair; each pair is quoted from the first currency to the second."
+    >
+    <template #actions>
+      <WorkspaceActions
+        :primary="{ id: 'add-fx', label: 'Add FX Rate', icon: 'mdi-plus' }"
+        :secondary="[{ id: 'import-fx', label: 'Import FX Rates', icon: 'mdi-upload' }]"
+        :overflow="[]"
+        @action="handleWorkspaceAction"
+      />
+    </template>
     <v-alert v-if="fxQuery.error.value" type="error" class="mb-4">Unable to load exchange rates. Change the filters or try again.</v-alert>
-    <v-overlay :model-value="loading" class="align-center justify-center">
-      <v-progress-circular color="primary" indeterminate size="64" />
-    </v-overlay>
 
-    <v-card class="mb-4">
-      <v-card-text>
-        <v-btn
-          color="primary"
-          @click="openAddFXDialog"
-          prepend-icon="mdi-plus"
-          class="mr-2"
-        >
-          Add FX Rate
-        </v-btn>
-        <v-btn
-          color="secondary"
-          @click="showImportDialog = true"
-          prepend-icon="mdi-upload"
-        >
-          Import FX Rates
-        </v-btn>
-      </v-card-text>
-    </v-card>
+    <WorkspaceTableToolbar
+      class="mb-2"
+      :query="{ search: search, page: currentPage, itemsPerPage: itemsPerPage }"
+      :search-label="'Search'"
+      search-placeholder="Search FX rates"
+      :rows-per-page-options="itemsPerPageOptions"
+      @update:query="onToolbarQuery"
+    >
+      <template #filters>
+        <DateRangeSelector
+          :model-value="dateRangeForSelector"
+          @update:model-value="handleDateRangeChange"
+        />
+      </template>
+    </WorkspaceTableToolbar>
 
-    <v-row no-gutters>
-      <v-col cols="12">
-        <v-data-table
+      <v-data-table
           :headers="headers"
           :items="fxData"
           :loading="tableLoading"
@@ -39,46 +43,7 @@
           :server-items-length="totalItems"
           :items-length="totalItems"
           disable-sort
-        >
-          <template #top>
-            <v-toolbar flat class="bg-grey-lighten-4 border-b px-2">
-              <DateRangeSelector
-                :model-value="dateRangeForSelector"
-                @update:model-value="handleDateRangeChange"
-              />
-              <v-col cols="12" sm="5" md="6" lg="7" class="px-8">
-                <v-text-field
-                  v-model="search"
-                  append-icon="mdi-magnify"
-                  label="Search"
-                  single-line
-                  hide-details
-                  density="compact"
-                  bg-color="white"
-                  class="rounded-lg"
-                />
-              </v-col>
-              <v-spacer />
-              <v-col
-                cols="12"
-                sm="4"
-                md="3"
-                lg="2"
-                class="d-flex align-center justify-end px-2"
-              >
-                <v-select
-                  v-model="itemsPerPage"
-                  :items="itemsPerPageOptions"
-                  label="Rows per page"
-                  density="compact"
-                  variant="outlined"
-                  hide-details
-                  class="rows-per-page-select"
-                  bg-color="white"
-                />
-              </v-col>
-            </v-toolbar>
-          </template>
+      >
 
           <template #item="{ item }">
             <tr>
@@ -124,8 +89,7 @@
             </div>
           </template>
         </v-data-table>
-      </v-col>
-    </v-row>
+    </WorkspaceSection>
 
     <!-- Add/edit dialog. editItem drives Edit mode; prefill seeds Add-from-cell. -->
     <FXDialog v-if="showFXDialogMounted"
@@ -142,27 +106,16 @@
       @refresh-table="fetchFXData"
     />
 
-    <!-- Add confirmation dialog for delete -->
-    <v-dialog v-model="showDeleteDialog" max-width="300px">
-      <v-card>
-        <v-card-title class="text-h5">Confirm Delete</v-card-title>
-        <v-card-text>Are you sure you want to delete this FX rate?</v-card-text>
-        <v-card-actions>
-          <v-spacer />
-          <v-btn color="blue darken-1" text @click="showDeleteDialog = false"
-            >Cancel</v-btn
-          >
-          <v-btn
-            color="red darken-1"
-            text
-            @click="confirmDelete"
-            :loading="deleteLoading"
-            >Delete</v-btn
-          >
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-  </v-container>
+    <!-- Delete confirmation: exact subject identity, parent handlers authoritative -->
+    <ConfirmActionDialog
+      :model-value="showDeleteDialog"
+      :subject="deleteSubject"
+      :busy="deleteLoading"
+      :error="deleteError"
+      @update:model-value="onDeleteDialogChange"
+      @confirm="confirmDelete"
+    />
+  </div>
 </template>
 
 <script setup>
@@ -180,6 +133,10 @@ import { usePortfolioRequest } from '@/composables/usePortfolioRequest'
 import { snapshotTableQuery } from '@/types/query'
 import { useTableSettings } from '@/composables/useTableSettings'
 import DateRangeSelector from '@/components/DateRangeSelector.vue'
+import WorkspaceSection from '@/components/workspace/WorkspaceSection.vue'
+import WorkspaceActions from '@/components/workspace/WorkspaceActions.vue'
+import WorkspaceTableToolbar from '@/components/workspace/WorkspaceTableToolbar.vue'
+import ConfirmActionDialog from '@/components/workspace/ConfirmActionDialog.vue'
 import { calculateDateRange } from '@/utils/dateRangeUtils'
 const FXDialog = defineAppDialog(() => import('@/components/dialogs/FXDialog.vue'))
 const FXImportDialog = defineAppDialog(() => import('@/components/dialogs/FXImportDialog.vue'))
@@ -199,6 +156,7 @@ const {
   sortBy,
   search,
   handleSortChange,
+  handleItemsPerPageChange,
   updateDateRange,
 } = useTableSettings({ syncRelativeDate: false })
 
@@ -353,6 +311,8 @@ const editedItem = ref(null)
 // the dialog is in plain Add (toolbar) or Edit mode.
 const dialogPrefill = ref(null)
 const itemToDelete = ref(null)
+const deleteSubject = ref(null)
+const deleteError = ref(null)
 
 const openAddFXDialog = () => {
   editedItem.value = null
@@ -394,23 +354,55 @@ const onCellClick = async (item, pairLabel) => {
 const onDeleteFromDialog = (record) => {
   if (!record?.id) return
   itemToDelete.value = record
+  deleteSubject.value = {
+    title: `Delete FX rate ${record.from_currency}/${record.to_currency}`,
+    confirmLabel: 'Delete FX rate',
+    details: [
+      { label: 'Date', value: record.date ?? '—' },
+      { label: 'Pair', value: `${record.from_currency}/${record.to_currency}` },
+      { label: 'Rate', value: record.rate ?? '—' },
+    ],
+  }
+  deleteError.value = null
   showDeleteDialog.value = true
+}
+
+const onDeleteDialogChange = (value) => {
+  if (deleteLoading.value && value === false) return
+  showDeleteDialog.value = false
+  deleteError.value = null
 }
 
 const confirmDelete = async () => {
   if (!itemToDelete.value?.id) return
   deleteLoading.value = true
+  deleteError.value = null
   try {
     await deleteFXRate(itemToDelete.value.id)
     showFXDialog.value = false
+    showDeleteDialog.value = false
     await fetchFXData()
   } catch (error) {
-    handleApiError(error)
+    deleteError.value = handleApiError(error)
   } finally {
-    showDeleteDialog.value = false
-    itemToDelete.value = null
     deleteLoading.value = false
   }
+}
+
+const onToolbarQuery = (patch) => {
+  if ('search' in patch && patch.search !== search.value) search.value = patch.search
+  // Rows-per-page goes through the table-settings owner so the page resets
+  // and the fetch watch requests the new page size (same as the other
+  // inventory tables).
+  if ('itemsPerPage' in patch && patch.itemsPerPage !== itemsPerPage.value) {
+    handleItemsPerPageChange(patch.itemsPerPage)
+  }
+}
+
+// Presentation-only action hierarchy: the existing openers stay authoritative.
+const handleWorkspaceAction = (id) => {
+  if (id === 'add-fx') openAddFXDialog()
+  else if (id === 'import-fx') showImportDialog.value = true
 }
 
 const dateRangeForSelector = computed(() => ({

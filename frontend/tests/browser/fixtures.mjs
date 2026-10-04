@@ -387,7 +387,20 @@ const fixtures = new Map([
       total_items: 1, current_page: 1, total_pages: 1,
     },
   ],
-  ['POST /database/api/fx/list_fx/', { results: [], count: 0, current_page: 1, total_pages: 1 }],
+  // Populated FX pivot (backend list_fx shape): a few dates x pairs, one
+  // missing cell (GBP on the earlier date) so the em-dash marker renders.
+  [
+    'POST /database/api/fx/list_fx/',
+    {
+      results: [
+        { id: 101, date: '2026-09-08', from_currency: 'USD', to_currency: 'EUR', rate: '0.9500' },
+        { id: 102, date: '2026-09-08', from_currency: 'USD', to_currency: 'GBP', rate: '0.8000' },
+        { id: 103, date: '2026-09-05', from_currency: 'USD', to_currency: 'EUR', rate: '0.9480' },
+        { id: 104, date: '2026-09-05', from_currency: 'CHF', to_currency: 'GBP', rate: '0.9120' },
+      ],
+      count: 4, current_page: 1, total_pages: 1,
+    },
+  ],
   [
     'GET /database/api/securities/1/',
     {
@@ -411,17 +424,67 @@ const fixtures = new Map([
     'GET /database/api/securities/1/transactions/',
     { transactions: [], total_items: 0 },
   ],
+  // /summary: backend-faithful shape (services/summary.py) — server period
+  // order YTD / calendar years descending / All-time; eight metric keys per
+  // period; the Sub-total line travels INSIDE each context's lines (there is
+  // no separate subtotal key on the wire); TOTAL comes from total_context.
+  // Values include comma-grouped, signed, percentage and N/A display strings
+  // that must render verbatim.
   [
     'GET /summary/api/summary_data/',
-    {
-      public_markets_context: { lines: [], subtotal: null },
-      restricted_investments_context: { lines: [], subtotal: null },
-      total_context: { line: {}, years: [] },
-    },
+    (() => {
+      const periods = ['YTD', '2025', '2024', 'All-time']
+      const metrics = (overrides = {}) => {
+        const base = {
+          'BoP NAV': '$10,000.00',
+          'Cash-in/out': '($1,000.00)',
+          Return: '$2,500.00',
+          FX: '$10.00',
+          'TSR percentage': '6.25%',
+          'EoP NAV': '$11,500.00',
+          Commission: '($25.00)',
+          'Fee per AuM (percentage)': '0.05%',
+        }
+        return Object.fromEntries(
+          periods.map((period) => [period, { ...base, ...(overrides[period] || {}) }]),
+        )
+      }
+      return {
+        public_markets_context: {
+          years: periods,
+          lines: [
+            { name: 'Fixture Broker — Main', data: metrics({ 2024: { FX: 'N/A' } }) },
+            { name: 'Fixture Broker — IRA', data: metrics({ 'All-time': { 'TSR percentage': '8.10%' } }) },
+            { name: 'Sub-total', data: metrics() },
+          ],
+        },
+        restricted_investments_context: {
+          years: periods,
+          lines: [
+            { name: 'Fixture Broker — Restricted', data: metrics({ YTD: { 'Fee per AuM (percentage)': 'N/A' } }) },
+            { name: 'Sub-total', data: metrics() },
+          ],
+        },
+        total_context: { line: { name: 'TOTAL', data: metrics() }, years: periods },
+      }
+    })(),
   ],
   [
     'GET /summary/api/portfolio_breakdown/',
-    { consolidated_context: [], public_markets_context: [], restricted_context: [] },
+    {
+      consolidated_context: [
+        { name: 'Stocks', cost: '$80,000.00', unrealized: '$9,740.00', unrealized_percent: '12.18%', market_value: '$89,740.00', portfolio_percent: '71.79%', realized: '$0.00', realized_percent: '0%', capital_distribution: '$1,200.00', capital_distribution_percent: '1.50%', commission: '($370.00)', commission_percent: '0.46%', total: '$10,570.00', total_percent: '13.21%' },
+        { name: 'Bonds', cost: '$18,000.00', unrealized: '$1,375.00', unrealized_percent: '7.64%', market_value: '$19,375.00', portfolio_percent: '15.50%', realized: '$0.00', realized_percent: '0%', capital_distribution: '$2,375.00', capital_distribution_percent: '13.19%', commission: '($25.00)', commission_percent: '0.14%', total: '$3,725.00', total_percent: '20.69%' },
+        { name: 'Cash-like', cost: '$15,000.00', unrealized: '$0.00', unrealized_percent: '0%', market_value: '$15,000.00', portfolio_percent: '12.00%', realized: '$0.00', realized_percent: '0%', capital_distribution: '$0.00', capital_distribution_percent: '0%', commission: '($5.00)', commission_percent: '0.03%', total: '($5.00)', total_percent: '0.03%' },
+        { name: 'TOTAL', cost: '$113,000.00', unrealized: '$11,115.00', unrealized_percent: '9.84%', market_value: '$124,115.00', portfolio_percent: '99.29%', realized: '$0.00', realized_percent: '0%', capital_distribution: '$3,575.00', capital_distribution_percent: '3.16%', commission: '($400.00)', commission_percent: '0.35%', total: '$14,290.00', total_percent: '12.64%' },
+      ],
+      unrestricted_context: [
+        { name: 'Stocks', cost: '$60,000.00', unrealized: '$8,000.00', unrealized_percent: '13.33%', market_value: '$68,000.00', portfolio_percent: '54.40%', realized: '$0.00', realized_percent: '0%', capital_distribution: '$900.00', capital_distribution_percent: '1.50%', commission: '($270.00)', commission_percent: '0.45%', total: '$8,630.00', total_percent: '14.38%' },
+      ],
+      restricted_context: [
+        { name: 'Stocks', cost: '$20,000.00', unrealized: '$1,740.00', unrealized_percent: '8.70%', market_value: '$21,740.00', portfolio_percent: '17.39%', realized: '$0.00', realized_percent: '0%', capital_distribution: '$300.00', capital_distribution_percent: '1.50%', commission: '($100.00)', commission_percent: '0.50%', total: '$1,940.00', total_percent: '9.70%' },
+      ],
+    },
   ],
 ])
 

@@ -1,13 +1,15 @@
 <template>
-  <v-dialog v-model="dialog" max-width="800px">
-    <v-card>
-      <v-card-title>
+  <v-dialog v-model="dialog" max-width="800px" aria-labelledby="security-form-title">
+    <v-card :id="focusCardId">
+      <v-card-title id="security-form-title">
         <span class="text-h5">{{
           isEdit ? 'Edit Security' : 'Add Security'
         }}</span>
       </v-card-title>
       <v-card-text>
         <v-form @submit.prevent="submitForm">
+          <section aria-label="Security details">
+            <h3 class="text-subtitle-1 font-weight-medium mb-2">Security details</h3>
           <template v-for="field in formFields" :key="field.name">
             <v-text-field
               v-if="
@@ -96,6 +98,7 @@
               persistent-hint
             />
           </template>
+          </section>
         </v-form>
         <v-alert v-if="generalError" type="error" class="mt-3">
           {{ generalError }}
@@ -169,10 +172,11 @@
       </v-card-text>
       <v-card-actions>
         <v-spacer />
-        <v-btn color="blue darken-1" text @click="closeDialog">Cancel</v-btn>
+        <v-btn data-testid="dialog-cancel" :disabled="isSubmitting" @click="closeDialog">Cancel</v-btn>
         <v-btn
-          color="blue darken-1"
-          text
+          data-testid="dialog-save"
+          color="primary"
+          variant="tonal"
           @click="submitForm"
           :loading="isSubmitting"
           >Save</v-btn
@@ -192,6 +196,7 @@ import {
 } from '@/services/api'
 import type { SecurityConflictPayload } from '@/services/api'
 import logger from '@/utils/logger'
+import { useDialogFormFocus } from '@/composables/useDialogFormFocus'
 
 const props = defineProps({
   modelValue: Boolean,
@@ -209,6 +214,7 @@ const dialog = computed({
   get: () => props.modelValue,
   set: (value) => emit('update:modelValue', value),
 })
+const { cardId: focusCardId } = useDialogFormFocus(dialog, 'security-form')
 const isEdit = computed(() => !!props.editItem)
 // Form structure is served by an untyped backend endpoint; keep these
 // loose-typed so vue-tsc doesn't choke on the existing JS-style access
