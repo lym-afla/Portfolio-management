@@ -1,12 +1,12 @@
 # Frontend modernization progress
 
-Updated 3 October 2026. This is the durable, human-facing status tracker for the accepted [master plan](2026-09-08-frontend-modernization.md). The original task numbering is retained. Update this file after each independently verified task; commit evidence and distinguish implementation, review, merge and release.
+Updated 5 October 2026. This is the durable, human-facing status tracker for the accepted [master plan](2026-09-08-frontend-modernization.md). The original task numbering is retained. Update this file after each independently verified task; commit evidence and distinguish implementation, review, merge and release.
 
 ## Current checkpoint
 
 - Implementation branch: `codex/frontend-modernization`.
-- Verified remote and synchronized local code checkpoint: `2e77e5c7edc9d485c37d3437e58857e6d938ad95`, the user-merged PR #53/C3 on 3 October 2026. The subsequent D5 handoff is documentation only.
-- C3 (default-off NAV ECharts pilot) is reviewed and integrated through final proposal head `3cd33c06`; see the [C3 record](#c3-implementation-record). D5 is the next bounded executor assignment.
+- Verified remote and synchronized local code checkpoint: `7248a02006a8618cca31918a25a9a23f81c4c5bf`, user-merged PR #56/D5; this subsequent D6 handoff is documentation only.
+- D5 is integrated through final proposal head `b5fc13d0`; D6 transaction-import extraction is next. C3 remains default-off.
 - The earlier `9b32d3d9` checkpoint was 34 commits ahead of main. That historical count is not a completion measure or the current branch count.
 - Financial fixes [#46](https://github.com/lym-afla/Portfolio-management/pull/46), [#47](https://github.com/lym-afla/Portfolio-management/pull/47) and [#48](https://github.com/lym-afla/Portfolio-management/pull/48) are merged into the implementation branch. Their source branches were deleted by the user.
 - Main has not received the modernization branch. No deployment performed.
@@ -35,8 +35,8 @@ Updated 3 October 2026. This is the durable, human-facing status tracker for the
 | 16 | D4 | Grouped-table views, controls/actions/dialog accessibility | User-merged PR #51 at `297fb95c`, reviewed through `c0bab763`; see [D4 record](#d4-implementation-record) |
 | 17 | C2 | Typed chart adapters and lifecycle | User-merged PR #52 at `2424edbf`, reviewed through `5d4c5a87`; see [C2 record](#c2-implementation-record) |
 | 18 | C3 | ECharts NAV pilot, both IRRs and accessible inspection | User-merged PR #53 at `2e77e5c7`, reviewed through `3cd33c06`; see [C3 record](#c3-implementation-record) |
-| 19 | D5 | Visual system across route families | Implemented, pending review: branch `codex/frontend-route-rollout-d5` head `f005f5fb` (base `d1989802`), draft [PR #56](https://github.com/lym-afla/Portfolio-management/pull/56); see [D5 record](#d5-implementation-record) |
-| 20 | D6 | Transaction import workflow extraction | Not implemented |
+| 19 | D5 | Visual system across route families | User-merged PR #56 at `7248a020`, final head `b5fc13d0`; see [D5 record](#d5-implementation-record) |
+| 20 | D6 | Transaction import workflow extraction | Ready: [handoff](2026-10-05-transaction-import-d6-handoff.md), [GLM prompt](2026-10-05-transaction-import-d6-glm-prompt.md); not implemented |
 | 21 | D7 | Broker/security workflow extraction | Not implemented |
 | 22 | C4 | Three solid allocation pies and security histories | Not implemented; follows NAV acceptance and F3 |
 | 23 | C5 | ECharts cutover and Chart.js removal | Not implemented; gate last, retain fallback until acceptance |
@@ -44,9 +44,9 @@ Updated 3 October 2026. This is the durable, human-facing status tracker for the
 
 ## Next execution and boundaries
 
-C3 is merged. Execute the [D5 handoff](2026-10-03-frontend-route-rollout-d5-handoff.md) on a new `codex/frontend-route-rollout-d5` branch from the latest implementation branch including these documents. Earlier handoffs are historical; do not re-execute them.
+D5 is merged. Execute the [D6 handoff](2026-10-05-transaction-import-d6-handoff.md) in a dedicated `codex/transaction-import-d6` worktree from latest modernization including the handoff. Prior handoffs are historical. Preserve integrated PR #54 header labels, PR #55 settings guards and D5 layout/focus corrections.
 
-D5 rolls the accepted visual system across all route families, preserving existing workflows and financial displays. The account-selector `[object Object]` fix is being addressed separately per the user; do not duplicate it. C3 remains default-off. D6/D7 workflow extraction, C4's three solid allocation pies/security charts and C5 cutover remain separate. No main merge or deployment is authorized.
+D6 extracts the transaction-import workflow while preserving the existing protocol and financial semantics. D7, C4's three solid allocation pies/security histories and C5 cutover remain separate. C3 stays default-off; no main merge or deployment is authorized.
 
 The inherited D4 `requests`/`dates` selector issue was closed by C3 task 0 (`2620c2fa`); do not reuse the historical baseline waiver. Real screen-reader testing remains unperformed and belongs to D8. No application gates were rerun for this documentation-only handoff.
 
@@ -56,11 +56,15 @@ The final release gate is not just passing unit tests: it includes the dashboard
 
 ## Supplementary settings-account correction
 
+Current integration: PR #55 is merged at `5244ed0f`, and PR #54 at `610dff99`; both are included in D5. The following proposal evidence is historical, not current PR status.
+
 PR #54's header account-label fix is user-merged at `610dff992d76fe4f9459f059c6810de2a4e58819` (3 October 2026), verified against GitHub. The separate Profile Settings silent fallback is implemented on `codex/settings-account-selection-preservation` (base `3f3cad9e`, the handoff commit, dedicated worktree): the settings-response identity is preserved when unavailable, unresolved states show the safe label plus a persistent explanation, both save operations are guarded until a real available selection is resolved (with duplicate-submission and rejection handling), unit regressions are RED→GREEN through the real Vuetify select, and a new focused `settings-account` browser case covers the rendered behavior at desktop and 390px. All gates recorded at head `80197595` (see the [evidence section](../../design/frontend-workspace.md#settings-account-selection-preservation-pr)); a draft PR is opened into `codex/frontend-modernization` and stops for review — no merge or deployment. Coordinate the shared ProfileSettings file with D5 through reviewed PR integration; after either merges, the other executor incorporates the latest base and reruns the affected settings/context tests. This supplementary fix does not change the 18/24 master-plan count or complete D5.
 
 ## Detailed records
 
 ### D5 implementation record
+
+- Integration: user merged PR #56 at `7248a02006a8618cca31918a25a9a23f81c4c5bf`, verified against GitHub on 5 October 2026. Final proposal head `b5fc13d0`. Root review resolved FX pagination, delayed/disabled focus, integration and mobile control clipping; 55 focused regressions passed in the first correction round, and the final mobile screenshot/CSS diff was inspected. Final full gates are executor-reported (639 units, all type/lint/build/API gates, browser matrix and focused cases); root did not rerun the final full matrix. Screen-reader audit remains D8. Main not merged; no deployment. Historical draft entries below are superseded by this integration record. No application gates were rerun for the documentation-only D6 handoff.
 
 - Status: implemented on branch `codex/frontend-route-rollout-d5` (base `d1989802`, the C3-merged implementation branch plus the D5 handoff documents), family-sized commits `c837dbb6` (Task 0 contract ledger + baseline gates + d5 harness skeleton), `b0a1bac2` (/summary), `8b1f228c` (data family), `e94a115e` (prices/FX/operational dialogs), `b3541f66` (profile/auth), `25433c60` (app-wide defaults, focused d5 case, captures), `f005f5fb` (inherited dialogs-case repair, test-only). Draft PR into `codex/frontend-modernization`; not merged. Draft PR: [#56](https://github.com/lym-afla/Portfolio-management/pull/56) (into codex/frontend-modernization), opened 4 October 2026; not merged.
 - Baseline on `d1989802` (all exit 0): unit 74 files/545, type-checks ×3, lint 0/35, api:types, build, full browser 18×4 zero mismatches, delivery, backend 1386 passed/10 skipped.
