@@ -27,6 +27,9 @@
             @update:model-value="handleAccountChange"
             class="account-select mx-2"
           >
+            <template v-slot:selection>
+              {{ selectedAccountLabel }}
+            </template>
             <template v-slot:item="{ props, item }">
               <v-list-item
                 v-if="item.raw.type === 'option'"
@@ -70,13 +73,21 @@
 <script setup>
 import { computed } from 'vue'
 import { usePortfolioContextStore } from '@/stores/portfolioContext'
-import { formatAccountChoices } from '@/utils/accountUtils'
+import { committedAccountLabel, formatAccountChoices } from '@/utils/accountUtils'
 
 const props = defineProps({ intentOnly: Boolean })
 const emit = defineEmits(['request-change'])
 const context = usePortfolioContextStore()
 const accountOptions = computed(() =>
   formatAccountChoices(context.accountOptions)
+)
+// The committed selection may legitimately be absent from the loaded options
+// (empty or not-yet-loaded choices, a removed account). Rendering the raw
+// model value would show Vuetify's [object Object]; the shared label helper
+// renders the matching option title or the safe All accounts/Unavailable
+// fallbacks without inventing an option or firing any request.
+const selectedAccountLabel = computed(() =>
+  committedAccountLabel(context.accountOptions, context.committed.accountSelection)
 )
 const selectedAccount = computed(() => {
   const committed = context.committed.accountSelection
@@ -86,15 +97,18 @@ const selectedAccount = computed(() => {
         option.type === 'option' &&
         option.value.type === committed.type &&
         option.value.id === committed.id
-    )?.value || committed
+    )?.value || selectedAccountLabel.value
   )
 })
+// The arrow keys navigate relative to the COMMITTED selection, never the
+// display model: an unmatched selection falls back to the safe label string,
+// which carries no account identity to search for.
 const currentIndex = computed(() =>
   accountOptions.value.findIndex(
     (option) =>
       option.type === 'option' &&
-      option.value.type === selectedAccount.value.type &&
-      option.value.id === selectedAccount.value.id
+      option.value.type === context.committed.accountSelection.type &&
+      option.value.id === context.committed.accountSelection.id
   )
 )
 const canSwitchLeft = computed(

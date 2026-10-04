@@ -23,10 +23,11 @@ import { assertDialogDeliveryFlow, assertDialogChunkRecovery, dialogRoutes } fro
 import { assertD4TablesFlow, assertD4TransactionsFlow, assertD4ViewportChecks, captureD4Screenshots } from './d4.mjs'
 import { assertChartsC2Flow } from './charts-c2.mjs'
 import { assertD5FamilyProbesFlow, assertD5NativeZoomFlow, captureD5Screenshots, d5FamilyRoutes } from './d5.mjs'
+import { assertSettingsAccountFlow } from './settings-account.mjs'
 
 const caseIndex = process.argv.indexOf('--case')
 const selectedCase = caseIndex < 0 ? null : process.argv[caseIndex + 1]
-if (selectedCase !== null && !['layout', 'context', 'dates', 'requests', 'recovery', 'delivery', 'dialogs', 'dialog-recovery', 'd4', 'charts-c2', 'charts-c3', 'd5'].includes(selectedCase)) {
+if (selectedCase !== null && !['layout', 'context', 'dates', 'requests', 'recovery', 'delivery', 'dialogs', 'dialog-recovery', 'd4', 'charts-c2', 'charts-c3', 'd5', 'settings-account'].includes(selectedCase)) {
   throw new Error(`Unknown browser case: ${selectedCase || '(missing)'}`)
 }
 
@@ -136,7 +137,7 @@ async function main() {
   await mkdir(screenshotsDir, { recursive: true })
   await writeFile(browserLog, '', 'utf8')
 
-  const fixtureServer = await startFixtureServer({ longAccount: selectedCase === 'layout', contextFailures: selectedCase === 'context', dateFlow: selectedCase === 'dates', requestFlow: selectedCase === 'requests', recoveryFlow: selectedCase === 'recovery', d4Flow: selectedCase === 'd4', chartsC2Flow: selectedCase === 'charts-c2', chartsC3Flow: selectedCase === 'charts-c3' })
+  const fixtureServer = await startFixtureServer({ longAccount: selectedCase === 'layout', contextFailures: selectedCase === 'context', dateFlow: selectedCase === 'dates', requestFlow: selectedCase === 'requests', recoveryFlow: selectedCase === 'recovery', d4Flow: selectedCase === 'd4', chartsC2Flow: selectedCase === 'charts-c2', chartsC3Flow: selectedCase === 'charts-c3', settingsAccountFlow: selectedCase === 'settings-account' })
   let appServer
   const sessions = new Map()
   const routeFailures = []
@@ -153,10 +154,10 @@ async function main() {
     })
     appServer = await startBuiltAppServer(builtAppDir, selectedCase === 'dialog-recovery')
 
-      for (const viewport of ['dialogs', 'd4', 'd5'].includes(selectedCase) ? viewports.filter(entry => ['desktop', 'mobile'].includes(entry.name)) : ['dates', 'requests', 'recovery', 'delivery', 'dialog-recovery', 'charts-c2', 'charts-c3'].includes(selectedCase) ? viewports.filter((entry) => entry.name === 'desktop') : viewports) {
+    for (const viewport of ['dialogs', 'd4', 'd5', 'settings-account'].includes(selectedCase) ? viewports.filter(entry => ['desktop', 'mobile'].includes(entry.name)) : ['dates', 'requests', 'recovery', 'delivery', 'dialog-recovery', 'charts-c2', 'charts-c3'].includes(selectedCase) ? viewports.filter((entry) => entry.name === 'desktop') : viewports) {
       for (const authenticated of selectedCase && selectedCase !== 'delivery' ? [true] : [false, true]) {
         const selectedRoutes = routes.filter((route) =>
-          selectedCase === 'dialog-recovery' ? route.path === '/transactions' : selectedCase === 'dialogs' ? dialogRoutes.includes(route.path) : selectedCase === 'delivery' ? ['/login', '/profile', '/dashboard'].includes(route.path) && route.authenticated === authenticated : selectedCase === 'd4' ? ['/open-positions', '/closed-positions', '/transactions'].includes(route.path) : ['charts-c2', 'charts-c3'].includes(selectedCase) ? route.path === '/dashboard' : selectedCase === 'requests' ? ['/database/fx', '/transactions'].includes(route.path) : selectedCase === 'dates' ? route.path === '/open-positions' : ['context', 'recovery'].includes(selectedCase) ? route.path === '/dashboard' : selectedCase === 'd5' ? d5FamilyRoutes.includes(route.path) : selectedCase === 'layout'
+          selectedCase === 'dialog-recovery' ? route.path === '/transactions' : selectedCase === 'dialogs' ? dialogRoutes.includes(route.path) : selectedCase === 'delivery' ? ['/login', '/profile', '/dashboard'].includes(route.path) && route.authenticated === authenticated : selectedCase === 'd4' ? ['/open-positions', '/closed-positions', '/transactions'].includes(route.path) : ['charts-c2', 'charts-c3'].includes(selectedCase) ? route.path === '/dashboard' : selectedCase === 'requests' ? ['/database/fx', '/transactions'].includes(route.path) : selectedCase === 'dates' ? route.path === '/open-positions' : ['context', 'recovery'].includes(selectedCase) ? route.path === '/dashboard' : selectedCase === 'd5' ? d5FamilyRoutes.includes(route.path) : selectedCase === 'settings-account' ? route.path === '/profile/settings' : selectedCase === 'layout'
             ? ['/dashboard', '/summary', '/profile', '/database'].includes(route.path)
             : route.authenticated === authenticated,
         )
@@ -225,6 +226,9 @@ async function main() {
             if (selectedCase === 'charts-c2') {
               await assertChartsC2Flow({ appOrigin: appServer.origin, context: `${viewport.name} charts c2`, initScript, log, session, fixtureServer })
               console.log(`PASS ${viewport.name} charts c2 flow`)
+            }
+            if (selectedCase === 'settings-account') {
+              await assertSettingsAccountFlow({ appOrigin: appServer.origin, context: `${viewport.name} settings account`, initScript, log, session, fixtureServer, viewport })
             }
             if (selectedCase === 'charts-c3') {
               await assertChartsC3FlagOffFlow({ appOrigin: appServer.origin, context: `${viewport.name} charts c3 flag-off`, initScript, log, session })
@@ -345,8 +349,8 @@ async function main() {
       fixtureRequests: fixtureServer.requests.length,
       routeFailures,
       routeManifestCount: routes.length,
-      routes: selectedCase === 'dialog-recovery' ? 1 : selectedCase === 'd4' ? 3 : selectedCase === 'dialogs' ? dialogRoutes.length : selectedCase === 'delivery' ? 3 : selectedCase === 'requests' ? 2 : ['dates', 'context', 'recovery', 'charts-c2', 'charts-c3'].includes(selectedCase) ? 1 : selectedCase === 'd5' ? d5FamilyRoutes.length : selectedCase === 'layout' ? 4 : routes.length,
-      viewports: ['d4', 'dialogs', 'd5'].includes(selectedCase) ? 2 : ['dates', 'requests', 'recovery', 'delivery', 'dialog-recovery', 'charts-c2', 'charts-c3'].includes(selectedCase) ? 1 : viewports.length,
+      routes: selectedCase === 'dialog-recovery' ? 1 : selectedCase === 'd4' ? 3 : selectedCase === 'dialogs' ? dialogRoutes.length : selectedCase === 'delivery' ? 3 : selectedCase === 'requests' ? 2 : ['dates', 'context', 'recovery', 'charts-c2', 'charts-c3'].includes(selectedCase) ? 1 : selectedCase === 'd5' ? d5FamilyRoutes.length : selectedCase === 'settings-account' ? 1 : selectedCase === 'layout' ? 4 : routes.length,
+      viewports: ['d4', 'dialogs', 'd5', 'settings-account'].includes(selectedCase) ? 2 : ['dates', 'requests', 'recovery', 'delivery', 'dialog-recovery', 'charts-c2', 'charts-c3'].includes(selectedCase) ? 1 : viewports.length,
     }
     await writeFile(resolve(artifactsDir, 'summary.json'), `${JSON.stringify(summary, null, 2)}\n`)
     console.log(JSON.stringify(summary, null, 2))

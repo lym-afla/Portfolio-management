@@ -26,7 +26,7 @@ function close(server) {
   })
 }
 
-export async function startFixtureServer({ longAccount = false, contextFailures = false, dateFlow = false, requestFlow = false, recoveryFlow = false, d4Flow = false, chartsC2Flow = false, chartsC3Flow = false } = {}) {
+export async function startFixtureServer({ longAccount = false, contextFailures = false, dateFlow = false, requestFlow = false, recoveryFlow = false, d4Flow = false, chartsC2Flow = false, chartsC3Flow = false, settingsAccountFlow = false } = {}) {
   let releaseMutation
   let pendingMutation = false
   let currentDate = '2026-09-08'
@@ -35,6 +35,20 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
   const sockets = new Set()
   const heldReads = new Map()
   const recoveredWidgets = new Set()
+  // Settings account-preservation flow state: a saved identity ABSENT from
+  // the choices, server-owned selection that only changes after a confirmed
+  // mutation (so save readbacks confirm like the real backend), recorded
+  // write bodies and queued one-shot rejections.
+  const settingsAccount = {
+    selection: { type: 'account', id: 42 },
+    dash: { table_date: '2026-09-08', default_currency: 'USD', digits: 2 },
+    profileWrites: [],
+    accountWrites: [],
+    dashboardWrites: [],
+    rejectProfileSave: false,
+    rejectContextMutation: false,
+    holdChoices: false,
+  }
   // C2 chart negotiation scenarios: which envelope the nav endpoint serves
   // next, plus counters for the case's no-retry assertions. `hold` parks the
   // response until released (releaseWith decides the payload late).
@@ -293,6 +307,87 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
         }
       }
 
+      // ---- Settings account-preservation flow: saved identity missing from
+      // the choices, stateful confirmed mutations, recorded write bodies and
+      // queued rejections. ------------------------------------------------
+      if (settingsAccountFlow && requestedMethod === 'OPTIONS') {
+        requests.push({ method: 'OPTIONS', path: url.pathname })
+        response.writeHead(204)
+        response.end()
+        return
+      }
+      if (settingsAccountFlow && fixtureMethod === 'GET' && url.pathname === '/users/api/user_settings/') {
+        const fixture = resolveFixture(fixtureMethod, url.pathname, { longAccount })
+        fixture.body.selected_account_type = settingsAccount.selection.type
+        fixture.body.selected_account_id = settingsAccount.selection.id
+        requests.push({ method: fixtureMethod, actualMethod: requestedMethod, path: url.pathname })
+        response.writeHead(fixture.status, { 'Content-Type': 'application/json; charset=utf-8' })
+        response.end(JSON.stringify(fixture.body))
+        return
+      }
+      if (settingsAccountFlow && fixtureMethod === 'GET' && url.pathname === '/users/api/dashboard_settings/') {
+        const fixture = resolveFixture(fixtureMethod, url.pathname, { longAccount })
+        fixture.body.settings = { ...settingsAccount.dash }
+        requests.push({ method: fixtureMethod, actualMethod: requestedMethod, path: url.pathname })
+        response.writeHead(fixture.status, { 'Content-Type': 'application/json; charset=utf-8' })
+        response.end(JSON.stringify(fixture.body))
+        return
+      }
+      if (settingsAccountFlow && fixtureMethod === 'GET' && url.pathname === '/users/api/user_settings_choices/') {
+        const fixture = resolveFixture(fixtureMethod, url.pathname, { longAccount })
+        requests.push({ method: fixtureMethod, actualMethod: requestedMethod, path: url.pathname })
+        if (settingsAccount.holdChoices) {
+          settingsAccount.holdChoices = false
+          await new Promise((resolve) => { heldReads.set(url.pathname, resolve) })
+          heldReads.delete(url.pathname)
+        }
+        response.writeHead(fixture.status, { 'Content-Type': 'application/json; charset=utf-8' })
+        response.end(JSON.stringify(fixture.body))
+        return
+      }
+      if (settingsAccountFlow && fixtureMethod === 'POST' && url.pathname === '/users/api/user_settings/') {
+        const body = await readBody()
+        settingsAccount.profileWrites.push(body)
+        requests.push({ method: fixtureMethod, actualMethod: requestedMethod, path: url.pathname })
+        const rejected = settingsAccount.rejectProfileSave
+        settingsAccount.rejectProfileSave = false
+        response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+        response.end(JSON.stringify(rejected
+          ? { success: false, errors: { NAV_barchart_default_breakdown: ['Synthetic breakdown rejection'] } }
+          : { success: true }))
+        return
+      }
+      if (settingsAccountFlow && fixtureMethod === 'POST' && url.pathname === '/users/api/update_user_data_for_new_account/') {
+        const body = await readBody()
+        settingsAccount.accountWrites.push(body)
+        requests.push({ method: fixtureMethod, actualMethod: requestedMethod, path: url.pathname })
+        const rejected = settingsAccount.rejectContextMutation
+        settingsAccount.rejectContextMutation = false
+        if (rejected) {
+          response.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' })
+          response.end(JSON.stringify({ error: 'Synthetic account denied' }))
+        } else {
+          // Like the real backend, the saved selection only changes after a
+          // confirmed mutation, so later reads return the new identity.
+          settingsAccount.selection = { type: body.type, id: body.id }
+          response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+          response.end(JSON.stringify({ success: true, selected: { type: body.type, id: body.id } }))
+        }
+        return
+      }
+      if (settingsAccountFlow && fixtureMethod === 'POST' && url.pathname === '/users/api/update_dashboard_settings/') {
+        const body = await readBody()
+        settingsAccount.dashboardWrites.push(body)
+        requests.push({ method: fixtureMethod, actualMethod: requestedMethod, path: url.pathname })
+        settingsAccount.dash = { table_date: body.table_date, default_currency: body.default_currency, digits: body.digits }
+        response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+        response.end(JSON.stringify({
+          table_date: body.table_date, default_currency: body.default_currency, digits: body.digits,
+          requires_token_refresh: false,
+        }))
+        return
+      }
+
       const isContextMutation = contextFailures && ['/users/api/update_user_data_for_new_account/', '/users/api/update_dashboard_settings/'].includes(url.pathname)
       const dateSettingsPost = dateFlow && fixtureMethod === 'POST' && url.pathname === '/users/api/update_dashboard_settings/'
       const dateRefreshPost = dateFlow && fixtureMethod === 'POST' && url.pathname === '/users/api/refresh-token/'
@@ -303,7 +398,15 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
           : dateRefreshPost
             ? { status: 200, body: { access: 'fixture-new-access-token', refresh: 'fixture-new-refresh-token', effective_current_date: currentDate } }
             : resolveFixture(fixtureMethod, url.pathname, { longAccount: longAccount || contextFailures })
-      if (contextFailures && fixtureMethod === 'GET' && url.pathname === '/users/api/get_account_choices/') fixture.body.options.push(['Second', { type: 'account', id: 2, display_name: 'Second synthetic account' }])
+      if (contextFailures && fixtureMethod === 'GET' && url.pathname === '/users/api/get_account_choices/') {
+        // Append the newly available account inside the backend-faithful
+        // "Your Accounts" section (the backend never emits top-level pairs).
+        // id 9 keeps it unique against the base fixture's accounts 1/2 so the
+        // pending-label lookup cannot match a different account.
+        const accountsSection = fixture.body.options.find((entry) => entry[0] === 'Your Accounts')
+        const choicesTarget = accountsSection && Array.isArray(accountsSection[1]) ? accountsSection[1] : fixture.body.options
+        choicesTarget.push(['Second', { type: 'account', id: 9, display_name: 'Second synthetic account' }])
+      }
       if (dateFlow && fixtureMethod === 'GET' && url.pathname === '/users/api/dashboard_settings/') fixture.body.settings.table_date = currentDate
       if (recoveryFlow && fixtureMethod === 'GET' && recoveryPayloads[url.pathname]) {
         fixture.status = recoveredWidgets.has(url.pathname) ? 200 : 503
@@ -401,6 +504,11 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
     releaseMutation: () => releaseMutation?.(),
     d4,
     charts,
+    settingsAccount,
+    holdSettingsChoices: () => { settingsAccount.holdChoices = true },
+    queueProfileRejection: () => { settingsAccount.rejectProfileSave = true },
+    queueContextRejection: () => { settingsAccount.rejectContextMutation = true },
+    resetSettingsAccount: () => { settingsAccount.selection = { type: 'account', id: 42 } },
     origin: `http://127.0.0.1:${address.port}`,
     requests,
     unmatchedRequests,
