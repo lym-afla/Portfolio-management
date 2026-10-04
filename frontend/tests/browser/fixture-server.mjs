@@ -26,7 +26,7 @@ function close(server) {
   })
 }
 
-export async function startFixtureServer({ longAccount = false, contextFailures = false, dateFlow = false, requestFlow = false, recoveryFlow = false, d4Flow = false, chartsC2Flow = false, chartsC3Flow = false, settingsAccountFlow = false } = {}) {
+export async function startFixtureServer({ longAccount = false, contextFailures = false, dateFlow = false, requestFlow = false, recoveryFlow = false, d4Flow = false, chartsC2Flow = false, chartsC3Flow = false, settingsAccountFlow = false, d5States = false } = {}) {
   let releaseMutation
   let pendingMutation = false
   let currentDate = '2026-09-08'
@@ -39,6 +39,35 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
   // the choices, server-owned selection that only changes after a confirmed
   // mutation (so save readbacks confirm like the real backend), recorded
   // write bodies and queued one-shot rejections.
+  // D5 rendered-state flow: switchable populated/empty/error responses for
+  // the route-family endpoints, plus GENUINE server-side search filtering
+  // for the inventory lists so a no-match search is an honest
+  // filtered-empty response (the case never relies on client filtering).
+  const d5State = {
+    mode: 'populated',
+    errorPaths: new Set([
+      '/summary/api/summary_data/', '/summary/api/portfolio_breakdown/',
+      '/database/api/brokers/list_brokers/', '/database/api/accounts/list_accounts/',
+      '/database/api/get-securities-for-database/', '/database/api/get-prices-table/',
+      '/database/api/fx/list_fx/', '/users/api/user_settings_choices/', '/users/api/login/',
+    ]),
+    emptyBodies: {
+      '/summary/api/summary_data/': { public_markets_context: { lines: [], subtotal: null, years: [] }, restricted_investments_context: { lines: [], subtotal: null, years: [] }, total_context: { line: {}, years: [] } },
+      '/summary/api/portfolio_breakdown/': { consolidated_context: [], unrestricted_context: [], restricted_context: [] },
+      '/database/api/brokers/list_brokers/': { items: [], totals: {}, total_items: 0, current_page: 1, total_pages: 1 },
+      '/database/api/accounts/list_accounts/': { accounts: [], totals: {}, total_items: 0, current_page: 1, total_pages: 1 },
+      '/database/api/get-securities-for-database/': { securities: [], total_items: 0, current_page: 1, total_pages: 1 },
+      '/database/api/get-prices-table/': { prices: [], total_items: 0, current_page: 1, total_pages: 1 },
+      '/database/api/fx/list_fx/': { results: [], count: 0, current_page: 1, total_pages: 1 },
+    },
+    // Inventory rows carry a `name`; fx rows are searched by currency codes.
+    filterLists: {
+      '/database/api/brokers/list_brokers/': (body, fixture) => { const q = String(body.search ?? '').toLowerCase(); if (!q) return; fixture.body.items = fixture.body.items.filter((row) => row.name.toLowerCase().includes(q)); fixture.body.total_items = fixture.body.items.length },
+      '/database/api/accounts/list_accounts/': (body, fixture) => { const q = String(body.search ?? '').toLowerCase(); if (!q) return; fixture.body.accounts = fixture.body.accounts.filter((row) => row.name.toLowerCase().includes(q)); fixture.body.total_items = fixture.body.accounts.length },
+      '/database/api/get-securities-for-database/': (body, fixture) => { const q = String(body.search ?? '').toLowerCase(); if (!q) return; fixture.body.securities = fixture.body.securities.filter((row) => row.name.toLowerCase().includes(q)); fixture.body.total_items = fixture.body.securities.length },
+      '/database/api/fx/list_fx/': (body, fixture) => { const q = String(body.search ?? '').toLowerCase(); if (!q) return; fixture.body.results = fixture.body.results.filter((row) => `${row.from_currency}/${row.to_currency}`.toLowerCase().includes(q)); fixture.body.count = fixture.body.results.length },
+    },
+  }
   const settingsAccount = {
     selection: { type: 'account', id: 42 },
     dash: { table_date: '2026-09-08', default_currency: 'USD', digits: 2 },
@@ -316,6 +345,39 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
         response.end()
         return
       }
+      if (d5States && d5State.errorPaths.has(url.pathname)) {
+        requests.push({ method: fixtureMethod, actualMethod: requestedMethod, path: url.pathname })
+        if (d5State.mode === 'error') {
+          if (url.pathname === '/users/api/login/') {
+            response.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' })
+            response.end(JSON.stringify({ detail: 'Synthetic invalid credentials' }))
+          } else {
+            response.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' })
+            response.end(JSON.stringify({ error: 'Synthetic d5 state failure' }))
+          }
+          return
+        }
+        if (d5State.mode === 'empty') {
+          const emptyBody = d5State.emptyBodies[url.pathname]
+          if (emptyBody) {
+            response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+            response.end(JSON.stringify(emptyBody))
+            return
+          }
+        }
+        // Populated: serve the fixture, applying genuine search filtering
+        // for the inventory lists so no-match searches render an honest
+        // server-owned filtered-empty response.
+        const filter = d5State.filterLists[url.pathname]
+        if (filter) {
+          const body = await readBody()
+          const fixture = resolveFixture(fixtureMethod, url.pathname, { longAccount })
+          filter(body, fixture)
+          response.writeHead(fixture.status, { 'Content-Type': 'application/json; charset=utf-8' })
+          response.end(JSON.stringify(fixture.body))
+          return
+        }
+      }
       if (settingsAccountFlow && fixtureMethod === 'GET' && url.pathname === '/users/api/user_settings/') {
         const fixture = resolveFixture(fixtureMethod, url.pathname, { longAccount })
         fixture.body.selected_account_type = settingsAccount.selection.type
@@ -505,6 +567,8 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
     d4,
     charts,
     settingsAccount,
+    d5State,
+    setD5State: (mode) => { d5State.mode = mode },
     holdSettingsChoices: () => { settingsAccount.holdChoices = true },
     queueProfileRejection: () => { settingsAccount.rejectProfileSave = true },
     queueContextRejection: () => { settingsAccount.rejectContextMutation = true },

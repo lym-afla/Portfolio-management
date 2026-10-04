@@ -347,6 +347,134 @@ export async function assertD5FamilyProbesFlow({
   return probe
 }
 
+
+// Review-round rendered-state acceptance: populated / empty /
+// filtered-empty / error per applicable family, with justified N/A entries
+// recorded in the route review. The fixture server serves honest
+// state-switched payloads (including GENUINE server-side search filtering,
+// so filtered-empty is a real server response, not a client artifact).
+export async function assertD5StatesFlow({ appOrigin, context, initScript, log, session, fixtureServer, registerSession }) {
+  const run = (args) => runAgentBrowser({ args, context, initScript, log, session })
+  const open = async (route, ready) => {
+    await run(['open', `${appOrigin}${route}`])
+    await waitFor(run, `document.querySelector('[data-testid="route-content"]') !== null`)
+    await run(['wait', '500'])
+    if (ready) await waitFor(run, ready, 8000).catch(() => {})
+  }
+  const textOf = (sel) => evalProbe(run, `document.querySelector('${sel}')?.textContent ?? document.body.innerText`)
+
+  // --- EMPTY state -------------------------------------------------------
+  fixtureServer.setD5State('empty')
+  await open('/summary')
+  let probe = await textOf('main')
+  assert.ok(probe.includes('No account performance data'), `${context}: summary empty performance state`)
+  assert.ok(probe.includes('No breakdown data'), `${context}: summary empty breakdown state`)
+  probe = await evalProbe(run, `(() => { const sel = document.querySelector('[data-testid="performance-view-select"]'); return sel ? sel.classList.contains('v-input--disabled') || !!sel.querySelector('input[disabled]') : null })()`)
+  assert.equal(probe, true, `${context}: summary period controls disabled for empty data`)
+
+  for (const [route, marker] of [
+    ['/database/brokers', 'Add Broker'],
+    ['/database/accounts', 'Add Account'],
+    ['/database/securities', 'Record Merger'],
+  ]) {
+    await open(route, `document.querySelectorAll('.v-data-table tbody tr').length >= 0 && document.querySelector('.v-data-table') !== null`)
+    probe = await textOf('.v-data-table')
+    assert.ok(probe.toLowerCase().includes('no data available'), `${context}: ${route} empty inventory state (${probe.slice(0, 40)})`)
+    probe = await textOf('main')
+    assert.ok(probe.includes(marker), `${context}: ${route} keeps its primary actions in the empty state`)
+  }
+
+  await open('/database/prices', `document.querySelector('.v-data-table') !== null`)
+  probe = await textOf('.v-data-table')
+  assert.ok(probe.includes('Apply Filters'), `${context}: prices empty state keeps its guided no-data text`)
+
+  await open('/database/fx', `document.querySelector('.v-data-table') !== null`)
+  probe = await evalProbe(run, `(() => ({ headers: [...document.querySelectorAll('.v-data-table thead th')].map((th) => th.textContent.trim()), addAction: [...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Add FX Rate') }))()`)
+  assert.deepEqual(probe.headers, ['Date'], `${context}: fx empty pivot renders the Date column only`)
+  assert.equal(probe.addAction, true, `${context}: fx keeps Add FX Rate in the empty state`)
+
+  await run(['open', `${appOrigin}/summary`])
+  await run(['wait', '600'])
+  await run(['screenshot', resolve(DESIGN_ASSETS, 'd5-summary-empty.png')])
+  console.log('CAPTURED d5-summary-empty.png')
+  await run(['open', `${appOrigin}/database/brokers`])
+  await run(['wait', '600'])
+  await run(['screenshot', resolve(DESIGN_ASSETS, 'd5-brokers-empty.png')])
+  console.log('CAPTURED d5-brokers-empty.png')
+
+  // --- ERROR state (wait for each surface's actual failure message) ------
+  fixtureServer.setD5State('error')
+  await open('/summary')
+  await waitFor(run, `document.body.innerText.includes('Unable to load part of the summary')`, 8000)
+    .catch(() => {})
+  probe = await textOf('main')
+  assert.ok(probe.includes('Unable to load part of the summary'), `${context}: summary error state`)
+  for (const route of ['/database/brokers', '/database/accounts', '/database/securities']) {
+    await open(route)
+    await waitFor(run, `document.body.innerText.includes('Unable to load this table')`, 8000)
+      .catch(() => {})
+    probe = await textOf('main')
+    assert.ok(probe.includes('Unable to load this table'), `${context}: ${route} error state with retry`)
+  }
+  await open('/database/prices')
+  await waitFor(run, `document.body.innerText.includes('Unable to load prices or filters')`, 8000)
+    .catch(() => {})
+  probe = await textOf('main')
+  assert.ok(probe.includes('Unable to load prices or filters'), `${context}: prices error state`)
+  await open('/database/fx')
+  await waitFor(run, `document.body.innerText.includes('Unable to load exchange rates')`, 8000)
+    .catch(() => {})
+  probe = await textOf('main')
+  assert.ok(probe.includes('Unable to load exchange rates'), `${context}: fx error state`)
+  await open('/profile/settings')
+  await waitFor(run, `document.body.innerText.includes('Failed to load settings')`, 8000)
+    .catch(() => {})
+  probe = await textOf('body')
+  assert.ok(probe.includes('Failed to load settings'), `${context}: settings error state surfaces the failure`)
+
+  // --- FILTERED-EMPTY (genuine server filtering on a no-match search) ----
+  fixtureServer.setD5State('populated')
+  const searchNoMatch = async (route) => {
+    await open(route, `document.querySelector('.workspace-table-toolbar input') !== null`)
+    await run(['eval', `(() => { const input = document.querySelector('.workspace-table-toolbar input'); input.value = 'zzz-no-match'; input.dispatchEvent(new Event('input', { bubbles: true })); return true })()`])
+    await run(['wait', '900'])
+    const probe = await textOf('.v-data-table')
+    assert.ok(probe.toLowerCase().includes('no data available'), `${context}: ${route} filtered-empty after a no-match search`)
+  }
+  await searchNoMatch('/database/brokers')
+  await searchNoMatch('/database/accounts')
+  await searchNoMatch('/database/securities')
+  // The FX pivot searches pair codes.
+  await open('/database/fx', `document.querySelector('.workspace-table-toolbar input') !== null`)
+  await run(['eval', `(() => { const input = document.querySelector('.workspace-table-toolbar input'); input.value = 'zzz-no-match'; input.dispatchEvent(new Event('input', { bubbles: true })); return true })()`])
+  await run(['wait', '900'])
+  probe = await evalProbe(run, `[...document.querySelectorAll('.v-data-table thead th')].map((th) => th.textContent.trim())`)
+  assert.deepEqual(probe, ['Date'], `${context}: fx filtered-empty drops every pair column (no data rows)`)
+
+  // --- LOGIN error state (public session; authenticated users never see
+  // the form). The fixture answers 401 with invalid credentials; the error
+  // summary must render readably.
+  fixtureServer.setD5State('error')
+  const loginSession = `d5-states-login-${process.pid}`
+  registerSession(loginSession)
+  const loginRun = (args) => runAgentBrowser({ args, context: `${context} login`, initScript: undefined, log, session: loginSession })
+  await loginRun(['open', `${appOrigin}/login`])
+  await loginRun(['wait', '400'])
+  await loginRun(['eval', `(() => { const user = document.querySelector('input[autocomplete="username"]'); const pass = document.querySelector('input[autocomplete="current-password"]'); if (!user || !pass) throw new Error('login fields missing'); user.value = 'fixture-user'; user.dispatchEvent(new Event('input', { bubbles: true })); pass.value = 'wrong-password'; pass.dispatchEvent(new Event('input', { bubbles: true })); return true })()`])
+  await loginRun(['eval', `(() => { document.querySelector('button[type="submit"]')?.click(); return true })()`])
+  await loginRun(['wait', '--fn', `!!document.querySelector('[role="alert"], .v-alert') || document.body.innerText.toLowerCase().includes('invalid') || document.body.innerText.toLowerCase().includes('credential') || document.body.innerText.toLowerCase().includes('error')`, '--timeout', '8000'])
+    .catch(() => {})
+  const loginText = (await loginRun(['eval', 'document.body.innerText'])).result
+  assert.ok(
+    /invalid|credential|error|denied|failed/i.test(loginText),
+    `${context}: login error state surfaces a readable error summary`,
+  )
+  assert.equal((await loginRun(['eval', 'location.pathname'])).result, '/login', `${context}: failed login stays on the login page`)
+
+  fixtureServer.setD5State('populated')
+  console.log(`PASS ${context} rendered states (empty/error/filtered-empty + login error)`)
+}
+
 // Native 200% zoom on a dense data route: dpr must be a real 2.0 (CDP key
 // events, not CSS zoom), the primary action and the section heading must
 // stay reachable, then the zoom resets.

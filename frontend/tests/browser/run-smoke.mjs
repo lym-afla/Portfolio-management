@@ -22,7 +22,7 @@ import { measureRouteBundles, assertRouteDelivery } from '../../scripts/measure-
 import { assertDialogDeliveryFlow, assertDialogChunkRecovery, dialogRoutes } from './dialogs.mjs'
 import { assertD4TablesFlow, assertD4TransactionsFlow, assertD4ViewportChecks, captureD4Screenshots } from './d4.mjs'
 import { assertChartsC2Flow } from './charts-c2.mjs'
-import { assertD5FamilyProbesFlow, assertD5NativeZoomFlow, captureD5Screenshots, d5FamilyRoutes } from './d5.mjs'
+import { assertD5FamilyProbesFlow, assertD5NativeZoomFlow, assertD5StatesFlow, captureD5Screenshots, d5FamilyRoutes } from './d5.mjs'
 import { assertSettingsAccountFlow } from './settings-account.mjs'
 
 const caseIndex = process.argv.indexOf('--case')
@@ -137,7 +137,7 @@ async function main() {
   await mkdir(screenshotsDir, { recursive: true })
   await writeFile(browserLog, '', 'utf8')
 
-  const fixtureServer = await startFixtureServer({ longAccount: selectedCase === 'layout', contextFailures: selectedCase === 'context', dateFlow: selectedCase === 'dates', requestFlow: selectedCase === 'requests', recoveryFlow: selectedCase === 'recovery', d4Flow: selectedCase === 'd4', chartsC2Flow: selectedCase === 'charts-c2', chartsC3Flow: selectedCase === 'charts-c3', settingsAccountFlow: selectedCase === 'settings-account' })
+  const fixtureServer = await startFixtureServer({ longAccount: selectedCase === 'layout', contextFailures: selectedCase === 'context', dateFlow: selectedCase === 'dates', requestFlow: selectedCase === 'requests', recoveryFlow: selectedCase === 'recovery', d4Flow: selectedCase === 'd4', chartsC2Flow: selectedCase === 'charts-c2', chartsC3Flow: selectedCase === 'charts-c3', settingsAccountFlow: selectedCase === 'settings-account', d5States: selectedCase === 'd5' })
   let appServer
   const sessions = new Map()
   const routeFailures = []
@@ -318,11 +318,14 @@ async function main() {
     }
 
     if (selectedCase === 'd5') {
-      // Native 200% zoom on a dense data route, then the family captures on
-      // a registered session for guaranteed cleanup.
+      // Rendered-state acceptance (empty/error/filtered-empty with genuine
+      // server-side filtering), then native 200% zoom on a dense data route,
+      // then the family captures on a registered session for guaranteed
+      // cleanup.
       const d5ShotsSession = `d5-shots-${process.pid}`
       sessions.set(d5ShotsSession, authInit)
       try {
+        await assertD5StatesFlow({ appOrigin: appServer.origin, context: 'd5 states', initScript: authInit, log, session: d5ShotsSession, fixtureServer, registerSession: (extra) => sessions.set(extra, undefined) })
         await assertD5NativeZoomFlow({ appOrigin: appServer.origin, context: 'd5 native zoom', initScript: authInit, log, session: d5ShotsSession })
         await captureD5Screenshots({ appOrigin: appServer.origin, context: 'd5 screenshots', initScript: authInit, log, session: d5ShotsSession, registerSession: (extra) => sessions.set(extra, undefined) })
       } catch (error) {
