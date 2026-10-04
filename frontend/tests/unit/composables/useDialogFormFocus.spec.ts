@@ -20,6 +20,12 @@ beforeAll(() => {
   Object.defineProperty(window, 'visualViewport', { value: viewport, configurable: true })
 })
 
+type HarnessVm = {
+  cardId: string
+  close: () => void
+  addField: (disabled?: boolean) => HTMLInputElement
+}
+
 const Harness = defineComponent({
   name: 'FocusHarness',
   props: {
@@ -67,6 +73,9 @@ async function mountHarness(props: { cardPrefix: string; immediateField?: boolea
   return { wrapper, invoker }
 }
 
+const vm = (wrapper: ReturnType<typeof mount>) =>
+  wrapper.vm as unknown as HarnessVm
+
 beforeEach(() => {
   document.body.innerHTML = ''
   vi.restoreAllMocks()
@@ -79,7 +88,7 @@ afterEach(() => {
 describe('useDialogFormFocus eligible controls', () => {
   it('skips disabled, aria-hidden and type=hidden inputs and focuses the first eligible one', async () => {
     const { wrapper } = await mountHarness({ cardPrefix: 'eligible', disabledFirst: true })
-    const cardId = wrapper.vm.cardId
+    const cardId = vm(wrapper).cardId
     await new Promise((resolve) => setTimeout(resolve, 80))
     const inputs = document.querySelectorAll(`#${cardId} input`)
     expect(inputs.length).toBe(4)
@@ -92,14 +101,14 @@ describe('useDialogFormFocus eligible controls', () => {
     const { wrapper, invoker } = await mountHarness({ cardPrefix: 'late', immediateField: false })
     // Past the composable's ~200ms polling window, still no fields: only
     // the structure observer (or a not-yet-finished poll) can focus now.
-    const cardId = wrapper.vm.cardId
+    const cardId = vm(wrapper).cardId
     await new Promise((resolve) => setTimeout(resolve, 260))
     expect(document.querySelectorAll(`#${cardId} input`).length).toBe(0)
     // Nothing has been focused into the still-empty dialog; the invoker
     // keeps focus.
     expect(document.activeElement).toBe(invoker)
     // The form structure lands now; focus must follow.
-    wrapper.vm.addField()
+    vm(wrapper).addField()
     await new Promise((resolve) => setTimeout(resolve, 120))
     const arrived = document.querySelector(`#${cardId} input`)
     expect(document.activeElement).toBe(arrived)
@@ -109,7 +118,7 @@ describe('useDialogFormFocus eligible controls', () => {
   it('does not focus a late field when the dialog closed before it arrived', async () => {
     const { wrapper, invoker } = await mountHarness({ cardPrefix: 'closed', immediateField: false })
     await new Promise((resolve) => setTimeout(resolve, 60))
-    wrapper.vm.close()
+    vm(wrapper).close()
     await nextTick()
     await new Promise((resolve) => setTimeout(resolve, 60))
     // Focus returned to the invoker on close.
@@ -117,7 +126,7 @@ describe('useDialogFormFocus eligible controls', () => {
     // A late structure response must not steal focus into a closed dialog
     // (its card is gone) nor anywhere else.
     const before = document.activeElement
-    expect(() => wrapper.vm.addField()).toThrow('card element missing')
+    expect(() => vm(wrapper).addField()).toThrow('card element missing')
     await new Promise((resolve) => setTimeout(resolve, 120))
     expect(document.activeElement).toBe(before)
     wrapper.unmount()
@@ -125,7 +134,7 @@ describe('useDialogFormFocus eligible controls', () => {
 
   it('unmount permanently cancels the pending focus; a same-type replacement keeps its own focus', async () => {
     const first = await mountHarness({ cardPrefix: 'replace', immediateField: false })
-    const firstCardId = first.wrapper.vm.cardId
+    const firstCardId = vm(first.wrapper).cardId
     // Still empty when unmounted — its pending focus must die with it
     // (beyond the polling window so the observer, not the poll, is what
     // would have fired).
@@ -134,7 +143,7 @@ describe('useDialogFormFocus eligible controls', () => {
 
     const second = await mountHarness({ cardPrefix: 'replace2', immediateField: true })
     await new Promise((resolve) => setTimeout(resolve, 120))
-    const secondInput = document.querySelector(`#${second.wrapper.vm.cardId} input`)
+    const secondInput = document.querySelector(`#${vm(second.wrapper).cardId} input`)
     expect(document.activeElement).toBe(secondInput)
 
     // Simulate the first instance's late structure arriving after its death:
@@ -153,10 +162,10 @@ describe('useDialogFormFocus eligible controls', () => {
 
   it('still returns focus to the invoker on close after a late-arriving field was focused', async () => {
     const { wrapper, invoker } = await mountHarness({ cardPrefix: 'return', immediateField: false })
-    wrapper.vm.addField()
+    vm(wrapper).addField()
     await new Promise((resolve) => setTimeout(resolve, 120))
-    expect(document.activeElement).toBe(document.querySelector(`#${wrapper.vm.cardId} input`))
-    wrapper.vm.close()
+    expect(document.activeElement).toBe(document.querySelector(`#${vm(wrapper).cardId} input`))
+    vm(wrapper).close()
     await nextTick()
     await new Promise((resolve) => setTimeout(resolve, 60))
     expect(document.activeElement).toBe(invoker)
