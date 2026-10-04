@@ -3,7 +3,8 @@ import { runAgentBrowser } from './protocol.mjs'
 
 const flows = {
   // D4 action hierarchy: primary/secondary stay buttons; the rest sit in
-  // the overflow menu behind 'More actions'.
+  // the overflow menu behind 'More actions'. D5 moved the prices-page
+  // 'Add Security' into that overflow as well.
   '/transactions': ['Add transaction', 'Import transactions', 'Add FX transaction', 'Transfer asset', 'Record merger'],
   '/database/accounts': ['Add Account'],
   '/database/brokers': ['Add Broker'],
@@ -49,14 +50,18 @@ export async function assertDialogDeliveryFlow({ context, initScript, log, sessi
     }
     throw lastError
   }
-  const overflowActions = new Set(['Add FX transaction', 'Transfer asset', 'Record merger'])
+  const defaultOverflowActions = new Set(['Add FX transaction', 'Transfer asset', 'Record merger'])
+  // 'Add Security' sits in the overflow only on the prices page (D5); on the
+  // securities inventory it stays a visible secondary action.
+  const isOverflowAction = (name) =>
+    name === 'Add Security' ? route.path === '/database/prices' : defaultOverflowActions.has(name)
   const openOverflow = async () => {
     for (let attempt = 0; attempt < 8; attempt++) {
       const snapshot = await run(['snapshot', '-i'])
       const more = Object.entries(snapshot.refs).find(([, item]) => item.role === 'button' && item.name === 'More actions')?.[0]
       if (more) {
         await run(['click', `@${more}`])
-        await run(['wait', '--fn', `document.querySelectorAll('.v-overlay--active [data-action]').length >= 3`])
+        await run(['wait', '--fn', `document.querySelectorAll('.v-overlay--active [data-action]').length >= 1`])
         return
       }
       await run(['wait', '100'])
@@ -64,7 +69,7 @@ export async function assertDialogDeliveryFlow({ context, initScript, log, sessi
     throw new Error('Overflow More actions control missing')
   }
   const clickAction = async (name) => {
-    if (overflowActions.has(name)) {
+    if (isOverflowAction(name)) {
       await openOverflow()
       await run(['eval', `(() => { const item = [...document.querySelectorAll('.v-overlay--active [data-action]')].find(el => el.textContent.trim().startsWith('${name}')); if (!item) throw new Error('overflow item ${name} missing'); item.click(); return true })()`])
       return
@@ -79,8 +84,11 @@ export async function assertDialogDeliveryFlow({ context, initScript, log, sessi
     assert.ok(result.result.text.length > 0, `${button}: missing dialog content`)
     await closeDialog()
     await run(['wait', '--fn', `document.querySelector('.v-dialog.v-overlay--active') === null`])
-    // Reopening exercises a retained first-use component without remounting it.
-    await clickButton([button])
+    // Reopening exercises a retained first-use component without remounting
+    // it. Overflow-hosted actions must reopen through the same overflow
+    // path (the D4-era reopen called clickButton directly, which can never
+    // find a menu-hosted action — repaired with the D5 prices overflow).
+    await clickAction(button)
     await run(['wait', '--fn', `document.querySelector('.v-dialog.v-overlay--active .v-card') !== null`])
     await closeDialog()
     await run(['wait', '--fn', `document.querySelector('.v-dialog.v-overlay--active') === null`])
