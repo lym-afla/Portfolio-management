@@ -22,7 +22,7 @@ import { measureRouteBundles, assertRouteDelivery } from '../../scripts/measure-
 import { assertDialogDeliveryFlow, assertDialogChunkRecovery, dialogRoutes } from './dialogs.mjs'
 import { assertD4TablesFlow, assertD4TransactionsFlow, assertD4ViewportChecks, captureD4Screenshots } from './d4.mjs'
 import { assertChartsC2Flow } from './charts-c2.mjs'
-import { assertD5FamilyProbesFlow, assertD5NativeZoomFlow, assertD5StatesFlow, captureD5Screenshots, d5FamilyRoutes } from './d5.mjs'
+import { assertD5FamilyProbesFlow, assertD5NativeZoomFlow, assertD5StatesFlow, assertMobilePageControlsFlow, captureD5Screenshots, d5FamilyRoutes } from './d5.mjs'
 import { assertSettingsAccountFlow } from './settings-account.mjs'
 
 const caseIndex = process.argv.indexOf('--case')
@@ -326,6 +326,7 @@ async function main() {
       sessions.set(d5ShotsSession, authInit)
       try {
         await assertD5StatesFlow({ appOrigin: appServer.origin, context: 'd5 states', initScript: authInit, log, session: d5ShotsSession, fixtureServer, registerSession: (extra) => sessions.set(extra, undefined) })
+        await assertMobilePageControlsFlow({ appOrigin: appServer.origin, context: 'd5 mobile controls', initScript: authInit, log, session: d5ShotsSession })
         await assertD5NativeZoomFlow({ appOrigin: appServer.origin, context: 'd5 native zoom', initScript: authInit, log, session: d5ShotsSession })
         await captureD5Screenshots({ appOrigin: appServer.origin, context: 'd5 screenshots', initScript: authInit, log, session: d5ShotsSession, registerSession: (extra) => sessions.set(extra, undefined) })
       } catch (error) {

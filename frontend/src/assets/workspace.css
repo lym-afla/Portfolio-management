@@ -8,6 +8,17 @@
 }
 
 .workspace-page { display: grid; gap: var(--workspace-gap); }
+/* The single implicit grid track must never exceed the container: an auto
+   track sizes to the widest child's max-content (data-nav tabs, nowrap
+   tables), which blew every page out to 500-1135px inside a 390px viewport
+   while body overflow-x:hidden hid the damage from scrollWidth probes.
+   minmax(0, 1fr) pins the column to the real width; the min-width:0 chain
+   below lets flex children wrap instead of overflowing their now-correct
+   containers. */
+.workspace-page > *,
+.workspace-section > *,
+.workspace-page__header > div,
+.workspace-section__header > div { min-width: 0; }
 .workspace-page__header,
 .workspace-section__header { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: var(--workspace-section-gap); }
 .workspace-page h1 { font-size: var(--workspace-page-title); line-height: 1.3; font-weight: 650; }

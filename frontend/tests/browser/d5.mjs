@@ -475,6 +475,123 @@ export async function assertD5StatesFlow({ appOrigin, context, initScript, log, 
   console.log(`PASS ${context} rendered states (empty/error/filtered-empty + login error)`)
 }
 
+
+// Review round 2 — mobile page-control containment (390px): the workspace
+// page grid must constrain its single column to the viewport so headings/
+// descriptions wrap and page controls stay inside the viewport and genuinely
+// hittable. Bounds are checked per-element because body overflow-x:hidden
+// clips ancestors without producing page scrollWidth overflow (the D3-era
+// scrollWidth probe is blind to exactly this). Table overflow stays local:
+// only page controls are asserted here, never the scrollable table body.
+// Prices has no shared table toolbar: its page controls are the filter
+// fields and Apply Filters, asserted through the 'filters' kind.
+const MOBILE_CONTROL_SPECS = {
+  '/database/brokers': { kind: 'shared', actions: ['Add Broker'] },
+  '/database/accounts': { kind: 'shared', actions: ['Add Account'] },
+  '/database/securities': { kind: 'shared', actions: ['Add Security', 'Record Merger'] },
+  '/database/prices': { kind: 'filters', actions: ['Apply Filters', 'Add Price Entry', 'Import Prices'] },
+  '/database/fx': { kind: 'shared', actions: ['Add FX Rate', 'Import FX Rates'] },
+}
+
+export async function assertMobilePageControlsFlow({ appOrigin, context, initScript, log, session }) {
+  const run = (args) => runAgentBrowser({ args, context, initScript, log, session })
+  // This flow owns its viewport: the session may be at any size when it
+  // starts, and every assertion below is meaningless unless the layout is
+  // actually 390px wide. Restored to desktop at the end for the zoom phase.
+  await run(['set', 'viewport', '390', '844'])
+  await run(['wait', '300'])
+
+  const PROBE = (spec) => `(() => {
+    const withinViewportX = (el) => { const b = el.getBoundingClientRect(); return b.left >= -1 && b.right <= innerWidth + 1 }
+    const hit = (el) => { const b = el.getBoundingClientRect(); const h = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2); return !!h && (el.contains(h) || h === el) }
+    const reachable = (el) => { el.scrollIntoView({ block: 'center' }); return withinViewportX(el) && hit(el) }
+    const desc = document.querySelector('[data-testid="workspace-page-heading"]')?.parentElement?.querySelector('p')
+    const actions = ${JSON.stringify(spec.actions)}.map((label) => {
+      const el = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === label)
+      return { label, present: !!el, contained: el ? withinViewportX(el) : false, reachable: el ? reachable(el) : false }
+    })
+    const tabs = [...document.querySelectorAll('[data-testid="database-nav"] a')]
+    let search = null, rows = null, filterFields = []
+    if (${JSON.stringify(spec.kind)} === 'shared') {
+      search = document.querySelector('.workspace-table-toolbar__search')
+      rows = document.querySelector('.workspace-table-toolbar__rows')
+      if (search) search = { contained: withinViewportX(search), reachable: reachable(search) }
+      if (rows) rows = { contained: withinViewportX(rows), reachable: reachable(rows) }
+    } else {
+      // Prices filter fields: locate each labelled v-input.
+      for (const label of ['Asset Types', 'Accounts', 'Securities', 'Start Date', 'End Date']) {
+        const labelEl = [...document.querySelectorAll('label')].find((l) => l.textContent.trim() === label)
+        const field = labelEl?.closest('.v-input')
+        filterFields.push({ label, present: !!field, contained: field ? withinViewportX(field) : false, reachable: field ? reachable(field) : false })
+      }
+    }
+    return {
+      viewport: innerWidth,
+      descWidth: desc ? Math.round(desc.getBoundingClientRect().width) : null,
+      search, rows, filterFields, actions,
+      tabsReachable: tabs.map((t) => reachable(t)),
+    }
+  })()`
+
+  const assertProbe = (route, probe, phase, kind) => {
+    assert.ok(probe.descWidth !== null && probe.descWidth <= probe.viewport + 1,
+      `${context}: ${route} ${phase}: page description wraps inside the viewport (width ${probe.descWidth} at ${probe.viewport}px)`)
+    if (kind === 'shared') {
+      assert.ok(probe.search && probe.search.contained && probe.search.reachable,
+        `${context}: ${route} ${phase}: search control inside the viewport and hittable (${JSON.stringify(probe.search)})`)
+      assert.ok(probe.rows && probe.rows.contained && probe.rows.reachable,
+        `${context}: ${route} ${phase}: rows-per-page control inside the viewport and hittable (${JSON.stringify(probe.rows)})`)
+    } else {
+      for (const field of probe.filterFields) {
+        assert.ok(field.present && field.contained && field.reachable,
+          `${context}: ${route} ${phase}: filter field ${field.label} inside the viewport and hittable (${JSON.stringify(field)})`)
+      }
+    }
+    for (const action of probe.actions) {
+      assert.ok(action.present, `${context}: ${route} ${phase}: action ${action.label} present`)
+      assert.ok(action.reachable, `${context}: ${route} ${phase}: action ${action.label} scrollable into view and hittable (${JSON.stringify(action)})`)
+    }
+    if (probe.tabsReachable.length) {
+      assert.ok(probe.tabsReachable.every(Boolean),
+        `${context}: ${route} ${phase}: every data-nav section reachable via its scroll group (${JSON.stringify(probe.tabsReachable)})`)
+    }
+  }
+
+  // Fresh mobile load per family.
+  for (const [route, spec] of Object.entries(MOBILE_CONTROL_SPECS)) {
+    await run(['open', `${appOrigin}${route}`])
+    await waitFor(run, `document.querySelector('.workspace-table-toolbar') !== null || [...document.querySelectorAll('label')].some((l) => l.textContent.trim() === 'Asset Types')`, 8000).catch(() => {})
+    await run(['wait', '400'])
+    const probe = await evalProbe(run, PROBE(spec))
+    assertProbe(route, probe, 'fresh mobile load', spec.kind)
+  }
+
+  // Resize transitions on one representative family: desktop -> 390 -> desktop.
+  await run(['open', `${appOrigin}/database/securities`])
+  await waitFor(run, `document.querySelector('.workspace-table-toolbar') !== null`, 8000).catch(() => {})
+  await run(['set', 'viewport', '1440', '1000'])
+  await run(['wait', '300'])
+  await run(['set', 'viewport', '390', '844'])
+  await run(['wait', '300'])
+  let probe = await evalProbe(run, PROBE(MOBILE_CONTROL_SPECS['/database/securities']))
+  assertProbe('/database/securities', probe, 'desktop->390 transition', 'shared')
+  await run(['set', 'viewport', '1440', '1000'])
+  await run(['wait', '300'])
+  probe = await evalProbe(run, PROBE(MOBILE_CONTROL_SPECS['/database/securities']))
+  // At desktop every control must be back inside the (now wide) viewport.
+  assert.ok(probe.descWidth !== null && probe.descWidth <= probe.viewport + 1,
+    `${context}: /database/securities 390->desktop: description contained again`)
+  for (const action of probe.actions) {
+    assert.ok(action.present && action.reachable,
+      `${context}: /database/securities 390->desktop: ${action.label} hittable again (${JSON.stringify(action)})`)
+  }
+  assert.ok(probe.search.reachable && probe.rows.reachable,
+    `${context}: /database/securities 390->desktop: toolbar controls hittable again`)
+  await run(['set', 'viewport', '1440', '1000'])
+  await run(['wait', '200'])
+  console.log(`PASS ${context} mobile page-control containment`)
+}
+
 // Native 200% zoom on a dense data route: dpr must be a real 2.0 (CDP key
 // events, not CSS zoom), the primary action and the section heading must
 // stay reachable, then the zoom resets.
@@ -530,6 +647,26 @@ export async function captureD5Screenshots({ appOrigin, context, initScript, log
     await run(['open', `${appOrigin}${route}`])
     if (readySelector) await waitFor(run, `!!document.querySelector('${readySelector}')`, 10000)
     await run(['wait', '400'])
+    // Verified captures: at mobile sizes assert page-control containment
+    // IMMEDIATELY before shooting, so the image cannot silently show the
+    // grid-blowout clipping this round fixed (the checked geometry is the
+    // geometry in the frame).
+    if (name.endsWith('-mobile.png')) {
+      const probe = await evalProbe(run, `(() => {
+        const withinViewportX = (el) => { const b = el.getBoundingClientRect(); return b.left >= -1 && b.right <= innerWidth + 1 }
+        const desc = document.querySelector('[data-testid="workspace-page-heading"]')?.parentElement?.querySelector('p')
+        const buttons = [...document.querySelectorAll('button')]
+          .filter((b) => ['Add Security', 'Record Merger', 'Add Broker', 'Add Account', 'Add Price Entry', 'Import Prices', 'Add FX Rate', 'Import FX Rates', 'Apply Filters'].includes(b.textContent.trim()))
+          .map((b) => ({ label: b.textContent.trim(), contained: withinViewportX(b), inDoc: b.getBoundingClientRect().width > 0 }))
+        return { viewport: innerWidth, descWidth: desc ? Math.round(desc.getBoundingClientRect().width) : null, buttons }
+      })()`)
+      assert.ok(probe.descWidth <= probe.viewport + 1,
+        `${context}: capture ${name}: page description contained (${probe.descWidth}px at ${probe.viewport}px)`)
+      for (const button of probe.buttons) {
+        assert.ok(button.inDoc && button.contained,
+          `${context}: capture ${name}: action ${button.label} inside the viewport before shooting (${JSON.stringify(button)})`)
+      }
+    }
     await shot(name)
     console.log(`CAPTURED ${name}`)
   }
