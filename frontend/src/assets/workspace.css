@@ -8,13 +8,13 @@
 }
 
 .workspace-page { display: grid; gap: var(--workspace-gap); }
-/* The single implicit grid track must never exceed the container: an auto
-   track sizes to the widest child's max-content (data-nav tabs, nowrap
-   tables), which blew every page out to 500-1135px inside a 390px viewport
-   while body overflow-x:hidden hid the damage from scrollWidth probes.
-   minmax(0, 1fr) pins the column to the real width; the min-width:0 chain
-   below lets flex children wrap instead of overflowing their now-correct
-   containers. */
+/* The single implicit grid track must never exceed the container: with the
+   default min-width:auto, each item's automatic minimum contribution held
+   the track at its widest content (data-nav tabs, nowrap tables, 500-1135px
+   inside a 390px viewport) while body overflow-x:hidden hid the damage from
+   scrollWidth probes. This min-width:0 chain zeroes those minimum
+   contributions, so the track resolves to the real container width and the
+   nested grid/flex chains shrink and wrap instead of overflowing. */
 .workspace-page > *,
 .workspace-section > *,
 .workspace-page__header > div,
