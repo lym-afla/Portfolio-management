@@ -32,62 +32,6 @@
     "severity": 1
   },
   {
-    "file": "src/components/dialogs/PriceImportDialog.vue",
-    "line": 267,
-    "column": 42,
-    "ruleId": "@typescript-eslint/no-unused-vars",
-    "message": "'securitiesError' is assigned a value but never used. Allowed unused vars must match /^_/u.",
-    "severity": 1
-  },
-  {
-    "file": "src/components/dialogs/PriceImportDialog.vue",
-    "line": 269,
-    "column": 40,
-    "ruleId": "@typescript-eslint/no-unused-vars",
-    "message": "'accountsError' is assigned a value but never used. Allowed unused vars must match /^_/u.",
-    "severity": 1
-  },
-  {
-    "file": "src/components/dialogs/PriceImportDialog.vue",
-    "line": 270,
-    "column": 41,
-    "ruleId": "@typescript-eslint/no-unused-vars",
-    "message": "'startDateError' is assigned a value but never used. Allowed unused vars must match /^_/u.",
-    "severity": 1
-  },
-  {
-    "file": "src/components/dialogs/PriceImportDialog.vue",
-    "line": 272,
-    "column": 39,
-    "ruleId": "@typescript-eslint/no-unused-vars",
-    "message": "'endDateError' is assigned a value but never used. Allowed unused vars must match /^_/u.",
-    "severity": 1
-  },
-  {
-    "file": "src/components/dialogs/PriceImportDialog.vue",
-    "line": 273,
-    "column": 41,
-    "ruleId": "@typescript-eslint/no-unused-vars",
-    "message": "'frequencyError' is assigned a value but never used. Allowed unused vars must match /^_/u.",
-    "severity": 1
-  },
-  {
-    "file": "src/components/dialogs/PriceImportDialog.vue",
-    "line": 275,
-    "column": 42,
-    "ruleId": "@typescript-eslint/no-unused-vars",
-    "message": "'singleDateError' is assigned a value but never used. Allowed unused vars must match /^_/u.",
-    "severity": 1
-  },
-  {
-    "file": "src/components/dialogs/PriceImportDialog.vue",
-    "line": 280,
-    "column": 7,
-    "ruleId": "@typescript-eslint/no-unused-vars",
-    "message": "'isImporting' is assigned a value but never used. Allowed unused vars must match /^_/u.",
-    "severity": 1
-  },
-  {
     "file": "src/config/chartConfig.js",
     "line": 206,
     "column": 19,

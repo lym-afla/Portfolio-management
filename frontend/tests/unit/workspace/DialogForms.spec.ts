@@ -9,6 +9,16 @@ import { createVuetify } from 'vuetify'
 import * as components from 'vuetify/components'
 import * as directives from 'vuetify/directives'
 import { configureContextFixture } from '../context-fixture'
+import AccountFormDialog from '@/components/dialogs/AccountFormDialog.vue'
+import BrokerFormDialog from '@/components/dialogs/BrokerFormDialog.vue'
+import SecurityFormDialog from '@/components/dialogs/SecurityFormDialog.vue'
+import PriceFormDialog from '@/components/dialogs/PriceFormDialog.vue'
+import FXDialog from '@/components/dialogs/FXDialog.vue'
+import PriceImportDialog from '@/components/dialogs/PriceImportDialog.vue'
+import FXImportDialog from '@/components/dialogs/FXImportDialog.vue'
+import AssetTransferDialog from '@/components/dialogs/AssetTransferDialog.vue'
+import MergerDialog from '@/components/dialogs/MergerDialog.vue'
+import UpdateAccountPerformanceDialog from '@/components/dialogs/UpdateAccountPerformanceDialog.vue'
 
 const api = vi.hoisted(() => ({
   getAccountFormStructure: vi.fn(),
@@ -31,6 +41,8 @@ const api = vi.hoisted(() => ({
   importFXRates: vi.fn(),
   cancelFXImport: vi.fn(),
   getAccountPerformanceFormData: vi.fn(),
+  getSecurityFormStructure: vi.fn(),
+  updateFXImportStats: vi.fn(),
 }))
 vi.mock('@/services/api', () => api)
 
@@ -76,6 +88,14 @@ beforeEach(() => {
   localStorage.clear()
   vi.resetAllMocks()
   configureContextFixture('2026-09-08')
+  api.getSecurityFormStructure.mockResolvedValue({
+    fields: [{ name: 'name', label: 'Name', type: 'textinput', required: true }],
+  })
+  api.getAccountPerformanceFormData.mockResolvedValue({
+    account_choices: [['General', [['All accounts', { type: 'all', id: null }]]]],
+    currency_choices: { USD: { value: 'USD', text: 'USD' } },
+    is_restricted_choices: { restricted: { value: 'restricted', text: 'Restricted' }, unrestricted: { value: 'unrestricted', text: 'Unrestricted' } },
+  })
   api.getAccountFormStructure.mockResolvedValue({
     fields: [
       { name: 'name', label: 'Account Name', type: 'textinput', required: true },
@@ -252,5 +272,57 @@ describe('UpdateAccountPerformanceDialog sections', () => {
     expect(text).toContain('Update Account Performance')
     expect(dialogButton('dialog-cancel')).toBeTruthy()
     expect(text).toContain('Update')
+  })
+})
+
+
+// Review-round compliance matrix: every operational dialog must show a
+// VISIBLE section label, a named Cancel action, focus an eligible control on
+// open and return focus to the invoker on close. Styling/testids alone do
+// not establish compliance; these probe the rendered overlay.
+describe.each([
+  ['AccountFormDialog', AccountFormDialog, { editItem: null }],
+  ['BrokerFormDialog', BrokerFormDialog, { editItem: null }],
+  ['SecurityFormDialog', SecurityFormDialog, { editItem: null }],
+  ['PriceFormDialog', PriceFormDialog, { securities: [{ id: 1, name: 'Fixture Security' }] }],
+  ['FXDialog', FXDialog, { editItem: null }],
+  ['PriceImportDialog', PriceImportDialog, {}],
+  ['FXImportDialog', FXImportDialog, {}],
+  ['AssetTransferDialog', AssetTransferDialog, {}],
+  ['MergerDialog', MergerDialog, {}],
+  ['UpdateAccountPerformanceDialog', UpdateAccountPerformanceDialog, {}],
+])('%s form-shell compliance', (name, component, extraProps) => {
+  it('shows a visible section label, named Cancel, focus entry and focus return', async () => {
+    const invoker = document.createElement('button')
+    invoker.textContent = 'open'
+    document.body.appendChild(invoker)
+    invoker.focus()
+    const wrapper = mount(component, {
+      attachTo: document.body,
+      props: { modelValue: true, ...extraProps },
+      global: { plugins: [vuetify, createPinia()], provide: { showError: vi.fn(), clearErrors: vi.fn() } },
+    })
+    await flushPromises()
+    await new Promise((resolve) => setTimeout(resolve, 90))
+    const overlay = activeDialog()
+    expect(overlay, `${name}: overlay open`).toBeTruthy()
+    // Visible section label (rendered text, not an aria-only attribute).
+    const heading = overlay.querySelector('h3')
+    expect(heading && heading.textContent.trim().length > 0, `${name}: visible section label`).toBe(true)
+    // Named cancel action.
+    const cancel = dialogButton('dialog-cancel')
+    expect(cancel && cancel.textContent.trim() === 'Cancel', `${name}: named Cancel`).toBe(true)
+    // Focus entry: an eligible control holds focus while open.
+    const focused = document.activeElement
+    expect(
+      focused && focused !== invoker && overlay.contains(focused),
+      `${name}: focus entered the dialog (${focused?.tagName})`,
+    ).toBe(true)
+    // Focus return on close.
+    await wrapper.setProps({ modelValue: false })
+    await new Promise((resolve) => setTimeout(resolve, 80))
+    expect(document.activeElement, `${name}: focus returned to the invoker`).toBe(invoker)
+    wrapper.unmount()
+    invoker.remove()
   })
 })

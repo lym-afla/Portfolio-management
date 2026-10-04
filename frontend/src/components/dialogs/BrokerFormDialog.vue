@@ -7,6 +7,7 @@
       <v-card-text>
         <v-form @submit.prevent="submitForm">
           <section aria-label="Broker details">
+            <h3 class="text-subtitle-1 font-weight-medium mb-2">Broker details</h3>
           <template v-for="field in formFields" :key="field.name">
             <v-text-field
               v-if="field.type === 'textinput'"

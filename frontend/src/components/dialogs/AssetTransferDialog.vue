@@ -1,13 +1,20 @@
 <template>
-  <v-dialog v-model="localDialog" max-width="600px" persistent>
-    <v-card>
-      <v-card-title class="text-h5 d-flex align-center">
+  <v-dialog
+    v-model="localDialog"
+    max-width="600px"
+    persistent
+    aria-labelledby="asset-transfer-title"
+  >
+    <v-card :id="focusCardId">
+      <v-card-title id="asset-transfer-title" class="text-h5 d-flex align-center">
         <v-icon start color="primary" class="mr-2">mdi-swap-horizontal</v-icon>
         Transfer Asset Between Accounts
       </v-card-title>
 
       <v-card-text>
         <v-form ref="form" v-model="valid">
+          <section aria-label="Transfer details">
+            <h3 class="text-subtitle-1 font-weight-medium mb-2">Transfer details</h3>
           <v-row>
             <v-col cols="12">
               <v-autocomplete
@@ -105,6 +112,7 @@
               </v-alert>
             </v-col>
           </v-row>
+          </section>
         </v-form>
       </v-card-text>
 
@@ -135,6 +143,7 @@ import {
 import { useErrorHandler } from '@/composables/useErrorHandler'
 import { useAppStore } from '@/stores/app'
 import logger from '@/utils/logger'
+import { useDialogFormFocus } from '@/composables/useDialogFormFocus'
 
 const props = defineProps({
   modelValue: {
@@ -160,6 +169,7 @@ const localDialog = computed({
   get: () => props.modelValue,
   set: (value) => emit('update:modelValue', value),
 })
+const { cardId: focusCardId } = useDialogFormFocus(localDialog, 'asset-transfer')
 
 const formData = ref({
   security: null,

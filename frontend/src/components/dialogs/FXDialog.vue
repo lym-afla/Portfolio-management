@@ -9,6 +9,7 @@
       <v-card-text>
         <v-form @submit.prevent="submitForm">
           <section aria-label="FX rate">
+            <h3 class="text-subtitle-1 font-weight-medium mb-2">FX rate</h3>
           <p class="text-body-2 text-medium-emphasis mt-0 mb-2">
             The rate is quoted from the first currency to the second.
           </p>

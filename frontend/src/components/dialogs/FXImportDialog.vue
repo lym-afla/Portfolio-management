@@ -1,10 +1,12 @@
 <template>
-  <v-dialog v-model="dialog" max-width="600px">
-    <v-card>
-      <v-card-title class="text-h5 pb-2"> Import FX Rates </v-card-title>
+  <v-dialog v-model="dialog" max-width="600px" aria-labelledby="fx-import-title">
+    <v-card :id="focusCardId">
+      <v-card-title id="fx-import-title" class="text-h5 pb-2"> Import FX Rates </v-card-title>
       <v-card-text>
-        <v-alert v-if="error" type="error" class="mb-4">{{ error }}</v-alert>
+        <v-alert v-if="error" type="error" class="mb-4" role="alert">{{ error }}</v-alert>
 
+        <section aria-label="Import method">
+          <h3 class="text-subtitle-1 font-weight-medium mb-2">Import method</h3>
         <v-select
           v-model="importType"
           :items="importTypes"
@@ -110,6 +112,7 @@
             :disabled="isImporting"
           />
         </template>
+        </section>
       </v-card-text>
       <v-card-actions>
         <v-spacer />
@@ -259,6 +262,7 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { getFXImportStats, importFXRates, cancelFXImport } from '@/services/api'
 import ProgressDialog from './ProgressDialog.vue'
 import logger from '@/utils/logger'
+import { useDialogFormFocus } from '@/composables/useDialogFormFocus'
 
 const props = defineProps({
   modelValue: Boolean,
@@ -269,6 +273,7 @@ const dialog = computed({
   get: () => props.modelValue,
   set: (value) => emit('update:modelValue', value),
 })
+const { cardId: focusCardId } = useDialogFormFocus(dialog, 'fx-import')
 const stats = ref(null)
 const error = ref('')
 const importOption = ref(null)

@@ -1,9 +1,11 @@
 <template>
-  <v-dialog v-model="dialog" max-width="500px">
-    <v-card>
-      <v-card-title>Update Account Performance</v-card-title>
+  <v-dialog v-model="dialog" max-width="500px" aria-labelledby="update-performance-title">
+    <v-card :id="focusCardId">
+      <v-card-title id="update-performance-title">Update Account Performance</v-card-title>
       <v-card-text>
         <v-form ref="form" @submit.prevent="submitForm">
+          <section aria-label="Selection">
+            <h3 class="text-subtitle-1 font-weight-medium mb-2">Selection</h3>
           <v-select
             v-model="selectedAccount"
             :items="accountOptions"
@@ -33,6 +35,9 @@
             </template>
           </v-select>
 
+          </section>
+          <section aria-label="Options" class="mt-4">
+            <h3 class="text-subtitle-1 font-weight-medium mb-2">Options</h3>
           <v-select
             v-model="formData.currency"
             :items="currencyOptions"
@@ -58,6 +63,7 @@
             v-model="formData.skip_existing_years"
             label="Skip existing years"
           />
+          </section>
         </v-form>
 
         <v-alert v-if="generalError" type="error" class="mt-4">
@@ -91,6 +97,7 @@ import { formatAccountChoices } from '@/utils/accountUtils'
 // import { updateAccountPerformance } from '@/services/api'
 import axiosInstance from '@/config/axiosConfig'
 import logger from '@/utils/logger'
+import { useDialogFormFocus } from '@/composables/useDialogFormFocus'
 
 const props = defineProps({
   modelValue: Boolean,
@@ -119,6 +126,7 @@ const dialog = computed({
   get: () => props.modelValue,
   set: (value) => emit('update:modelValue', value),
 })
+const { cardId: focusCardId } = useDialogFormFocus(dialog, 'update-performance')
 
 // Get current account selection from store
 const currentStoreSelection = computed(() => appStore.accountSelection)

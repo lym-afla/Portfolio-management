@@ -7,6 +7,7 @@
       <v-card-text>
         <v-form @submit.prevent="submitForm">
           <section aria-label="Price entry">
+            <h3 class="text-subtitle-1 font-weight-medium mb-2">Price entry</h3>
           <v-select
             v-model="form.security"
             :items="securities"
