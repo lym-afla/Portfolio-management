@@ -285,3 +285,159 @@ describe('ProfileSettings saved-identity display (real Vuetify select)', () => {
     wrapper.unmount()
   })
 })
+
+describe('ProfileSettings save guarding and explicit selection', () => {
+  const selectIdentity = async (wrapper, type, id) => {
+    const option = accountSelect(wrapper)
+      .props('items')
+      .find((item) => item.type === 'option' && item.value.type === type && item.value.id === id)
+    expect(option, `selectable ${type} ${id} option exists`).toBeDefined()
+    accountSelect(wrapper).vm.$emit('update:modelValue', option.value)
+    await flushPromises()
+  }
+
+  it('makes zero writes when another preference is saved while unresolved', async () => {
+    state.settings = { ...fullSettings, selected_account_type: 'account', selected_account_id: 99 }
+    const wrapper = await mountSettings()
+    wrapper.vm.settingsForm.chart_frequency = 'W'
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+    expect(updateUserSettings).not.toHaveBeenCalled()
+    expect(changeContext).not.toHaveBeenCalled()
+    await wrapper.vm.saveSettings()
+    await flushPromises()
+    expect(updateUserSettings).not.toHaveBeenCalled()
+    expect(changeContext).not.toHaveBeenCalled()
+    expect(wrapper.vm.settingsForm.chart_frequency, 'the unrelated edit is preserved').toBe('W')
+    wrapper.unmount()
+  })
+
+  it('saves an explicitly selected account with its identity through the context queue', async () => {
+    state.settings = { ...fullSettings, selected_account_type: 'account', selected_account_id: 99 }
+    const wrapper = await mountSettings()
+    await selectIdentity(wrapper, 'account', 2)
+    expect(wrapper.vm.settingsForm.selected_account).toEqual({ type: 'account', id: 2 })
+    expect(visibleLabel(wrapper)).toBe('Second Broker – Second account')
+    expect(inputValue(wrapper)).toBe('Second Broker – Second account')
+    expect(fieldMessages(wrapper), 'the availability warning clears after a real selection')
+      .toEqual([])
+    wrapper.vm.settingsForm.digits = 5
+    saveButton(wrapper).trigger('click')
+    await flushPromises()
+    expect(updateUserSettings).toHaveBeenCalledTimes(1)
+    const preferences = updateUserSettings.mock.calls[0][0]
+    for (const key of [
+      'selected_account',
+      'selected_account_type',
+      'selected_account_id',
+      'default_currency',
+      'digits',
+    ])
+      expect(preferences).not.toHaveProperty(key)
+    expect(changeContext).toHaveBeenCalledWith({
+      accountSelection: { type: 'account', id: 2 },
+      effectiveCurrentDate: '2026-09-08',
+      currency: 'USD',
+      digits: 5,
+    })
+    expect(pageText()).toContain('Settings saved successfully')
+    expectNoRawObject(wrapper, 'explicit selection save')
+    wrapper.unmount()
+  })
+
+  it('saves an explicitly selected All accounts identity through the context queue', async () => {
+    state.settings = { ...fullSettings, selected_account_type: 'account', selected_account_id: 99 }
+    const wrapper = await mountSettings()
+    await selectIdentity(wrapper, 'all', null)
+    expect(wrapper.vm.settingsForm.selected_account).toEqual({ type: 'all', id: null })
+    expect(visibleLabel(wrapper)).toBe('All accounts')
+    expect(fieldMessages(wrapper)).toEqual([])
+    saveButton(wrapper).trigger('click')
+    await flushPromises()
+    expect(changeContext).toHaveBeenCalledWith({
+      accountSelection: { type: 'all', id: null },
+      effectiveCurrentDate: '2026-09-08',
+      currency: 'USD',
+      digits: 2,
+    })
+    expect(pageText()).toContain('Settings saved successfully')
+    wrapper.unmount()
+  })
+
+  it('never accepts the safe display string or an unavailable identity as a selection', async () => {
+    state.settings = { ...fullSettings, selected_account_type: 'account', selected_account_id: 99 }
+    const wrapper = await mountSettings()
+    accountSelect(wrapper).vm.$emit('update:modelValue', 'Unavailable')
+    await flushPromises()
+    expect(wrapper.vm.settingsForm.selected_account,
+      'the safe label string never enters the form identity').toEqual({ type: 'account', id: 99 })
+    accountSelect(wrapper).vm.$emit('update:modelValue', { type: 'account', id: 99 })
+    await flushPromises()
+    expect(wrapper.vm.settingsForm.selected_account,
+      'a non-selectable identity never enters the form identity').toEqual({ type: 'account', id: 99 })
+    wrapper.unmount()
+  })
+
+  it('blocks duplicate submissions while a save is pending', async () => {
+    let releaseSave
+    updateUserSettings.mockImplementationOnce(
+      () => new Promise((resolve) => { releaseSave = resolve })
+    )
+    const wrapper = await mountSettings()
+    const firstSave = wrapper.vm.saveSettings()
+    const secondSave = wrapper.vm.saveSettings()
+    releaseSave({ success: true })
+    await Promise.all([firstSave, secondSave])
+    await flushPromises()
+    expect(updateUserSettings).toHaveBeenCalledTimes(1)
+    expect(changeContext).toHaveBeenCalledTimes(1)
+    expect(pageText()).toContain('Settings saved successfully')
+    wrapper.unmount()
+  })
+
+  it('retains edits and the selection after a rejected profile write, then saves the retry', async () => {
+    updateUserSettings.mockResolvedValueOnce({
+      success: false,
+      errors: { digits: ['Synthetic digits rejection'] },
+    })
+    const wrapper = await mountSettings()
+    wrapper.vm.settingsForm.digits = 5
+    await wrapper.vm.saveSettings()
+    await flushPromises()
+    expect(updateUserSettings).toHaveBeenCalledTimes(1)
+    expect(changeContext, 'a rejected profile write must not reach the context queue')
+      .not.toHaveBeenCalled()
+    expect(pageText()).toContain('Please correct the errors in the form.')
+    expect(pageText()).toContain('Synthetic digits rejection')
+    expect(pageText()).not.toContain('Settings saved successfully')
+    expect(wrapper.vm.settingsForm.selected_account).toEqual({ type: 'account', id: 2 })
+    expect(wrapper.vm.settingsForm.digits).toBe(5)
+    updateUserSettings.mockResolvedValue({ success: true })
+    await wrapper.vm.saveSettings()
+    await flushPromises()
+    expect(updateUserSettings).toHaveBeenCalledTimes(2)
+    expect(changeContext).toHaveBeenCalledTimes(1)
+    expect(changeContext).toHaveBeenCalledWith({
+      accountSelection: { type: 'account', id: 2 },
+      effectiveCurrentDate: '2026-09-08',
+      currency: 'USD',
+      digits: 5,
+    })
+    expect(pageText()).toContain('Settings saved successfully')
+    wrapper.unmount()
+  })
+
+  it('surfaces a rejected context write without success and retains the selection', async () => {
+    changeContext.mockRejectedValueOnce(new Error('Synthetic context denied'))
+    const wrapper = await mountSettings()
+    await wrapper.vm.saveSettings()
+    await flushPromises()
+    expect(updateUserSettings).toHaveBeenCalledTimes(1)
+    expect(changeContext).toHaveBeenCalledTimes(1)
+    expect(pageText()).toContain('Failed to save settings. Please try again.')
+    expect(pageText()).not.toContain('Settings saved successfully')
+    expect(wrapper.vm.settingsForm.selected_account).toEqual({ type: 'account', id: 2 })
+    expect(saveIsDisabled(wrapper), 'Save re-enables after the failed sequence ends').toBe(false)
+    wrapper.unmount()
+  })
+})

@@ -161,6 +161,9 @@ const loading = ref(true)
 // Only a fully successful settings+choices load may enable saving; a failed
 // load must never offer a write that would replace the unknown saved state.
 const dataLoaded = ref(false)
+// A save sequence owns the form until both existing writes settle; repeated
+// submissions while it is in flight must never duplicate the writes.
+const saving = ref(false)
 const settingsForm = reactive({
   default_currency: '',
   use_default_currency_where_relevant: false,
@@ -295,7 +298,7 @@ const accountSelectionModel = computed({
 })
 
 const canSave = computed(
-  () => dataLoaded.value && accountResolved.value
+  () => dataLoaded.value && !saving.value && accountResolved.value
 )
 
 const loadData = async () => {
@@ -339,8 +342,11 @@ const loadData = async () => {
 
 const saveSettings = async () => {
   // The disabled button cannot stop a form submission through Enter, so the
-  // handler itself must guard before either existing write.
-  if (!canSave.value) return
+  // handler itself must guard before either existing write: zero writes while
+  // the form is not in a savable state, and no duplicate writes while a save
+  // sequence is already in flight.
+  if (saving.value || !canSave.value) return
+  saving.value = true
   try {
     const context = usePortfolioContextStore()
     const patch = {
@@ -363,6 +369,8 @@ const saveSettings = async () => {
   } catch (error) {
     logger.error('Unknown', 'Error saving settings:', error)
     showErrorMessage('Failed to save settings. Please try again.')
+  } finally {
+    saving.value = false
   }
 }
 
