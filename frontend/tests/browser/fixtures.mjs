@@ -360,7 +360,20 @@ const fixtures = new Map([
       total_items: 1, current_page: 1, total_pages: 1,
     },
   ],
-  ['POST /database/api/fx/list_fx/', { results: [], count: 0, current_page: 1, total_pages: 1 }],
+  // Populated FX pivot (backend list_fx shape): a few dates x pairs, one
+  // missing cell (GBP on the earlier date) so the em-dash marker renders.
+  [
+    'POST /database/api/fx/list_fx/',
+    {
+      results: [
+        { id: 101, date: '2026-09-08', from_currency: 'USD', to_currency: 'EUR', rate: '0.9500' },
+        { id: 102, date: '2026-09-08', from_currency: 'USD', to_currency: 'GBP', rate: '0.8000' },
+        { id: 103, date: '2026-09-05', from_currency: 'USD', to_currency: 'EUR', rate: '0.9480' },
+        { id: 104, date: '2026-09-05', from_currency: 'CHF', to_currency: 'GBP', rate: '0.9120' },
+      ],
+      count: 4, current_page: 1, total_pages: 1,
+    },
+  ],
   [
     'GET /database/api/securities/1/',
     {

@@ -15,7 +15,23 @@
     </template>
     <v-alert v-if="fxQuery.error.value" type="error" class="mb-4">Unable to load exchange rates. Change the filters or try again.</v-alert>
 
-    <v-data-table
+    <WorkspaceTableToolbar
+      class="mb-2"
+      :query="{ search: search, page: currentPage, itemsPerPage: itemsPerPage }"
+      :search-label="'Search'"
+      search-placeholder="Search FX rates"
+      :rows-per-page-options="itemsPerPageOptions"
+      @update:query="onToolbarQuery"
+    >
+      <template #filters>
+        <DateRangeSelector
+          :model-value="dateRangeForSelector"
+          @update:model-value="handleDateRangeChange"
+        />
+      </template>
+    </WorkspaceTableToolbar>
+
+      <v-data-table
           :headers="headers"
           :items="fxData"
           :loading="tableLoading"
@@ -27,46 +43,7 @@
           :server-items-length="totalItems"
           :items-length="totalItems"
           disable-sort
-        >
-          <template #top>
-            <v-toolbar flat class="bg-grey-lighten-4 border-b px-2">
-              <DateRangeSelector
-                :model-value="dateRangeForSelector"
-                @update:model-value="handleDateRangeChange"
-              />
-              <v-col cols="12" sm="5" md="6" lg="7" class="px-8">
-                <v-text-field
-                  v-model="search"
-                  append-icon="mdi-magnify"
-                  label="Search"
-                  single-line
-                  hide-details
-                  density="compact"
-                  bg-color="white"
-                  class="rounded-lg"
-                />
-              </v-col>
-              <v-spacer />
-              <v-col
-                cols="12"
-                sm="4"
-                md="3"
-                lg="2"
-                class="d-flex align-center justify-end px-2"
-              >
-                <v-select
-                  v-model="itemsPerPage"
-                  :items="itemsPerPageOptions"
-                  label="Rows per page"
-                  density="compact"
-                  variant="outlined"
-                  hide-details
-                  class="rows-per-page-select"
-                  bg-color="white"
-                />
-              </v-col>
-            </v-toolbar>
-          </template>
+      >
 
           <template #item="{ item }">
             <tr>
@@ -158,6 +135,7 @@ import { useTableSettings } from '@/composables/useTableSettings'
 import DateRangeSelector from '@/components/DateRangeSelector.vue'
 import WorkspaceSection from '@/components/workspace/WorkspaceSection.vue'
 import WorkspaceActions from '@/components/workspace/WorkspaceActions.vue'
+import WorkspaceTableToolbar from '@/components/workspace/WorkspaceTableToolbar.vue'
 import ConfirmActionDialog from '@/components/workspace/ConfirmActionDialog.vue'
 import { calculateDateRange } from '@/utils/dateRangeUtils'
 const FXDialog = defineAppDialog(() => import('@/components/dialogs/FXDialog.vue'))
@@ -408,6 +386,10 @@ const confirmDelete = async () => {
   } finally {
     deleteLoading.value = false
   }
+}
+
+const onToolbarQuery = (patch) => {
+  if ('search' in patch && patch.search !== search.value) search.value = patch.search
 }
 
 // Presentation-only action hierarchy: the existing openers stay authoritative.

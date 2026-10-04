@@ -69,11 +69,30 @@ The historical reference numbers in the handoff (538 units, 72 profiles, 1386/10
 
 ## Rendered evidence ledger
 
-Filled per family as it passes; states are populated / empty / filtered-empty / error unless marked N/A with a reason. All screenshots live under `docs/design/assets/frontend-workspace/` with `d5-` names.
+Filled per family as each passed (focused `d5` browser case on the synthetic fixtures; implementation commits `b0a1bac2`..`b3541f66` plus the task-5 defaults/fixtures/harness commit noted in the tracker). States are populated / empty / filtered-empty / error unless marked N/A with a reason. All screenshots live under `docs/design/assets/frontend-workspace/` with `d5-` names and are synthetic data.
 
 | Route | Fixture/account | Viewport(s) | State | Keyboard/focus | Context/data match | Screenshot | Result | Remaining issue |
 |---|---|---|---|---|---|---|---|---|
-| _Task 0 — not yet rendered; rows land with each family below_ | | | | | | | | |
+| `/summary` | populated performance fixture-user (YTD/2025/2024/All-time, both groups, Sub-total lines, TOTAL) + populated breakdown | desktop + mobile (d5 case), plus unit spec empty/error | populated | View/Period selects labelled; single-period flat labels; comparison colgroup bands; history two-tier headers | every period/metric asserted; `$10,000.00`/`N/A` verbatim; view switches made zero extra `summary_data` requests; breakdown-year change issued its own request; `(USD)` units asserted | `d5-summary-single.png`, `d5-summary-history.png`, `d5-summary-mobile.png` | pass | — |
+| `/database` (landing) | fixture-user | desktop + mobile | populated | tab nav + named landing links keyboard-reachable | five child links asserted by href | `d5-database-landing.png` | pass | — |
+| `/database/brokers` | Fixture Broker row + totals | desktop + mobile | populated | named row Edit/Delete aria-labels quote the broker; shared toolbar search | headers/` TOTAL ` footer asserted; delete confirm carries broker identity; dialog completion refetch pinned in unit spec | `d5-brokers-desktop.png` | pass | — |
+| `/database/accounts` | Main account, USD+EUR cash | desktop + mobile | populated | named row actions; primary Add Account | dynamic cash columns per currency asserted (unit + browser); details-endpoint edit hydration pinned | `d5-accounts-desktop.png` | pass | — |
+| `/database/securities` | Fixture Security (Stock, ISIN) | desktop + mobile | populated | name link + named row actions | detail link by id `/database/securities/1`; Add Security/Record Merger present | `d5-securities-desktop.png`, `d5-securities-mobile.png` | pass | — |
+| `/database/prices` | Fixture Security price row (`100.00`) | desktop | populated | labelled filters; Apply Filters; action hierarchy | price string verbatim; trading-currency/bond hint; import entry opens; price delete confirm (date/security/price+currency) pinned | `d5-prices-desktop.png` | pass | — |
+| `/database/fx` | populated pivot (USD/EUR, USD/GBP, CHF/GBP; one missing cell) | desktop + mobile | populated | pivot cells are buttons (click-to-edit/add) | pair labels, `0.9500` verbatim, `—` marker, from→to orientation note, date-range activator in shared toolbar | `d5-fx-desktop.png` | pass | — |
+| `/database/securities/1` | Fixture Security detail | desktop + mobile | populated | Broker Account scope selector labelled | h1 = security name; ISIN/type/currency identity line; basic/performance sections; charts untouched | `d5-security-detail.png` | pass | — |
+| `/profile` | fixture-user | desktop + mobile | populated | nav links + Logout; Delete Account typed-DELETE (disabled until DELETE, unit-pinned) | one Profile h1; User details section; fields rendered | `d5-profile.png` | pass | — |
+| `/profile/settings` | fixture settings + choices | desktop + mobile | populated | labelled selects; Save Settings | wire payload strips context-owned keys and drives `changeContext` (unit-pinned); group/broker sections render | `d5-profile-settings.png` | pass | — |
+| `/login`, `/register` | unauthenticated fixture | mobile (390) | populated | one primary submit; username/current-password/new-password autocomplete; cross-links | redirect-to-/profile after login (unit-pinned); register success dialog → /login | `d5-login-mobile.png` | pass | — |
+| `/debug-auth` | n/a | n/a | n/a | n/a | dev-only route registration source-pinned (import.meta.env.DEV); the production-like browser build carries no such route | n/a | pass (source-level) | real navigation probe at D8 |
+
+**Native 200% zoom (d5 case, CDP key events, dpr self-verified 2.0 then reset):** `/database/accounts` — no page-level overflow, `Data` heading intact, Add Account genuinely `elementFromPoint`-hittable after scrolling into view; reset verified dpr 1.
+
+## Inherited baseline failure (not introduced by D5)
+
+The retained `layout` browser case fails its **positions-toolbar Year hit-test at tablet and mobile** (`year is not really visible — center point is covered by SPAN/DIV`) **identically on the pristine handoff base `d1989802`** — reproduced in a clean worktree of the base commit before any D5 change (executor log `temp_files/d5-gates/base-layout.log`, not committed). Diagnosis on both trees: after the case's own `scrollIntoView` the toolbar's Year select sits at y≈49 underneath the fixed workspace header (bottom ≈127px at 1024px), so the probe's center point hits the header's context controls; desktop passes. This is a D4-era harness/geometry interaction on an unchanged route — reported here rather than patched inside D5 (patching accepted D4 toolbar behavior is outside this handoff's scope). All other `layout` assertions (headings, long-title reflow, geometry) pass. D5's own family routes pass at every checked viewport.
+
+**Known D5 harness note:** the focused `d5` case's helper evals must route through the session-bound runner; an early version of the case issued bare evals that landed on agent-browser's default context (a blank tab) — fixed and documented in-code.
 
 ## Human visual-review checklist (for the reviewer)
 

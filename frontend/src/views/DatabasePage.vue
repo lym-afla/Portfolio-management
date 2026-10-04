@@ -14,7 +14,7 @@
     </nav>
     <router-view />
     <WorkspaceSection
-      v-if="!activeTab"
+      v-if="route.path === '/database'"
       heading-id="database-landing"
       title="Choose an inventory"
       description="Every section keeps its own search, filters and create actions."

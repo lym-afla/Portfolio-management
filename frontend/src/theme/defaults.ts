@@ -1,4 +1,5 @@
-// Applied only inside workspace pages while the visual pilot is evaluated.
+// Applied app-wide since the D5 route rollout (Vuetify config in main.js);
+// WorkspacePage keeps its scoped provider, which is now redundant but harmless.
 export const workspaceDefaults = {
   VCard: { elevation: 0, rounded: 'lg', border: true },
   VBtn: { rounded: 'sm', elevation: 0 },

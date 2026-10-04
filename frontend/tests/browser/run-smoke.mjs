@@ -22,7 +22,7 @@ import { measureRouteBundles, assertRouteDelivery } from '../../scripts/measure-
 import { assertDialogDeliveryFlow, assertDialogChunkRecovery, dialogRoutes } from './dialogs.mjs'
 import { assertD4TablesFlow, assertD4TransactionsFlow, assertD4ViewportChecks, captureD4Screenshots } from './d4.mjs'
 import { assertChartsC2Flow } from './charts-c2.mjs'
-import { assertD5FamilyProbesFlow, d5FamilyRoutes } from './d5.mjs'
+import { assertD5FamilyProbesFlow, assertD5NativeZoomFlow, captureD5Screenshots, d5FamilyRoutes } from './d5.mjs'
 
 const caseIndex = process.argv.indexOf('--case')
 const selectedCase = caseIndex < 0 ? null : process.argv[caseIndex + 1]
@@ -220,7 +220,7 @@ async function main() {
               await assertD4ViewportChecks({ appOrigin: appServer.origin, context: `${viewport.name} ${route.path} d4 viewport`, initScript, log, session, viewport, route: route.path })
             }
             if (selectedCase === 'd5') {
-              await assertD5FamilyProbesFlow({ appOrigin: appServer.origin, context: `${viewport.name} ${route.path} d5 family`, initScript, log, session, route: route.path })
+              await assertD5FamilyProbesFlow({ appOrigin: appServer.origin, context: `${viewport.name} ${route.path} d5 family`, initScript, log, session, route: route.path, fixtureServer })
             }
             if (selectedCase === 'charts-c2') {
               await assertChartsC2Flow({ appOrigin: appServer.origin, context: `${viewport.name} charts c2`, initScript, log, session, fixtureServer })
@@ -313,6 +313,19 @@ async function main() {
       }
     }
 
+    if (selectedCase === 'd5') {
+      // Native 200% zoom on a dense data route, then the family captures on
+      // a registered session for guaranteed cleanup.
+      const d5ShotsSession = `d5-shots-${process.pid}`
+      sessions.set(d5ShotsSession, authInit)
+      try {
+        await assertD5NativeZoomFlow({ appOrigin: appServer.origin, context: 'd5 native zoom', initScript: authInit, log, session: d5ShotsSession })
+        await captureD5Screenshots({ appOrigin: appServer.origin, context: 'd5 screenshots', initScript: authInit, log, session: d5ShotsSession, registerSession: (extra) => sessions.set(extra, undefined) })
+      } catch (error) {
+        routeFailures.push({ route: 'd5 zoom/captures', viewport: 'desktop', error: error.message })
+        console.error(`FAIL d5 zoom/captures: ${error.message}`)
+      }
+    }
     if (selectedCase === 'd4') {
       // Register the screenshot session with the harness so the guaranteed
       // cleanup closes it even when the capture throws mid-way.
