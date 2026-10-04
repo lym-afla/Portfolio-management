@@ -29,7 +29,13 @@ vi.mock('@/services/api', () => ({
     frequency_choices: [],
     timeline_choices: [],
     nav_breakdown_choices: [],
-    account_choices: [],
+    // Backend-faithful available choices: the injected broker selection can
+    // only be saved when it matches a real selectable option.
+    account_choices: [
+      ['General', [['All accounts', { type: 'all', id: null }]]],
+      ['__SEPARATOR__', '__SEPARATOR__'],
+      ['Brokers', [['Test Broker', { type: 'broker', id: 4, display_name: 'All Test Broker accounts' }]]],
+    ],
   })),
 }))
 it('sends profile financial preferences through the committed-context queue', async () => {
