@@ -54,7 +54,10 @@ const choicesFixture = {
   frequency_choices: [['M', 'Monthly']],
   timeline_choices: [['YTD', 'Year to date']],
   nav_breakdown_choices: [['none', 'No breakdown']],
-  account_choices: [],
+  // Backend-faithful prepare_account_choices output (PR #55 shape): the
+  // saved 'all' selection must resolve against an available option before
+  // the pending-save guards allow saveSettings to run.
+  account_choices: [['General', [['All accounts', { type: 'all', id: null }]]]],
 }
 
 async function mountAuth(): Promise<{ wrapper: VueWrapper; router: Router }> {
