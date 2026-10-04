@@ -156,6 +156,7 @@ const {
   sortBy,
   search,
   handleSortChange,
+  handleItemsPerPageChange,
   updateDateRange,
 } = useTableSettings({ syncRelativeDate: false })
 
@@ -390,6 +391,12 @@ const confirmDelete = async () => {
 
 const onToolbarQuery = (patch) => {
   if ('search' in patch && patch.search !== search.value) search.value = patch.search
+  // Rows-per-page goes through the table-settings owner so the page resets
+  // and the fetch watch requests the new page size (same as the other
+  // inventory tables).
+  if ('itemsPerPage' in patch && patch.itemsPerPage !== itemsPerPage.value) {
+    handleItemsPerPageChange(patch.itemsPerPage)
+  }
 }
 
 // Presentation-only action hierarchy: the existing openers stay authoritative.
