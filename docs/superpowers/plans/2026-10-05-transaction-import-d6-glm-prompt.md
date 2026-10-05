@@ -7,3 +7,5 @@ Execute only D6 on `codex/transaction-import-d6` in a dedicated worktree. Charac
 Reuse the existing analyzer/WebSocket implementation and reviewed D5 UI/focus patterns. No backend/financial/protocol changes, D7/C4/C5 work, ECharts cutover, merge or deployment.
 
 Follow RED→GREEN tasks and the full committed-head gate matrix, including synthetic file/API WebSocket browser flows. Update evidence/tracker, push and open one draft PR into `codex/frontend-modernization`. Stop for review; report tested SHA/directory, actual exit codes, screenshots, deviations and acceptance gaps honestly.
+
+Scope amendment (5 October 2026): dedicated screen-reader support and assistive-technology audits are removed from the plan, including D8. Do not list their absence as an acceptance gap. Keep keyboard/focus, readable labels, contrast, responsive/native-zoom checks, semantic markup and exact-value tables. This is a planning change, not an instruction to remove existing application support.

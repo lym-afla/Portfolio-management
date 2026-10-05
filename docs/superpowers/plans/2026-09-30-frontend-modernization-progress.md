@@ -1,5 +1,12 @@
 # Frontend modernization progress
 
+## Scope amendment — 5 October 2026
+
+The owner has removed dedicated screen-reader support work and real assistive-technology audits (NVDA, JAWS, VoiceOver or equivalent) from the modernization scope. They are not acceptance criteria, release blockers or deferred D8 work. This amendment supersedes earlier screen-reader requirements and historical references assigning their audit to D8, including prior handoffs and evidence records. Past statements that no such audit was performed remain historically accurate; do not present them as outstanding acceptance gaps.
+
+Retain keyboard navigation, focus entry/return, readable labels, contrast, responsive layouts, native 200% zoom, visible/hittable controls, semantic HTML and exact-value chart tables. Preserve existing ARIA/semantic markup and tests; this scope change does not request application-code removal. D8 still verifies visual quality, keyboard usability, responsive behavior and workflow correctness. General accessibility references in these plans apply to those retained checks, not a screen-reader certification or dedicated compatibility project.
+
+
 Updated 5 October 2026. This is the durable, human-facing status tracker for the accepted [master plan](2026-09-08-frontend-modernization.md). The original task numbering is retained. Update this file after each independently verified task; commit evidence and distinguish implementation, review, merge and release.
 
 ## Current checkpoint
@@ -40,7 +47,7 @@ Updated 5 October 2026. This is the durable, human-facing status tracker for the
 | 21 | D7 | Broker/security workflow extraction | Not implemented |
 | 22 | C4 | Three solid allocation pies and security histories | Not implemented; follows NAV acceptance and F3 |
 | 23 | C5 | ECharts cutover and Chart.js removal | Not implemented; gate last, retain fallback until acceptance |
-| 24 | D8 | All-page visual/accessibility/behavior QA and documentation | Not implemented |
+| 24 | D8 | All-page visual/keyboard/responsive/behavior QA and documentation | Not implemented |
 
 ## Next execution and boundaries
 
@@ -48,7 +55,7 @@ D5 is merged. Execute the [D6 handoff](2026-10-05-transaction-import-d6-handoff.
 
 D6 extracts the transaction-import workflow while preserving the existing protocol and financial semantics. D7, C4's three solid allocation pies/security histories and C5 cutover remain separate. C3 stays default-off; no main merge or deployment is authorized.
 
-The inherited D4 `requests`/`dates` selector issue was closed by C3 task 0 (`2620c2fa`); do not reuse the historical baseline waiver. Real screen-reader testing remains unperformed and belongs to D8. No application gates were rerun for this documentation-only handoff.
+The inherited D4 `requests`/`dates` selector issue was closed by C3 task 0 (`2620c2fa`); do not reuse the historical baseline waiver. Screen-reader testing is out of scope under the owner-approved amendment above. No application gates were rerun for this documentation-only handoff.
 
 C1's protected `NAV_at_date` diagnostics were reviewed and PR #49 was merged by the user. That approval does not authorize future financial changes. D3 is presentation-only; main has not received the modernization branch.
 
