@@ -207,6 +207,20 @@ Synthetic loopback conversations over a minimal RFC6455 driver (`tests/browser/i
 
 ### Remaining acceptance
 
-- Real screen-reader audit remains D8 (none performed here; DOM/ARIA/keyboard checks are not a substitute).
+- Per the owner scope amendment of 5 October 2026 (base commit abbed5e8), dedicated screen-reader support and assistive-technology audits are out of scope and not deferred work. The retained checks — keyboard navigation, focus handling, readable labels, contrast, responsive layouts, native 200% zoom, semantic markup and exact-value tables — remain covered by the unit suites and the imports-d6 browser case.
 - Security-creation and account-selection flows are exercised at unit level (they are frontend-accepted but backend-never-produced branches, recorded in section 3), not in the browser case.
 - `import_warning`/`import_cancelled` remain accepted-and-ignored (parity).
+
+### Review round (5 October 2026, draft PR #57)
+
+Seven reviewer findings, all corrected with regressions observed RED first (12-13 failures against the pre-fix sources):
+
+1. Recoverable row errors keep the run tracked: row-level import_error, top-level save_error, consumer error envelopes and the matched-account inconsistency surface through lastRunError without leaving the session — progress, decisions, Stop and completion stay live and the parent receives its refresh. Critical errors remain terminal.
+2. Connection/run ownership: every connect closes the previous socket first; frames arriving while disconnected are dropped; dispose() invalidates pending awaits on unmount (a pending connect can no longer send its start).
+3. Create New Security from a mapping decision opens the security form, forwarding name/ISIN/symbol from the mapping payload.
+4. The mapping selection clears when any decision ends — a confirmation can never reuse the previous security id.
+5. While a stop is pending, decision-opening events are dropped; stopping is stable until the acknowledgment, and the discarded decisions cannot resolve.
+6. All account resolvers require the live accounts decision: post-reset callbacks neither send nor resurrect the run.
+7. analyze awaits fetched accounts into a local, re-verifies generation ownership, and only then commits them.
+
+The verified date_to wire behavior is retained (reviewer confirmed the handoff example was incomplete). Base commit abbed5e8 (owner scope amendment) incorporated by merge; gates on the review head are recorded in the tracker D6 record.
