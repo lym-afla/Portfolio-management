@@ -420,9 +420,6 @@ const isAnalyzingState = computed(() => stateKind.value === 'analyzing')
 const brokersLoading = ref(false)
 const isLoading = computed(() => isAnalyzingState.value || brokersLoading.value)
 
-const importError = computed(() =>
-  stateKind.value === 'error' ? state.value.message : ''
-)
 // Terminal errors come from the error state; recoverable in-run errors
 // (row-level import_error etc.) surface through lastRunError while the run
 // keeps tracking.

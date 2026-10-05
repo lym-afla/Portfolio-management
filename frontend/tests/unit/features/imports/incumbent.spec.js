@@ -199,7 +199,7 @@ describe('outgoing start commands', () => {
     await vm.startImport()
 
     expect(sends()).toHaveLength(0)
-    expect(vm.importError).toBe('WebSocket not connected. Please try again.')
+    expect(vm.errorMessage).toBe('WebSocket not connected. Please try again.')
     expect(vm.showProgressDialog).toBe(false)
   })
 
@@ -259,7 +259,7 @@ describe('outgoing start commands', () => {
     await vm.startApiImport()
 
     expect(sends()).toHaveLength(0)
-    expect(vm.importError).toBe('Failed to establish WebSocket connection')
+    expect(vm.errorMessage).toBe('Failed to establish WebSocket connection')
     expect(vm.showProgressDialog).toBe(false)
   })
 })
