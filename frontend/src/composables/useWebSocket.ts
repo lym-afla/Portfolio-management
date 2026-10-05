@@ -42,19 +42,17 @@ export function useWebSocket(baseUrl: string) {
   }
 
   const connect = () => {
-    const id = ++connectionId
     clearReconnectTimer()
     return new Promise((resolve) => {
       // Set a timeout to prevent hanging if connection fails
       const connectionTimeout = setTimeout(() => {
         logger.warn('Unknown', 'WebSocket connection attempt timed out')
-        if (id === connectionId) {
-          isConnected.value = false
-        }
         resolve(false)
       }, 3000)
 
-      // Only attempt once if already attempted
+      // Only attempt once if already attempted. This must not allocate a
+      // new connection identity: the already-open connection keeps its
+      // callbacks and message ownership.
       if (connectionAttempted.value) {
         clearTimeout(connectionTimeout)
         resolve(isConnected.value)
@@ -81,19 +79,25 @@ export function useWebSocket(baseUrl: string) {
         return
       }
 
+      // A new identity is allocated only when a new connection is actually
+      // created; every handler below closes or reads ITS OWN captured
+      // socket, never the shared reference (which may already point at a
+      // replacement).
+      const id = ++connectionId
       try {
         const url = getWebSocketUrl(baseUrl)
         logger.log('Unknown', 'Attempting to connect to WebSocket:', url)
 
-        socket.value = new WebSocket(url)
+        const ws: WebSocket = new WebSocket(url)
+        socket.value = ws
 
-        socket.value.onopen = () => {
+        ws.onopen = () => {
           if (id !== connectionId) {
-            // A superseded socket finished opening: discard it so an
-            // orphaned open connection cannot shadow the current one.
+            // A superseded socket finished opening: discard IT (the local
+            // instance), never the current connection.
             logger.log('Unknown', 'Discarding superseded WebSocket open')
             try {
-              socket.value?.close()
+              ws.close()
             } catch {
               // Already closing or closed.
             }
@@ -105,7 +109,7 @@ export function useWebSocket(baseUrl: string) {
           resolve(true)
         }
 
-        socket.value.onclose = () => {
+        ws.onclose = () => {
           if (id !== connectionId) {
             // Delayed close of a superseded socket: the current connection
             // is untouched.
@@ -131,14 +135,14 @@ export function useWebSocket(baseUrl: string) {
           }
         }
 
-        socket.value.onerror = (error) => {
+        ws.onerror = (error) => {
           if (id !== connectionId) return
           logger.error('Unknown', 'WebSocket error:', error)
           clearTimeout(connectionTimeout)
           resolve(false)
         }
 
-        socket.value.onmessage = (event) => {
+        ws.onmessage = (event) => {
           if (id !== connectionId) return
           try {
             lastMessage.value = JSON.parse(event.data)

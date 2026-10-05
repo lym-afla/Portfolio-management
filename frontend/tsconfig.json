@@ -20,6 +20,11 @@
     },
     "types": ["vite/client"]
   },
-  "include": ["src/**/*", "src/**/*.vue", "env.d.ts"],
+  "include": [
+    "src/**/*",
+    "src/**/*.vue",
+    "env.d.ts",
+    "tests/unit/composables/useWebSocket.spec.ts"
+  ],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

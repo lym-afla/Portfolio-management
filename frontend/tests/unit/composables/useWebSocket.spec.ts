@@ -189,6 +189,54 @@ describe('useWebSocket connection ownership', () => {
     expect(FakeWebSocket.instances).toHaveLength(2)
   })
 
+  it('a superseded socket that opens late cannot close the current connection', async () => {
+    const ws = useWebSocket('/ws/transactions/')
+    const socketA = latest()
+    await Promise.resolve()
+
+    ws.reset()
+    void ws.connect()
+    const socketB = latest()
+    socketB.__emitOpen()
+    expect(ws.isConnected.value).toBe(true)
+
+    // A finishes opening AFTER B: its own late-open handler must close A —
+    // never the current socket the shared reference now points to.
+    socketA.__emitOpen()
+    expect(socketA.closeRequested).toBe(true)
+    expect(socketA.readyState).not.toBe(FakeWebSocket.OPEN)
+    expect(socketB.readyState).toBe(FakeWebSocket.OPEN)
+    expect(ws.isConnected.value).toBe(true)
+
+    // B keeps delivering.
+    socketB.__emitMessage({ type: 'import_update', data: { status: 'progress' } })
+    expect(ws.lastMessage.value).toEqual({
+      type: 'import_update',
+      data: { status: 'progress' },
+    })
+  })
+
+  it('repeated connect on an open connection keeps that connection owned', async () => {
+    const ws = useWebSocket('/ws/transactions/')
+    const socket = latest()
+    socket.__emitOpen()
+    await Promise.resolve()
+    expect(ws.isConnected.value).toBe(true)
+
+    // An idempotent connect (already attempted) must not invalidate the
+    // open connection's identity: its messages keep flowing.
+    expect(await ws.connect()).toBe(true)
+    socket.__emitMessage({ type: 'import_update', data: { status: 'progress' } })
+    expect(ws.lastMessage.value).toEqual({
+      type: 'import_update',
+      data: { status: 'progress' },
+    })
+
+    // Close ownership still works after the repeated connect.
+    socket.__emitClose()
+    expect(ws.isConnected.value).toBe(false)
+  })
+
   it('the current connection still owns its own timeout', async () => {
     const ws = useWebSocket('/ws/transactions/')
     ws.reset() // force a fresh connection attempt past the auto-connect
