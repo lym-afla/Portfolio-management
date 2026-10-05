@@ -307,17 +307,24 @@ watch(dialog, (newValue) => {
 })
 
 // Existing WebSocket composable, normalized behind the D6 ImportTransport
-// interface (Boolean(await connect())); no second socket or reconnect logic.
+// interface (Boolean(await connect())). The adapter preserves the incumbent
+// restart rule of clearing intentionalClose/connectionAttempted before each
+// connect attempt so a later run can reconnect after a teardown; no second
+// socket or reconnect logic is introduced.
 const {
   isConnected,
   lastMessage,
   sendMessage,
   connect,
   disconnect,
+  reset: resetTransportFlags,
 } = useWebSocket('/ws/transactions/')
 
 const transport = {
-  connect: async () => Boolean(await connect()),
+  connect: async () => {
+    resetTransportFlags()
+    return Boolean(await connect())
+  },
   send: (command) => Boolean(sendMessage(command)),
   disconnect,
 }
@@ -439,7 +446,9 @@ const runningState = computed(() =>
 const currentImported = computed(() => runningState.value?.current ?? 0)
 const totalToImport = computed(() => runningState.value?.total ?? 0)
 const currentImportMessage = computed(() => runningState.value?.message ?? '')
-const canStopImport = computed(() => stateKind.value === 'running')
+const canStopImport = computed(() =>
+  ['running', 'decision'].includes(stateKind.value)
+)
 
 const showSecurityMapping = computed(
   () => securityDecisionOrigin.value === 'mapping'
@@ -732,9 +741,16 @@ const handleUseExistingMatches = (data) => {
 }
 
 const closeAccountMatching = () => {
-  // Closing the matching overlay cancels the run: the server cannot proceed
-  // without a matching answer, so the owned connection is torn down instead
-  // of lingering (recorded incumbent deviation).
+  // Only a USER-initiated close (Esc, overlay) cancels the run: the server
+  // cannot proceed without a matching answer, so the owned connection is
+  // torn down instead of lingering. The model flip caused by the decision
+  // resolving (state leaves accounts-match) is not a cancel.
+  const current = state.value
+  const awaitingMatch =
+    current.kind === 'decision' &&
+    current.decision === 'accounts' &&
+    current.payload.variant === 'match'
+  if (!awaitingMatch) return
   reset()
 }
 

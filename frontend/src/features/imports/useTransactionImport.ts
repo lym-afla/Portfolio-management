@@ -471,7 +471,10 @@ export function useTransactionImport(options: TransactionImportOptions) {
   // ------------------------------------------------------------ stop/reset
 
   const requestStop = () => {
-    if (state().kind !== 'running') return
+    const kind = state().kind
+    // The incumbent kept Stop available while a decision overlay was
+    // pending; the stop acknowledgment ends the run from either state.
+    if (kind !== 'running' && kind !== 'decision') return
     if (stopRequested) return
     stopRequested = true
     if (options.transport.send(stopCommand())) {

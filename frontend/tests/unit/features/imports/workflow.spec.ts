@@ -415,19 +415,21 @@ describe('completion, stop and stale-event containment', () => {
     expect(lastState(h.orchestrator).kind).toBe('error')
   })
 
-  it('decisions resolve before stop can be requested', async () => {
+  it('stop can be requested while a decision overlay is pending', async () => {
     const h = makeHarness()
     await startRun(h)
     h.orchestrator.receive(structuredClone(events.importUpdateTransactionConfirmation))
     h.orchestrator.requestStop()
-    expect(h.sent).toHaveLength(0)
-    expect(lastState(h.orchestrator).kind).toBe('decision')
-
-    h.orchestrator.resolveTransaction(true)
-    expect(lastState(h.orchestrator).kind).toBe('running')
-    h.sent.length = 0
-    h.orchestrator.requestStop()
+    // Incumbent parity: Stop stays available during decisions; the pending
+    // decision is discarded and the run persists in stopping until the
+    // acknowledgment.
     expect(h.sent).toEqual([commands.stop])
+    expect(lastState(h.orchestrator).kind).toBe('stopping')
+
+    // The discarded decision can no longer resolve.
+    h.sent.length = 0
+    h.orchestrator.resolveTransaction(true)
+    expect(h.sent).toHaveLength(0)
     expect(lastState(h.orchestrator).kind).toBe('stopping')
   })
 

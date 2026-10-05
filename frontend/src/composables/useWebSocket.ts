@@ -2,6 +2,11 @@ import { ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import logger from '@/utils/logger'
 
+// Spec constant for WebSocket.readyState === OPEN. Referenced by value so
+// the guard also holds in the browser-test harness, whose WebSocket proxy
+// does not expose the constructor's static constants.
+const WEBSOCKET_OPEN = 1
+
 export function useWebSocket(baseUrl: string) {
   const authStore = useAuthStore()
   const socket = ref<WebSocket | null>(null)
@@ -118,7 +123,7 @@ export function useWebSocket(baseUrl: string) {
   }
 
   const sendMessage = (message) => {
-    if (socket.value && socket.value.readyState === WebSocket.OPEN) {
+    if (socket.value && socket.value.readyState === WEBSOCKET_OPEN) {
       logger.log('Unknown', 'Sending message:', message)
       socket.value.send(JSON.stringify(message))
       return true
