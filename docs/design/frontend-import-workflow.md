@@ -223,4 +223,4 @@ Seven reviewer findings, all corrected with regressions observed RED first (12-1
 6. All account resolvers require the live accounts decision: post-reset callbacks neither send nor resurrect the run.
 7. analyze awaits fetched accounts into a local, re-verifies generation ownership, and only then commits them.
 
-The verified date_to wire behavior is retained (reviewer confirmed the handoff example was incomplete). Base commit abbed5e8 (owner scope amendment) incorporated by merge; gates on the review head are recorded in the tracker D6 record.
+The verified date_to wire behavior is retained (reviewer confirmed the handoff example was incomplete). Base commit abbed5e8 (owner scope amendment) incorporated by merge. Review-round gates on the committed head 203a1e12 (actual exit codes): test:unit 86 files/763 passed (0); type-checks ×3 (0); lint 0 errors/13 warnings (0); api:types:check (0); build (0); --case imports-d6 (0); all 12 focused browser cases (0); test:delivery (0); FULL browser matrix 18 routes × 4 viewports, 720 fixture requests, zero mismatches (0); backend 1386 passed/10 skipped (0).
