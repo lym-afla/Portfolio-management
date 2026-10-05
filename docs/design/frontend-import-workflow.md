@@ -169,3 +169,44 @@ Unmount disconnects the socket. Completion/stop/critical paths disconnect
 (`intentionalClose`, no auto-reconnect afterwards) and reset progress and
 confirmation state. `closeAccountMatching` disconnects+resets only when an
 import error is pending. The auth/session stores are never touched.
+
+## 7. Extraction status (D6 implementation record)
+
+Implemented on `codex/transaction-import-d6` (worktree `Portfolio-management-d6`, base `57f251d3`). The extraction keeps every command, decision, counter, warning, parent payload and stop acknowledgment recorded in sections 1–6; the characterization fixtures (`frontend/tests/unit/features/imports/fixtures.ts`) are the invariant — the same objects pinned the incumbent (`incumbent.spec.js` at base) and now pin the extracted units (`protocol.spec.ts`, `workflow.spec.ts`, `steps.spec.ts`, the dialog-level suites).
+
+### Boundaries delivered
+
+- `frontend/src/features/imports/types.ts` — accepted D6 unions (`ImportCommand`, `ImportTransport`, `TransactionImportState`, typed start inputs, `AccountMatchPair` with provider extras, decision payloads).
+- `frontend/src/features/imports/legacyImportProtocol.ts` — all 16 command builders (byte-parity with section 2, including the recorded `date_to` discrepancy) plus `decodeImportEvent` over every backend envelope of section 3; unknown/malformed input degrades to a recoverable `protocol-error` (reason only; never a raw payload, never fabricated completion).
+- `frontend/src/composables/useImportState.ts` — the sole discriminated state owner (accepted shape); legacy `isIdle/isAnalyzing/isImporting/isMapping/isComplete/isError` are computed projections.
+- `frontend/src/features/imports/useTransactionImport.ts` — orchestration: generation ownership (once-only starts/completion, stale-event containment across reset/reopen, late-analyzer discard), decisions with retry-preserving failed sends, stop-pending-until-`import_stopped`, disconnect notification, dismiss-to-configuration semantics.
+- `ImportMethodStep.vue` (keyboard-operable cards), `ImportSourceStep.vue` (method-relevant configuration), `ImportReviewStep.vue` (identified-account review + Galaxy currency), `ImportResult.vue` (five counters + structured warnings) — typed props, intent emits, no transport access.
+- `TransactionImportDialog.vue` — compatible entrypoint: props `{modelValue}`, emits `update:modelValue`/`import-completed` (raw payload, once); state projections + editable configuration + intent adapters; decision dialogs remain first-class.
+
+### Verified rendered flows (browser case `imports-d6`, exit 0)
+
+Synthetic loopback conversations over a minimal RFC6455 driver (`tests/browser/imports-ws.mjs`) against genuine backend envelopes; commands asserted verbatim at the fixture server:
+
+- File analyze → review → start (`start_file_import` exact, once) → transaction decision (`transaction_confirmed`) → warning result (counters 3/3/0/0/0 + `spot_fills` warning) with the parent table refetch observed (`import-completed` → parent invalidation).
+- API start (`start_api_import` with both dates, null `date_from`/`date_to` preserved) → account matching (`use_existing_matches` with full provider objects) → security mapping (`security_mapped` map, id 31) → completion.
+- Stop → held acknowledgment: `stop_import` sent once, stop control disabled with no outcome until the synthetic `import_stopped`; stop never claims completion.
+- Failed connect: recovery error, no running state, no duplicate start, no completion.
+- Stale events on the idle-connected socket (delayed `import_complete`) do not complete or repopulate anything; close/reopen retains no previous file.
+- Captures (committed, viewport 1440×1000 desktop / 390×844 mobile / native 200% zoom, fixture driver `imports-ws.mjs`, heads recorded in git): `d6-configuration-review`, `d6-decision-transaction-confirmation`, `d6-decision-security-mapping`, `d6-stopping`, `d6-warning-result`, `d6-mobile-configuration`, `d6-zoom200-method-choice`.
+
+### Deliberate deviations (all recorded, none wire-affecting)
+
+- D-1 fixed: stats-less `import_stopped` keeps the previous stats view (was a render crash).
+- D-2 fixed: `critical_error` keeps its message visible (was cleared by its own teardown).
+- D-4 fixed: bare `error {message}` envelopes become a recorded protocol issue (was a watcher crash).
+- D-5 fixed: Cancel/close resets the whole workflow including method selection.
+- D-6 fixed: starts are once-only per run (generation ownership).
+- D-9 fixed: failed starts surface their recoverable error instead of closing silently; mid-run disconnects surface a recoverable error instead of hanging; recoverable errors return to configuration with inputs retained.
+- Transport: the adapter reproduces the incumbent restart rule (`reset()` before each connect) and `sendMessage` compares `readyState` against the numeric `OPEN` constant because the automation harness proxies `window.WebSocket` without the constructor's static constants (recorded harness quirk; real browsers are unaffected).
+- Unknown top-level message types are recorded as non-fatal protocol issues instead of being silently ignored.
+
+### Remaining acceptance
+
+- Real screen-reader audit remains D8 (none performed here; DOM/ARIA/keyboard checks are not a substitute).
+- Security-creation and account-selection flows are exercised at unit level (they are frontend-accepted but backend-never-produced branches, recorded in section 3), not in the browser case.
+- `import_warning`/`import_cancelled` remain accepted-and-ignored (parity).
