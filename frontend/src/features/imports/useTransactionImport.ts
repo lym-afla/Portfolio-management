@@ -238,6 +238,7 @@ export function useTransactionImport(options: TransactionImportOptions) {
     const myGeneration = ++generation
     stopRequested = false
     runMethod = 'api'
+    lastConfigMethod.value = 'api'
     resetRunData()
     transition({
       kind: 'running',
@@ -564,6 +565,18 @@ export function useTransactionImport(options: TransactionImportOptions) {
   const INCONSISTENCY_MESSAGE =
     'Server inconsistency detected: An account you matched was not recognized during import. This is likely a server-side bug. Please try again or contact support.'
 
+  // consumers.py's outer process_import handler and start_file_import's
+  // catch emit these prefixes and return without a completion or stop
+  // acknowledgment: whether anything continues server-side is unknown.
+  // They get an explicit error state instead of blanket recovery.
+  const AMBIGUOUS_IMPORT_ERROR_PREFIXES = [
+    'An error occurred during import processing:',
+    'An error occurred during file import:',
+  ]
+
+  const isAmbiguousImportError = (error: string): boolean =>
+    AMBIGUOUS_IMPORT_ERROR_PREFIXES.some((prefix) => error.startsWith(prefix))
+
   const matchedAccountInconsistency = (error: string): boolean => {
     if (!error.includes('not matched to any database account')) return false
     const current = state()
@@ -686,6 +699,18 @@ export function useTransactionImport(options: TransactionImportOptions) {
           toDecision('security', {
             origin: 'error',
             info: { name: info.name, isin: info.isin, currency: null },
+          })
+        } else if (isAmbiguousImportError(decoded.error)) {
+          // The backend's outer handler ends processing without a
+          // completion: whether anything continues is unknown, so say so —
+          // an explicit recoverable error state, no inferred success, no
+          // automatic restart.
+          options.transport.disconnect()
+          resetRunData()
+          transition({
+            kind: 'error',
+            message: decoded.error,
+            canReturnToConfiguration: true,
           })
         } else {
           // Recoverable: the backend emits row-level import_error and

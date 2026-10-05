@@ -489,6 +489,64 @@ describe('completion, stop and stale-event containment', () => {
     expect(h.completed).toHaveLength(1)
   })
 
+  it('ambiguous processing failures enter an explicit uncertain error state', async () => {
+    const h = makeHarness()
+    await startRun(h)
+    // consumers.py's outer process_import handler emits this import_error
+    // and returns: whether the import continues is unknown.
+    h.orchestrator.receive({
+      type: 'import_error',
+      data: { error: 'An error occurred during import processing: synthetic boom' },
+    })
+
+    expect(lastState(h.orchestrator)).toEqual({
+      kind: 'error',
+      message: 'An error occurred during import processing: synthetic boom',
+      canReturnToConfiguration: true,
+    })
+    // No inference of success: Stop is gone and a late completion cannot
+    // fabricate an outcome.
+    h.orchestrator.requestStop()
+    expect(h.sent).toHaveLength(0)
+    h.orchestrator.receive(structuredClone(events.importCompleteWithWarnings))
+    expect(h.completed).toHaveLength(0)
+    expect(h.disconnect).toHaveBeenCalled()
+  })
+
+  it('ambiguous file failures end without a fabricated outcome', async () => {
+    const h = makeHarness()
+    await startRun(h)
+    h.orchestrator.receive({
+      type: 'import_error',
+      data: { error: 'An error occurred during file import: synthetic collapse' },
+    })
+
+    expect(lastState(h.orchestrator)).toEqual({
+      kind: 'error',
+      message: 'An error occurred during file import: synthetic collapse',
+      canReturnToConfiguration: true,
+    })
+    expect(h.completed).toHaveLength(0)
+  })
+
+  it('dismissing an ambiguous failure returns to configuration for an explicit retry', async () => {
+    const h = makeHarness()
+    await startRun(h)
+    h.orchestrator.receive({
+      type: 'import_error',
+      data: { error: 'An error occurred during import processing: synthetic boom' },
+    })
+    expect(lastState(h.orchestrator).kind).toBe('error')
+
+    h.orchestrator.dismissError()
+    expect(lastState(h.orchestrator)).toEqual({
+      kind: 'configure',
+      method: 'api',
+    })
+    // The explicit retry is the user's action; nothing was auto-restarted.
+    expect(h.connect).toHaveBeenCalledTimes(1)
+  })
+
   it('account resolvers are inert after reset', async () => {
     const h = makeHarness()
     await startRun(h)

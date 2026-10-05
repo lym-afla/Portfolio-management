@@ -14,6 +14,20 @@ export function useWebSocket(baseUrl: string) {
   const lastMessage = ref<MessageEvent | null>(null)
   const intentionalClose = ref(false)
   const connectionAttempted = ref(false)
+  // Monotonic connection identity: connect() and disconnect() both bump it,
+  // so every callback bound to a socket can tell whether that socket is
+  // still the current one. Superseded sockets — late opens, delayed closes,
+  // in-flight frames, stale error callbacks — may neither mutate shared
+  // state nor trigger reconnects.
+  let connectionId = 0
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+
+  const clearReconnectTimer = () => {
+    if (reconnectTimer !== null) {
+      clearTimeout(reconnectTimer)
+      reconnectTimer = null
+    }
+  }
 
   const getWebSocketUrl = (baseUrl: string): string => {
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
@@ -28,10 +42,15 @@ export function useWebSocket(baseUrl: string) {
   }
 
   const connect = () => {
+    const id = ++connectionId
+    clearReconnectTimer()
     return new Promise((resolve) => {
       // Set a timeout to prevent hanging if connection fails
       const connectionTimeout = setTimeout(() => {
         logger.warn('Unknown', 'WebSocket connection attempt timed out')
+        if (id === connectionId) {
+          isConnected.value = false
+        }
         resolve(false)
       }, 3000)
 
@@ -69,6 +88,17 @@ export function useWebSocket(baseUrl: string) {
         socket.value = new WebSocket(url)
 
         socket.value.onopen = () => {
+          if (id !== connectionId) {
+            // A superseded socket finished opening: discard it so an
+            // orphaned open connection cannot shadow the current one.
+            logger.log('Unknown', 'Discarding superseded WebSocket open')
+            try {
+              socket.value?.close()
+            } catch {
+              // Already closing or closed.
+            }
+            return
+          }
           logger.log('Unknown', 'WebSocket connection opened')
           isConnected.value = true
           clearTimeout(connectionTimeout)
@@ -76,12 +106,24 @@ export function useWebSocket(baseUrl: string) {
         }
 
         socket.value.onclose = () => {
+          if (id !== connectionId) {
+            // Delayed close of a superseded socket: the current connection
+            // is untouched.
+            logger.log('Unknown', 'Ignoring superseded WebSocket close')
+            return
+          }
           logger.log('Unknown', 'WebSocket connection closed')
           isConnected.value = false
           if (!intentionalClose.value) {
             // Only attempt reconnect if app is fully initialized
             if (authStore.isInitialized) {
-              setTimeout(() => {
+              clearReconnectTimer()
+              reconnectTimer = setTimeout(() => {
+                reconnectTimer = null
+                if (id !== connectionId) {
+                  // The reconnection belongs to a superseded connection.
+                  return
+                }
                 connectionAttempted.value = false // Reset the flag to allow reconnect
                 connect()
               }, 3000) // Reconnect after 3 seconds if not intentional
@@ -90,12 +132,14 @@ export function useWebSocket(baseUrl: string) {
         }
 
         socket.value.onerror = (error) => {
+          if (id !== connectionId) return
           logger.error('Unknown', 'WebSocket error:', error)
           clearTimeout(connectionTimeout)
           resolve(false)
         }
 
         socket.value.onmessage = (event) => {
+          if (id !== connectionId) return
           try {
             lastMessage.value = JSON.parse(event.data)
           } catch (e) {
@@ -111,10 +155,13 @@ export function useWebSocket(baseUrl: string) {
   }
 
   const disconnect = () => {
+    connectionId += 1
+    clearReconnectTimer()
     if (socket.value) {
       intentionalClose.value = true
       socket.value.close()
     }
+    isConnected.value = false
   }
 
   const reset = () => {
