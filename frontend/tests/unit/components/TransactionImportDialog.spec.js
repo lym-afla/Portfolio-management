@@ -8,7 +8,9 @@ import { useWebSocket } from '@/composables/useWebSocket'
 
 // Mock API calls
 vi.mock('@/services/api', () => ({
-  getBrokersWithTokens: vi.fn()
+  getBrokersWithTokens: vi.fn(),
+  analyzeFile: vi.fn(),
+  getAccounts: vi.fn(),
 }))
 
 // Mock WebSocket composable

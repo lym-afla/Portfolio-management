@@ -521,11 +521,16 @@
   />
 </template>
 <script setup>
-import { ref, watch, onUnmounted, computed, onMounted } from 'vue'
+// D6 task 2: the dialog is the compatible entrypoint. Workflow state,
+// transport orchestration and lifecycle safety live in useTransactionImport
+// over the discriminated useImportState owner; the bindings below are
+// projections of that state plus editable configuration refs, and the
+// handler methods are thin intent adapters kept for the reviewed template
+// until task 3 splits the steps into components.
+import { ref, watch, onUnmounted, computed, onMounted, inject } from 'vue'
 import { useWebSocket } from '@/composables/useWebSocket'
-import { useImportState } from '@/composables/useImportState'
 import { useErrorHandler } from '@/composables/useErrorHandler'
-import { decodeImportEvent } from '@/features/imports/legacyImportProtocol'
+import { useTransactionImport } from '@/features/imports/useTransactionImport'
 import { analyzeFile, getAccounts, getBrokersWithTokens } from '@/services/api'
 import ProgressDialog from './ProgressDialog.vue'
 import SecurityMappingDialog from './SecurityMappingDialog.vue'
@@ -540,1031 +545,483 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue', 'import-completed'])
 
 const dialog = ref(props.modelValue)
-    const file = ref(null)
-    const isLoading = ref(false)
-    const isAnalyzed = ref(false)
-    const selectedAccount = ref(null)
-    const accounts = ref([])
-    const fileId = ref(null)
-    const accountIdentified = ref(false)
-    const identifiedAccount = ref(null)
-    const accountIdentificationComplete = ref(false)
-    const showProgressDialog = ref(false)
-    const currentImported = ref(0)
-    const totalToImport = ref(0)
-    const currentImportMessage = ref('')
-    const importError = ref('')
-    const canStopImport = ref(true)
-    const showSecurityMapping = ref(false)
-    const showTransactionConfirmation = ref(false)
-    const securityToMap = ref('')
-    const bestMatch = ref(null)
-    const currentTransaction = ref({})
-    const selectedSecurityId = ref(null)
-    const currentMappingData = ref(null)
 
-    const showSuccessDialog = ref(false)
-    const importStats = ref({
-      totalTransactions: 0,
-      importedTransactions: 0,
-      skippedTransactions: 0,
-      duplicateTransactions: 0,
-      importErrors: 0,
-      warnings: [],
-    })
-    const errorMessage = ref('')
-    const showErrorDialog = ref(false)
+watch(
+  () => props.modelValue,
+  (newValue) => {
+    dialog.value = newValue
+  }
+)
 
-    const showSecurityDialog = ref(false)
-    const securityFormData = ref(null)
+watch(dialog, (newValue) => {
+  emit('update:modelValue', newValue)
+})
 
-    const confirmDialog = ref(false)
-    const confirmTitle = ref('')
-    const confirmMessage = ref('')
+// Existing WebSocket composable, normalized behind the D6 ImportTransport
+// interface (Boolean(await connect())); no second socket or reconnect logic.
+const {
+  isConnected,
+  lastMessage,
+  sendMessage,
+  connect,
+  disconnect,
+} = useWebSocket('/ws/transactions/')
 
-    const importState = useImportState()
-    const { handleApiError } = useErrorHandler()
-    const {
-      isConnected,
-      lastMessage,
-      sendMessage,
-      connect,
-      disconnect,
-      reset,
-    } = useWebSocket('/ws/transactions/')
+const transport = {
+  connect: async () => Boolean(await connect()),
+  send: (command) => Boolean(sendMessage(command)),
+  disconnect,
+}
 
-    watch(
-      () => props.modelValue,
-      (newValue) => {
-        dialog.value = newValue
-      }
-    )
+const { handleApiError } = useErrorHandler()
+// Plain-string payloads are inline validation feedback (e.g. empty pair
+// lists); they go straight to the app toast instead of the error mapper.
+const showError = inject('showError')
 
-    watch(dialog, (newValue) => {
-      emit('update:modelValue', newValue)
-    })
+const importer = useTransactionImport({
+  transport,
+  analyze: analyzeFile,
+  fetchAccounts: getAccounts,
+  onCompleted: (raw) => emit('import-completed', raw),
+  onError: (error) =>
+    typeof error === 'string' ? showError?.(error) : handleApiError(error),
+})
 
-    const confirmEveryTransaction = ref(false)
-    const isGalaxy = ref(false)
-    const galaxyType = ref('transactions')
-    const selectedCurrency = ref(null)
-    const currencies = [
-      { title: 'USD', value: 'USD' },
-      { title: 'EUR', value: 'EUR' },
-      { title: 'GBP', value: 'GBP' },
-      { title: 'RUB', value: 'RUB' },
-    ]
+const {
+  state,
+  configuration,
+  stats,
+  selectMethod: selectWorkflowMethod,
+  back,
+  analyze,
+  startFile,
+  startApi,
+  requestStop,
+  notifyDisconnected,
+  receive,
+  reset,
+  dismissError,
+  resolveSecurityMapping,
+  resolveSecurityCreated,
+  resolveSecuritySkipped,
+  resolveTransaction,
+  resolveAccountSelection,
+  resolveAccountMatched,
+  resolveUseExistingMatches,
+  resolveCreateAccount,
+} = importer
 
-    const handleFileChange = (event) => {
-      file.value = event.target.files[0]
-      isAnalyzed.value = false
-      accountIdentified.value = false
-      selectedAccount.value = null
-      identifiedAccount.value = null
-      accountIdentificationComplete.value = false
-      fileId.value = null
+// ---------------------------------------------------------------------
+// State projections (computed views; the state owner is the authority).
+// ---------------------------------------------------------------------
+const stateKind = computed(() => state.value.kind)
+const stateMethod = computed(() =>
+  ['configure', 'analyzing', 'review', 'running', 'stopping'].includes(
+    stateKind.value
+  )
+    ? state.value.method
+    : null
+)
+const decision = computed(() =>
+  stateKind.value === 'decision' ? state.value : null
+)
+const decisionPayload = computed(() =>
+  decision.value ? decision.value.payload : null
+)
+const securityDecisionOrigin = computed(() =>
+  decision.value && decision.value.decision === 'security'
+    ? decisionPayload.value.origin ?? 'mapping'
+    : null
+)
+
+const importMethodSelected = computed(() =>
+  ['configure', 'analyzing', 'review'].includes(stateKind.value)
+)
+// Pending card selection before Continue; the workflow method once chosen.
+const pendingMethod = ref(null)
+const importMethod = computed(
+  () => stateMethod.value ?? pendingMethod.value
+)
+
+const isAnalyzed = computed(() => stateKind.value === 'review')
+const accountIdentificationComplete = computed(() => stateKind.value === 'review')
+const isAnalyzingState = computed(() => stateKind.value === 'analyzing')
+
+const brokersLoading = ref(false)
+const isLoading = computed(() => isAnalyzingState.value || brokersLoading.value)
+
+const importError = computed(() =>
+  stateKind.value === 'error' ? state.value.message : ''
+)
+const errorMessage = importError
+const showErrorDialog = computed(() => stateKind.value === 'error')
+
+// The main configuration dialog closes while a run owns the flow; it
+// reopens when the workflow returns to a configurable state (recoverable
+// errors keep it open so the user can retry with the inputs intact).
+watch(stateKind, (kind, prev) => {
+  if (['running', 'decision', 'stopping', 'complete'].includes(kind)) {
+    dialog.value = false
+    return
+  }
+  if (kind === 'error') {
+    dialog.value = state.value.canReturnToConfiguration
+    return
+  }
+  if (['running', 'decision', 'stopping', 'error'].includes(prev ?? '')) {
+    dialog.value = true
+  }
+})
+
+const showProgressDialog = computed(() => {
+  if (stateKind.value === 'running' || stateKind.value === 'stopping') {
+    return true
+  }
+  if (stateKind.value === 'decision') {
+    // Accounts decisions render their own dialogs instead of the progress
+    // dialog; security/transaction decisions render inside its slot.
+    const current = decision.value
+    return current.decision === 'security' || current.decision === 'transaction'
+  }
+  return false
+})
+const runningState = computed(() =>
+  stateKind.value === 'running' ? state.value : null
+)
+const currentImported = computed(() => runningState.value?.current ?? 0)
+const totalToImport = computed(() => runningState.value?.total ?? 0)
+const currentImportMessage = computed(() => runningState.value?.message ?? '')
+const canStopImport = computed(() => stateKind.value === 'running')
+
+const showSecurityMapping = computed(
+  () => securityDecisionOrigin.value === 'mapping'
+)
+const showTransactionConfirmation = computed(
+  () =>
+    decision.value !== null &&
+    (decision.value.decision === 'transaction' || showSecurityMapping.value)
+)
+const securityToMap = computed(() =>
+  showSecurityMapping.value ? decisionPayload.value.description : ''
+)
+const bestMatch = computed(() =>
+  showSecurityMapping.value ? decisionPayload.value.bestMatch : null
+)
+const currentTransaction = computed(() => {
+  if (!decision.value) return {}
+  if (decision.value.decision === 'transaction') {
+    return decisionPayload.value.transaction
+  }
+  if (showSecurityMapping.value) return decisionPayload.value.transaction
+  return {}
+})
+
+const showSuccessDialog = computed(() => stateKind.value === 'complete')
+const importStats = computed(() => stats.value)
+
+// Security creation form: opened directly for creation-needed decisions or
+// after the create/skip confirmation for error-origin decisions.
+const securityFormRequested = ref(false)
+const showSecurityDialog = computed(() => {
+  if (securityDecisionOrigin.value === 'creation-needed') return true
+  return (
+    securityDecisionOrigin.value === 'error' && securityFormRequested.value
+  )
+})
+const securityFormData = computed(() => {
+  if (securityDecisionOrigin.value === 'creation-needed') {
+    const info = decisionPayload.value.info
+    return {
+      name: info.name,
+      ISIN: info.isin ?? '',
+      currency: info.currency || 'RUB',
+      type: 'Stock',
+      exposure: 'Equity',
     }
-
-    const closeDialog = () => {
-      resetInitialDialog()
-      resetProgressDialog()
+  }
+  if (securityDecisionOrigin.value === 'error') {
+    const info = decisionPayload.value.info
+    return {
+      name: info.name,
+      ISIN: info.isin ?? '',
+      currency: 'RUB',
+      type: 'Stock',
+      exposure: 'Equity',
     }
-
-    const submitFile = async () => {
-      if (file.value) {
-        isLoading.value = true
-        importState.setState('analyzing')
-        try {
-          const formData = new FormData()
-          formData.append('file', file.value)
-          formData.append('is_galaxy', String(isGalaxy.value))
-          const result = await analyzeFile(formData)
-          isAnalyzed.value = true
-          fileId.value = result.fileId
-          accounts.value = await getAccounts()
-
-          if (result.status === 'account_identified') {
-            accountIdentified.value = true
-            identifiedAccount.value = result.identifiedAccount
-            selectedAccount.value = result.identifiedAccount.id
-          }
-          importState.setState('idle')
-        } catch (error) {
-          handleApiError(error)
-          importState.setState('error', error.message)
-          importState.setState('idle')
-        } finally {
-          isLoading.value = false
-          accountIdentificationComplete.value = true
-        }
-      } else {
-        importState.setState('error', 'No file selected')
-      }
-    }
-
-    const startImport = async () => {
-      if (!fileId.value || !selectedAccount.value) {
-        importState.setState('error', 'File and account must be selected')
-        return
-      }
-
-      if (isGalaxy.value && !selectedCurrency.value) {
-        importState.setState(
-          'error',
-          'Currency must be selected for Galaxy import'
-        )
-        return
-      }
-
-      importState.setState('importing')
-      showProgressDialog.value = true
-      dialog.value = false
-
-      try {
-        // Reset WebSocket state before attempting to connect
-        // This clears intentionalClose and connectionAttempted flags
-        reset()
-
-        // Try to connect but don't block if it fails
-        await connect()
-
-        // Wait a moment for connection to establish
-        await new Promise((resolve) => setTimeout(resolve, 100))
-
-        if (isConnected.value) {
-          const messageSent = sendMessage({
-            type: 'start_file_import',
-            file_id: fileId.value,
-            account_id: selectedAccount.value,
-            confirm_every: confirmEveryTransaction.value,
-            is_galaxy: isGalaxy.value,
-            galaxy_type: isGalaxy.value ? galaxyType.value : null,
-            currency: isGalaxy.value ? selectedCurrency.value : null,
-          })
-
-          if (!messageSent) {
-            throw new Error('Failed to send import start message')
-          }
-        } else {
-          throw new Error('WebSocket not connected. Please try again.')
-        }
-      } catch (error) {
-        logger.error('Unknown', 'Import failed:', error)
-        importError.value = error.message
-        importState.setState('error', error.message)
-        showProgressDialog.value = false
-      }
-    }
-
-    const stopImport = () => {
-      sendMessage({
-        type: 'stop_import',
-      })
-      canStopImport.value = false // Disable stop button while processing
-    }
-
-    // Single dispatch (D6 task 1 seam): every incoming frame is validated by
-    // the legacy protocol boundary; this applier reproduces the former
-    // two-path effects exactly.
-    const applyDecodedEvent = (event) => {
-      switch (event.kind) {
-        case 'initialization':
-          totalToImport.value = event.total
-          currentImportMessage.value = event.message
-          break
-        case 'total-count':
-          totalToImport.value = event.total
-          currentImportMessage.value =
-            event.message || `Found ${event.total} transactions to process`
-          break
-        case 'progress':
-          if (event.fromImportUpdate) {
-            currentImported.value = event.current
-            currentImportMessage.value = event.message
-            if (event.percent !== null) {
-              importState.setProgress(event.percent)
-            } else if (totalToImport.value > 0) {
-              importState.setProgress(
-                Math.round(
-                  (currentImported.value / totalToImport.value) * 100
-                )
-              )
-            }
-            importState.setState('importing', event.message)
-          } else {
-            currentImportMessage.value = event.message
-            if (event.total) {
-              totalToImport.value = event.total
-            }
-            if (event.current) {
-              currentImported.value = event.current
-            }
-          }
-          break
-        case 'transaction-saved':
-          currentImported.value = event.current
-          currentImportMessage.value = event.message || 'Saving transactions...'
-          if (totalToImport.value > 0) {
-            importState.setProgress(
-              Math.round((currentImported.value / totalToImport.value) * 100)
-            )
-          }
-          break
-        case 'item-error':
-          logger.error('TransactionImportDialog', 'Transaction error:', event.message)
-          currentImportMessage.value = `⚠️ ${event.message}`
-          break
-        case 'security-mapping':
-          securityToMap.value = event.description
-          bestMatch.value = event.bestMatch
-          currentTransaction.value = event.transaction
-          currentMappingData.value = {
-            security_description: event.description,
-            isin: event.isin,
-            symbol: event.symbol,
-            best_match: event.bestMatch,
-          }
-          showSecurityMapping.value = true
-          showTransactionConfirmation.value = true
-          break
-        case 'transaction-confirmation':
-          currentTransaction.value = event.transaction
-          showTransactionConfirmation.value = true
-          showSecurityMapping.value = false
-          break
-        case 'import-error':
-          if (event.securityRelated) {
-            handleImportError(event.error)
-          } else {
-            showAccountMatching.value = false
-            showProgressDialog.value = false
-            showSuccessDialog.value = false
-            showSecurityMapping.value = false
-            showTransactionConfirmation.value = false
-            errorMessage.value = event.error
-            showErrorDialog.value = true
-          }
-          break
-        case 'save-error':
-          handleImportError(event.error)
-          break
-        case 'critical-error':
-          showAccountMatching.value = false
-          showProgressDialog.value = false
-          showSuccessDialog.value = false
-          showSecurityMapping.value = false
-          showTransactionConfirmation.value = false
-
-          errorMessage.value = event.error
-          showErrorDialog.value = true
-
-          // The effective incumbent path tears down via resetImport, which
-          // also clears errorMessage (recorded defect D-2: dialog opens
-          // empty). Preserved here until the Task 2 state owner.
-          disconnect()
-          resetImport()
-          break
-        case 'run-error':
-          importError.value = event.message
-          currentImportMessage.value = ''
-          importState.setState('error', event.message)
-          break
-        case 'complete':
-          handleImportSuccess(event.raw)
-          break
-        case 'stopped':
-          handleImportStopped(event)
-          break
-        case 'account-matching-required':
-          selectedBroker.value = {
-            id: event.broker.id,
-            name: event.broker.name,
-          }
-          tinkoffAccounts.value = event.unmatchedTinkoff
-          dbAccounts.value = event.unmatchedDb
-          matchedPairs.value = event.matchedPairs
-          showAccountMatching.value = true
-          showProgressDialog.value = false
-          break
-        case 'account-selection-required':
-          availableAccounts.value = event.accounts
-          showAccountSelection.value = true
-          break
-        case 'security-creation-needed':
-          securityFormData.value = {
-            name: event.info.name,
-            ISIN: event.info.isin ?? '',
-            currency: event.info.currency || 'RUB',
-            type: 'Stock',
-            exposure: 'Equity',
-          }
-          showSecurityDialog.value = true
-          break
-        case 'ignored':
-          break
-        case 'protocol-error':
-          logger.warn(
-            'TransactionImportDialog',
-            'Ignored unrecognized import message:',
-            event.reason
-          )
-          break
-      }
-    }
-
-    const handleImportError = (error) => {
-      importError.value = error
-      importState.setState('error', error)
-
-      // Check if this is a security-related error and provide options to add or skip
-      if (
-        error &&
-        (error.includes('Security not found') ||
-          error.includes('Could not match security') ||
-          error.includes('unsupported operand type') ||
-          error.includes('NoneType'))
-      ) {
-        // Try to extract security info from the current import message
-        let securityName = ''
-        let securityIsin = ''
-
-        // First try to extract from the error message
-        const securityMatch = error.match(/([^(]+)\(([^)]+)\)/)
-        if (securityMatch && securityMatch.length >= 3) {
-          securityName = securityMatch[1].trim()
-          securityIsin = securityMatch[2].trim()
-        }
-        // If not found in error, try the current message
-        else if (
-          currentImportMessage.value &&
-          currentImportMessage.value.includes('security')
-        ) {
-          const msgMatch = currentImportMessage.value.match(
-            /security\s+['"]?([^'"]+)['"]?/i
-          )
-          if (msgMatch && msgMatch[1]) {
-            securityName = msgMatch[1].trim()
-          }
-        }
-
-        logger.log('TransactionImportDialog', 'Detected security error:', {
-          error,
-          securityName,
-          securityIsin,
-          currentMessage: currentImportMessage.value,
-        })
-
-        // Show dialog to create new security or skip
-        confirmTitle.value = 'Unknown Security Detected'
-        confirmMessage.value = securityName
-          ? `The security "${securityName}" was not found in the database. Would you like to create it or skip this transaction?`
-          : 'An unknown security was encountered during import. Would you like to create it or skip this transaction?'
-
-        securityFormData.value = {
-          name: securityName,
-          ISIN: securityIsin,
-          currency: 'RUB', // Default values
-          type: 'Stock',
-          exposure: 'Equity',
-        }
-
-        confirmDialog.value = true
-        return
-      }
-
-      handleApiError({ message: error })
-    }
-
-    const handleCreateSecurityFromMapping = () => {
-      logger.log(
-        'TransactionImportDialog',
-        'Creating security from mapping data:',
-        currentMappingData.value
-      )
-
-      // Prepare security form data from mapping information
-      securityFormData.value = {
-        name: currentMappingData.value.security_description || '',
-        ISIN: currentMappingData.value.isin || '',
-        symbol: currentMappingData.value.symbol || '',
-        currency: 'RUB', // Default value, can be adjusted based on your needs
-        type: 'Stock', // Default value
-        exposure: 'Equity', // Default value
-      }
-
-      // Hide progress dialog while showing the security form
-      showProgressDialog.value = false
-      showSecurityDialog.value = true
-    }
-
-    const handleSecuritySelected = (securityId) => {
-      selectedSecurityId.value = securityId
-    }
-
-    const handleConfirm = () => {
-      if (isConnected.value) {
-        if (showSecurityMapping.value) {
-          sendMessage({
-            type: 'security_mapped',
-            action: 'map',
-            security_id: selectedSecurityId.value,
-          })
-        } else {
-          sendMessage({
-            type: 'transaction_confirmed',
-            confirmed: true,
-          })
-        }
-      }
-      resetConfirmationState()
-    }
-
-    const handleSkip = () => {
-      if (isConnected.value) {
-        if (showSecurityMapping.value) {
-          sendMessage({
-            type: 'security_mapped',
-            action: 'skip',
-            security_id: null,
-          })
-        } else {
-          sendMessage({
-            type: 'transaction_confirmed',
-            confirmed: false,
-          })
-        }
-      }
-      resetConfirmationState()
-    }
-
-    const resetConfirmationState = () => {
-      showSecurityMapping.value = false
-      showTransactionConfirmation.value = false
-      currentTransaction.value = {}
-      securityToMap.value = ''
-      bestMatch.value = null
-      selectedSecurityId.value = null
-      currentMappingData.value = null
-    }
-
-    const handleImportSuccess = (result) => {
-      // Normalize warnings so the template's v-if always sees an array even
-      // when the backend omits the field (e.g. clean imports, Tinkoff).
-      importStats.value = { warnings: [], ...result }
-      showSuccessDialog.value = true
-      showProgressDialog.value = false
-      emit('import-completed', result)
-      importState.setState('complete', 'Import completed successfully')
-
-      currentImported.value = 0
-      totalToImport.value = 0
-      currentImportMessage.value = ''
-      importError.value = ''
-      canStopImport.value = true
-      importState.setProgress(0)
-      importState.setState('idle')
-
-      // Disconnect WebSocket without reconnection
-      disconnect()
-
-      // Reset states
-      resetProgressDialog()
-      resetConfirmationState()
-    }
-
-    const closeSuccessDialog = () => {
-      showSuccessDialog.value = false
-      file.value = null
-      isAnalyzed.value = false
-      accountIdentified.value = false
-      identifiedAccount.value = null
-      accountIdentificationComplete.value = false
-      fileId.value = null
-      selectedAccount.value = null
-
-      resetProgressDialog()
-    }
-
-    const resetInitialDialog = () => {
-      dialog.value = false
-      file.value = null
-      isAnalyzed.value = false
-      accountIdentified.value = false
-      identifiedAccount.value = null
-      accountIdentificationComplete.value = false
-      selectedCurrency.value = null
-    }
-
-    const resetProgressDialog = () => {
-      currentImported.value = 0
-      totalToImport.value = 0
-      currentImportMessage.value = ''
-      importError.value = ''
-      canStopImport.value = true
-      importState.setProgress(0)
-      importState.setState('idle')
-    }
-
-    const handleImportStopped = (event) => {
-      showProgressDialog.value = false
-      currentImportMessage.value = event.message
-      // Stats-less stop (the backend finally-block shape): keep the previous
-      // stats view instead of crashing the result template (recorded D-1).
-      if (event.stats) {
-        importStats.value = event.stats
-      }
-
-      // Show a notification that import was stopped
-      showErrorDialog.value = true
-      errorMessage.value = 'Import process was stopped by user'
-
-      // Disconnect WebSocket
-      disconnect()
-
-      // Reset states
-      resetProgressDialog()
-      resetConfirmationState()
-    }
-
-    // Matched-account inconsistency guard, checked exactly where the
-    // incumbent checked it: before any dispatch, for any envelope carrying a
-    // data.error string.
-    const isAccountMatchingInconsistency = (message) => {
-      if (
-        message.data &&
-        message.data.error &&
-        message.data.error.includes('not matched to any database account') &&
-        matchedPairs.value &&
-        matchedPairs.value.length > 0
-      ) {
-        const accountIdMatch = message.data.error.match(/ID: (\d+)/)
-        if (accountIdMatch && accountIdMatch[1]) {
-          const accountId = accountIdMatch[1]
-          const wasMatched = matchedPairs.value.some(
-            (pair) => String(pair.tinkoff_account_id) === String(accountId)
-          )
-          if (wasMatched) {
-            errorMessage.value =
-              'Server inconsistency detected: An account you matched was not recognized during import. This is likely a server-side bug. Please try again or contact support.'
-            showErrorDialog.value = true
-            logger.error(
-              'TransactionImportDialog',
-              'Account matching inconsistency detected:',
-              { accountId }
-            )
-            return true
-          }
-        }
-      }
-      return false
-    }
-
-    // Main watcher for WebSocket messages
-    watch(lastMessage, (message) => {
-      if (!message) return
-      if (isAccountMatchingInconsistency(message)) return
-      applyDecodedEvent(decodeImportEvent(message))
-    })
-
-    onUnmounted(() => {
-      // Ensure intentional disconnect on unmount
-      disconnect()
-    })
-
-    const closeErrorDialog = () => {
-      showErrorDialog.value = false
-      errorMessage.value = ''
-      dialog.value = false // Close the main dialog as well
-    }
-
-    const handleSecurityAdded = (securityData) => {
-      logger.log(
-        'TransactionImportDialog',
-        'handleSecurityAdded called with:',
-        securityData
-      )
-      logger.log(
-        'TransactionImportDialog',
-        'showSecurityMapping.value:',
-        showSecurityMapping.value
-      )
-      logger.log('TransactionImportDialog', 'Security ID:', securityData?.id)
-
-      showSecurityDialog.value = false
-      securityFormData.value = null
-
-      // Show the progress dialog again
-      showProgressDialog.value = true
-
-      // If this was created from security mapping, use it to map the security
-      if (showSecurityMapping.value && securityData?.id) {
-        logger.log(
-          'TransactionImportDialog',
-          'Mapping newly created security to transaction, ID:',
-          securityData.id
-        )
-        sendMessage({
-          type: 'security_mapped',
-          action: 'map',
-          security_id: securityData.id,
-        })
-        resetConfirmationState()
-      } else if (securityData?.id) {
-        // Inform the server about the newly created security for other cases
-        logger.log(
-          'TransactionImportDialog',
-          'Sending security_confirmation for non-mapping case'
-        )
-        sendMessage({
-          type: 'security_confirmation',
-          security_id: securityData.id,
-          security_created: true,
-          security_data: {
-            name: securityData.name,
-            id: securityData.id,
-          },
-        })
-      } else {
-        logger.error(
-          'TransactionImportDialog',
-          'Security data missing ID:',
-          securityData
-        )
-      }
-    }
-
-    const handleSecuritySkipped = () => {
-      logger.log('TransactionImportDialog', 'handleSecuritySkipped called')
-      showSecurityDialog.value = false
-      securityFormData.value = null
-
-      // Show the progress dialog again
-      showProgressDialog.value = true
-
-      // If this was from security mapping, send skip message
-      if (showSecurityMapping.value) {
-        logger.log(
-          'TransactionImportDialog',
-          'Skipping transaction due to security creation cancellation'
-        )
-        sendMessage({
-          type: 'security_mapped',
-          action: 'skip',
-          security_id: null,
-        })
-        resetConfirmationState()
-      } else {
-        // Tell the server to skip this transaction for other cases
-        sendMessage({
-          type: 'security_confirmation',
-          security_id: null,
-          skip_transaction: true,
-        })
-      }
-    }
-
-    const handleSecurityConfirm = (confirmed) => {
-      logger.log(
-        'TransactionImportDialog',
-        'handleSecurityConfirm called with:',
-        confirmed
-      )
-      confirmDialog.value = false
-
-      if (confirmed) {
-        logger.log(
-          'TransactionImportDialog',
-          'Security confirmed, formData:',
-          securityFormData.value
-        )
-        if (securityFormData.value.readonly) {
-          // If it's a readonly object (existing security)
-          sendMessage({
-            type: 'security_confirmation',
-            security_id: securityFormData.value.id,
-          })
-        } else {
-          // Show the form to create a new security
-          showSecurityDialog.value = true
-        }
-      } else {
-        // User chose to skip this security/transaction
-        handleSecuritySkipped()
-      }
-
-      // After handling the security confirmation, reset the error state to continue the import
-      importError.value = ''
-      errorMessage.value = ''
-
-      // Show the progress dialog again
-      if (!showSecurityDialog.value) {
-        showProgressDialog.value = true
-      }
-    }
-
-    // New refs for method selection and API import
-    const importMethod = ref(null)
-    const importMethodSelected = ref(false)
-    const selectedBroker = ref(null)
-    const connectedBrokers = ref([])
-    const dateRange = ref({
-      from: null,
-      to: null,
-    })
-
-    // Load connected broker accounts on component mount
-    onMounted(async () => {
-      try {
-        isLoading.value = true
-        const brokers = await getBrokersWithTokens()
-        connectedBrokers.value = brokers.map((broker) => ({
-          id: broker.id,
-          name: broker.name,
-          // Add any other needed broker properties
-        }))
-      } catch (error) {
-        logger.error('Unknown', 'Failed to load broker accounts:', error)
-        // Handle error - maybe show a notification
-      } finally {
-        isLoading.value = false
-      }
-    })
-
-    // Computed properties
-    const hasConnectedBrokers = computed(
-      () => connectedBrokers.value.length > 0
-    )
-
-    const isApiImportValid = computed(() => {
-      return !!selectedBroker.value
-    })
-
-    const accountDisplayItems = computed(() =>
-      accounts.value.map((a) => ({
-        id: a.id,
-        title: a.broker?.text
-          ? `${a.broker.text} – ${a.name}`
-          : a.name,
-      }))
-    )
-
-    // Method selection handlers
-    const selectMethod = (method) => {
-      if (method === 'api' && !hasConnectedBrokers.value) return
-      importMethod.value = method
-    }
-
-    const confirmMethod = () => {
-      importMethodSelected.value = true
-    }
-
-    const backToSelection = () => {
-      importMethodSelected.value = false
-      importMethod.value = null
-      // Reset form data
-      file.value = null
-      selectedBroker.value = null
-      dateRange.value = { from: null, to: null }
-    }
-
-    // New method for API import
-    const startApiImport = async () => {
-      showValidation.value = true // Show validation on import attempt
-
-      if (!selectedBroker.value?.id) {
-        errorMessage.value = 'Please select a broker account'
-        return
-      }
-
-      importState.setState('importing')
-      showProgressDialog.value = true
-      currentImportMessage.value = 'Initializing import...'
-      dialog.value = false
-
-      try {
-        // Log selected account for debugging
-        logger.log('Unknown', 'Selected broker account:', selectedBroker.value)
-
-        // Reset WebSocket state before attempting to connect
-        // This clears intentionalClose and connectionAttempted flags
-        reset()
-
-        // Try to connect but don't block if it fails
-        await connect()
-
-        // Wait a moment for connection to establish
-        await new Promise((resolve) => setTimeout(resolve, 100))
-
-        if (!isConnected.value) {
-          throw new Error('Failed to establish WebSocket connection')
-        }
-
-        currentImportMessage.value = 'Connecting to broker API...'
-
-        const importData = {
-          broker_id: selectedBroker.value.id,
-          confirm_every_transaction: confirmEveryTransaction.value,
-          date_from: dateRange.value?.from || null,
-          date_to: dateRange.value?.to || null,
-        }
-
-        logger.log('Unknown', 'Import data:', importData)
-
-        const messageSent = sendMessage({
-          type: 'start_api_import',
-          data: importData,
-        })
-
-        if (!messageSent) {
-          throw new Error('Failed to send start message')
-        }
-      } catch (error) {
-        logger.error('Unknown', 'API import failed:', error)
-        currentImportMessage.value = ''
-        errorMessage.value = error.message
-        importError.value = error.message
-        importState.setState('error', error.message)
-        showProgressDialog.value = false
-      }
-    }
-
-    // Add watcher for selectedBroker
-    watch(selectedBroker, (newValue) => {
-      logger.log('Unknown', 'Selected broker account changed:', newValue)
-    })
-
-    const resetImport = () => {
-      // Reset all import-related state
-      currentImported.value = 0
-      totalToImport.value = 0
-      currentImportMessage.value = ''
-      errorMessage.value = ''
-      importError.value = ''
-      showProgressDialog.value = false
-      importState.setState('idle')
-    }
-
-    // Add validation state
-    const showValidation = ref(false)
-
-    const handleBrokerAccountChange = (value) => {
-      logger.log('Unknown', 'Selected broker account:', value) // Debug selected value
-      selectedBroker.value = value
-      showValidation.value = true
-    }
-
-    const showAccountSelection = ref(false)
-    const availableAccounts = ref([])
-
-    const selectAccount = (account) => {
-      showAccountSelection.value = false
-      sendMessage({
-        type: 'select_account',
-        data: {
-          account_id: account.id,
-          confirm_every_transaction: confirmEveryTransaction.value,
-          date_from: dateRange.value?.from,
-          date_to: dateRange.value?.to,
-        },
-      })
-    }
-
-    const showAccountMatching = ref(false)
-    const tinkoffAccounts = ref([])
-    const dbAccounts = ref([])
-    const matchedPairs = ref([])
-
-    const handleAccountsMatched = (selection) => {
-      logger.log('Unknown', 'Account pairs selected:', selection.pairs)
-
-      // Validate that we have valid pairs data
-      if (!selection || !selection.pairs || !Array.isArray(selection.pairs)) {
-        logger.error('Unknown', 'Invalid account pairs data:', selection)
-        errorMessage.value = 'Invalid account pairing data received'
-        return
-      }
-
-      // Check if we have at least one pair
-      if (selection.pairs.length === 0) {
-        logger.error('Unknown', 'No account pairs provided')
-        errorMessage.value = 'No account pairs were provided'
-        return
-      }
-
-      // Send the data to the server
-      try {
-        sendMessage({
-          type: 'accounts_matched',
-          data: {
-            pairs: selection.pairs,
-          },
-        })
-        // Hide the account matching dialog and show progress
-        showAccountMatching.value = false
-        showProgressDialog.value = true
-      } catch (error) {
-        logger.error('Unknown', 'Error sending account matches:', error)
-        errorMessage.value = 'Error sending account matches to server'
-      }
-    }
-
-    const handleAccountCreation = (data) => {
-      logger.log('Unknown', 'Creating new account with data:', data)
-
-      // Validate the data
-      if (!data || !data.tinkoff_account || !data.name) {
-        logger.error('Unknown', 'Invalid account creation data:', data)
-        errorMessage.value = 'Invalid account creation data'
-        return
-      }
-
-      try {
-        sendMessage({
-          type: 'create_account',
-          data: {
-            tinkoff_account: data.tinkoff_account,
-            name: data.name,
-            comment: data.comment || '',
-          },
-        })
-        // Hide the account matching dialog and show progress
-        showAccountMatching.value = false
-        showProgressDialog.value = true
-      } catch (error) {
-        logger.error(
-          'TransactionImportDialog',
-          'Error sending account creation request:',
-          error
-        )
-        errorMessage.value = 'Error creating new account'
-      }
-    }
-
-    const closeAccountMatching = () => {
-      showAccountMatching.value = false
-      // Reset the WebSocket connection if needed
-      if (importError.value) {
-        disconnect()
-        resetImport()
-      }
-    }
-
-    const handleUseExistingMatches = (data) => {
-      logger.log(
-        'TransactionImportDialog',
-        'Using existing account matches:',
-        data.pairs
-      )
-
-      // Validate that we have valid pairs data
-      if (!data || !data.pairs || !Array.isArray(data.pairs)) {
-        logger.error(
-          'TransactionImportDialog',
-          'Invalid existing pairs data:',
-          data
-        )
-        errorMessage.value = 'Invalid existing account pairs data'
-        return
-      }
-
-      // Check if we have at least one pair
-      if (data.pairs.length === 0) {
-        logger.error(
-          'TransactionImportDialog',
-          'No existing account pairs available'
-        )
-        errorMessage.value = 'No existing account pairs were found'
-        return
-      }
-
-      // Log the pairs before sending
-      logger.log(
-        'TransactionImportDialog',
-        'Sending matched pairs to server:',
-        JSON.stringify(data.pairs, null, 2)
-      )
-
-      // Send the data to the server
-      try {
-        sendMessage({
-          type: 'use_existing_matches',
-          data: {
-            pairs: data.pairs,
-          },
-        })
-        // Hide the account matching dialog and show progress
-        showAccountMatching.value = false
-        showProgressDialog.value = true
-      } catch (error) {
-        logger.error(
-          'TransactionImportDialog',
-          'Error sending existing matches:',
-          error
-        )
-        errorMessage.value = 'Error sending existing matches to server'
-      }
-    }
+  }
+  return null
+})
+const confirmDialog = computed(
+  () => securityDecisionOrigin.value === 'error' && !securityFormRequested.value
+)
+const confirmTitle = computed(() =>
+  confirmDialog.value ? 'Unknown Security Detected' : ''
+)
+const confirmMessage = computed(() => {
+  if (!confirmDialog.value) return ''
+  const name = decisionPayload.value.info.name
+  return name
+    ? `The security "${name}" was not found in the database. Would you like to create it or skip this transaction?`
+    : 'An unknown security was encountered during import. Would you like to create it or skip this transaction?'
+})
+
+// Account matching/selection overlays derive from accounts decisions.
+const showAccountSelection = computed(
+  () =>
+    decision.value !== null &&
+    decision.value.decision === 'accounts' &&
+    decisionPayload.value.variant === 'select'
+)
+const availableAccounts = computed(() =>
+  showAccountSelection.value ? decisionPayload.value.accounts : []
+)
+const showAccountMatching = computed(
+  () =>
+    decision.value !== null &&
+    decision.value.decision === 'accounts' &&
+    decisionPayload.value.variant === 'match'
+)
+const tinkoffAccounts = computed(() =>
+  showAccountMatching.value ? decisionPayload.value.unmatchedTinkoff : []
+)
+const dbAccounts = computed(() =>
+  showAccountMatching.value ? decisionPayload.value.unmatchedDb : []
+)
+const matchedPairs = computed(() =>
+  showAccountMatching.value ? decisionPayload.value.matchedPairs : []
+)
+
+// ---------------------------------------------------------------------
+// Configuration (editable) and local presentation refs.
+// ---------------------------------------------------------------------
+const {
+  file,
+  fileId,
+  isGalaxy,
+  galaxyType,
+  selectedCurrency,
+  confirmEveryTransaction,
+  selectedBroker,
+  dateRange,
+  selectedAccount,
+  accounts,
+  identifiedAccount,
+  accountIdentified,
+} = configuration
+
+const currencies = [
+  { title: 'USD', value: 'USD' },
+  { title: 'EUR', value: 'EUR' },
+  { title: 'GBP', value: 'GBP' },
+  { title: 'RUB', value: 'RUB' },
+]
+
+const selectedSecurityId = ref(null)
+const showValidation = ref(false)
+
+const connectedBrokers = ref([])
+onMounted(async () => {
+  try {
+    brokersLoading.value = true
+    const brokers = await getBrokersWithTokens()
+    connectedBrokers.value = brokers.map((broker) => ({
+      id: broker.id,
+      name: broker.name,
+    }))
+  } catch (error) {
+    logger.error('Unknown', 'Failed to load broker accounts:', error)
+  } finally {
+    brokersLoading.value = false
+  }
+})
+
+const hasConnectedBrokers = computed(() => connectedBrokers.value.length > 0)
+const isApiImportValid = computed(() => !!selectedBroker.value?.id)
+
+const accountDisplayItems = computed(() =>
+  accounts.value.map((a) => ({
+    id: a.id,
+    title: a.broker?.text ? `${a.broker.text} – ${a.name}` : a.name,
+  }))
+)
+
+// ---------------------------------------------------------------------
+// Intent adapters (kept until the task 3 step components).
+// ---------------------------------------------------------------------
+const handleFileChange = (event) => {
+  file.value = event.target.files[0]
+  // A new file invalidates the previous analysis.
+  fileId.value = null
+  accountIdentified.value = false
+  identifiedAccount.value = null
+  selectedAccount.value = null
+}
+
+const closeDialog = () => {
+  reset()
+  pendingMethod.value = null
+  dialog.value = false
+}
+
+const submitFile = async () => {
+  if (!file.value) return
+  await analyze(file.value)
+}
+
+const startImport = async () => {
+  await startFile({
+    fileId: fileId.value,
+    accountId: selectedAccount.value,
+    confirmEvery: confirmEveryTransaction.value,
+    isGalaxy: isGalaxy.value,
+    galaxyType: galaxyType.value,
+    currency: selectedCurrency.value,
+  })
+}
+
+const startApiImport = async () => {
+  showValidation.value = true
+  if (!selectedBroker.value?.id) return
+  await startApi({
+    brokerId: selectedBroker.value.id,
+    confirmEvery: confirmEveryTransaction.value,
+    dateFrom: dateRange.value?.from || null,
+    dateTo: dateRange.value?.to || null,
+  })
+}
+
+const stopImport = () => {
+  requestStop()
+}
+
+const selectMethod = (method) => {
+  if (method === 'api' && !hasConnectedBrokers.value) return
+  pendingMethod.value = method
+}
+
+const confirmMethod = () => {
+  if (!pendingMethod.value) return
+  selectWorkflowMethod(pendingMethod.value)
+}
+
+const backToSelection = () => {
+  back()
+  pendingMethod.value = null
+}
+
+const handleSecuritySelected = (securityId) => {
+  selectedSecurityId.value = securityId
+}
+
+const handleConfirm = () => {
+  if (showSecurityMapping.value) {
+    resolveSecurityMapping(selectedSecurityId.value)
+  } else {
+    resolveTransaction(true)
+  }
+}
+
+const handleSkip = () => {
+  if (showSecurityMapping.value) {
+    resolveSecurityMapping(null)
+  } else {
+    resolveTransaction(false)
+  }
+}
+
+const handleCreateSecurityFromMapping = () => {
+  securityFormRequested.value = true
+}
+
+const handleSecurityAdded = (securityData) => {
+  securityFormRequested.value = false
+  if (securityData?.id) {
+    resolveSecurityCreated({ id: securityData.id, name: securityData.name })
+  }
+}
+
+const handleSecuritySkipped = () => {
+  securityFormRequested.value = false
+  resolveSecuritySkipped()
+}
+
+const handleSecurityConfirm = (confirmed) => {
+  if (confirmed) {
+    securityFormRequested.value = true
+  } else {
+    securityFormRequested.value = false
+    resolveSecuritySkipped()
+  }
+}
+
+const selectAccount = (account) => {
+  resolveAccountSelection(account)
+}
+
+const handleAccountsMatched = (selection) => {
+  if (!selection || !Array.isArray(selection.pairs)) {
+    return
+  }
+  resolveAccountMatched(selection.pairs)
+}
+
+const handleAccountCreation = (data) => {
+  if (!data || !data.tinkoff_account || !data.name) {
+    return
+  }
+  resolveCreateAccount({
+    tinkoffAccount: data.tinkoff_account,
+    name: data.name,
+    comment: data.comment,
+  })
+}
+
+const handleUseExistingMatches = (data) => {
+  if (!data || !Array.isArray(data.pairs)) {
+    return
+  }
+  resolveUseExistingMatches(data.pairs)
+}
+
+const closeAccountMatching = () => {
+  // Closing the matching overlay cancels the run: the server cannot proceed
+  // without a matching answer, so the owned connection is torn down instead
+  // of lingering (recorded incumbent deviation).
+  reset()
+}
+
+const closeSuccessDialog = () => {
+  reset()
+}
+
+const closeErrorDialog = () => {
+  dismissError()
+}
+
+const resetImport = () => {
+  reset()
+}
+
+const handleBrokerAccountChange = (value) => {
+  selectedBroker.value = value
+  showValidation.value = true
+}
+
+watch(lastMessage, (message) => {
+  if (!message) return
+  receive(message)
+})
+
+watch(isConnected, (connected) => {
+  if (!connected) notifyDisconnected()
+})
+
+onUnmounted(() => {
+  // Intentional disconnect on unmount: teardown owns this connection.
+  disconnect()
+})
 </script>
+
 
 <style scoped>
 .import-method-card {

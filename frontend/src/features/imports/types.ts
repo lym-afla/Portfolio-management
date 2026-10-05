@@ -130,6 +130,7 @@ export interface TransactionConfirmationPayload {
 }
 
 export interface AccountMatchingPayload {
+  variant: 'match'
   broker: { id: number; name: string }
   matchedPairs: AccountMatchPair[]
   unmatchedTinkoff: JsonValue[]
@@ -137,9 +138,11 @@ export interface AccountMatchingPayload {
 }
 
 export interface AccountSelectionPayload {
+  variant: 'select'
   accounts: JsonValue[]
 }
 
 export interface SecurityCreationPayload {
+  origin: 'creation-needed' | 'error'
   info: { name: string; isin: string | null; currency: string | null }
 }

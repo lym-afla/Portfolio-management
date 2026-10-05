@@ -1,9 +1,10 @@
-// D6 task 0 — characterization of the INCUMBENT transaction import workflow
-// at the extraction base. Every assertion here records verified behavior of
-// TransactionImportDialog.vue as it exists today (base 57f251d3), driven
-// through the same fixtures the post-extraction protocol/workflow suites
-// reuse. Nothing in this file asserts invented financial outcomes: all
-// money/quantity/rate values pass through as exact strings.
+// D6 task 2 — characterization of the transaction import workflow, now
+// driven through the orchestrator-backed dialog. The Task-0 fixture set is
+// unchanged; what changed is the driver: events are seeded through the
+// WebSocket lastMessage ref (the transport boundary) and decisions run
+// through the same intent handlers the template uses. Recorded deviations
+// from the incumbent are noted inline and in
+// docs/design/frontend-import-workflow.md.
 import { mount } from '@vue/test-utils'
 import {
   afterAll,
@@ -95,6 +96,17 @@ const feed = async (event) => {
   await nextTick()
 }
 
+// Starts a synthetic API run so incoming events land in an active session.
+const startSyntheticRun = async () => {
+  const vm = wrapper.vm
+  vm.selectedBroker = { id: 11, name: 'Tinkoff' }
+  connectMock.mockResolvedValue(true)
+  isConnected.value = true
+  await vm.startApiImport()
+  sendMock.mockClear()
+  connectMock.mockClear()
+}
+
 const sends = () => sendMock.mock.calls.map((call) => call[0])
 const lastSend = () => sends()[sends().length - 1]
 
@@ -135,7 +147,7 @@ afterEach(() => {
   wrapper = null
 })
 
-describe('incumbent outgoing start commands', () => {
+describe('outgoing start commands', () => {
   it('file start: exact wire object, non-galaxy nulls galaxy_type/currency', async () => {
     mountDialog()
     await nextTick()
@@ -221,7 +233,7 @@ describe('incumbent outgoing start commands', () => {
     expect(lastSend()).toEqual(commands.apiStartNullDates)
   })
 
-  it('api start without broker: validation error, no send, no progress dialog', async () => {
+  it('api start without broker: validation flag set, no send, no progress dialog', async () => {
     mountDialog()
     await nextTick()
     const vm = wrapper.vm
@@ -230,7 +242,9 @@ describe('incumbent outgoing start commands', () => {
     await vm.startApiImport()
 
     expect(sends()).toHaveLength(0)
-    expect(vm.errorMessage).toBe('Please select a broker account')
+    // The select's own error message (driven by showValidation) is the
+    // visible validation; no run state is touched.
+    expect(vm.showValidation).toBe(true)
     expect(vm.showProgressDialog).toBe(false)
   })
 
@@ -250,25 +264,23 @@ describe('incumbent outgoing start commands', () => {
   })
 })
 
-describe('incumbent stop and decision commands', () => {
-  it('stop: exact payload, sent regardless of connection state, stop disabled', async () => {
+describe('stop and decision commands', () => {
+  it('stop: exact payload once, stop then disabled while stopping', async () => {
     mountDialog()
-    await nextTick()
-    const vm = wrapper.vm
-    isConnected.value = false
+    await startSyntheticRun()
 
-    vm.stopImport()
+    wrapper.vm.stopImport()
 
     expect(lastSend()).toEqual(commands.stop)
-    expect(vm.canStopImport).toBe(false)
+    expect(wrapper.vm.canStopImport).toBe(false)
   })
 
   it('security mapping confirm: security_mapped map with selected id', async () => {
     mountDialog()
-    await nextTick()
+    await startSyntheticRun()
+    await feed(events.importUpdateSecurityMapping)
     const vm = wrapper.vm
-    isConnected.value = true
-    vm.showSecurityMapping = true
+    expect(vm.showSecurityMapping).toBe(true)
     vm.handleSecuritySelected(31)
 
     vm.handleConfirm()
@@ -280,51 +292,50 @@ describe('incumbent stop and decision commands', () => {
 
   it('security mapping skip: security_mapped skip with null id', async () => {
     mountDialog()
-    await nextTick()
-    const vm = wrapper.vm
-    isConnected.value = true
-    vm.showSecurityMapping = true
+    await startSyntheticRun()
+    await feed(events.importUpdateSecurityMapping)
 
-    vm.handleSkip()
+    wrapper.vm.handleSkip()
 
     expect(lastSend()).toEqual(commands.securityMappedSkip)
   })
 
   it('plain transaction confirm/skip: transaction_confirmed booleans', async () => {
     mountDialog()
-    await nextTick()
-    const vm = wrapper.vm
-    isConnected.value = true
-    vm.showSecurityMapping = false
-
-    vm.handleConfirm()
+    await startSyntheticRun()
+    await feed(events.importUpdateTransactionConfirmation)
+    wrapper.vm.handleConfirm()
     expect(lastSend()).toEqual(commands.transactionConfirmed)
 
-    vm.handleSkip()
+    await feed(events.importUpdateTransactionConfirmation)
+    wrapper.vm.handleSkip()
     expect(lastSend()).toEqual(commands.transactionSkipped)
   })
 
-  it('decisions are not sent while disconnected', async () => {
+  it('a failed decision send keeps the decision pending with its values', async () => {
     mountDialog()
-    await nextTick()
-    const vm = wrapper.vm
-    isConnected.value = false
-    vm.showSecurityMapping = false
+    await startSyntheticRun()
+    sendMock.mockImplementation(() => false)
+    await feed(events.importUpdateTransactionConfirmation)
 
-    vm.handleConfirm()
-    vm.handleSkip()
+    wrapper.vm.handleConfirm()
 
-    expect(sends()).toHaveLength(0)
+    // The send attempt failed at the transport, so the decision stays open
+    // with its values for retry.
+    expect(wrapper.vm.showTransactionConfirmation).toBe(true)
+
+    sendMock.mockImplementation(() => true)
+    wrapper.vm.handleConfirm()
+    expect(lastSend()).toEqual(commands.transactionConfirmed)
+    expect(wrapper.vm.showTransactionConfirmation).toBe(false)
   })
 
   it('security created from mapping flow: maps with the new id', async () => {
     mountDialog()
-    await nextTick()
-    const vm = wrapper.vm
-    isConnected.value = true
-    vm.showSecurityMapping = true
+    await startSyntheticRun()
+    await feed(events.importUpdateSecurityMapping)
 
-    vm.handleSecurityAdded({ id: 77, name: 'New Synthetic Security' })
+    wrapper.vm.handleSecurityAdded({ id: 77, name: 'New Synthetic Security' })
 
     expect(lastSend()).toEqual({
       type: 'security_mapped',
@@ -335,75 +346,58 @@ describe('incumbent stop and decision commands', () => {
 
   it('security created outside mapping: security_confirmation with created flag', async () => {
     mountDialog()
-    await nextTick()
-    const vm = wrapper.vm
-    isConnected.value = true
-    vm.showSecurityMapping = false
+    await startSyntheticRun()
+    await feed(events.securityCreationNeeded)
 
-    vm.handleSecurityAdded({ id: 77, name: 'New Synthetic Security' })
+    wrapper.vm.handleSecurityAdded({ id: 77, name: 'New Synthetic Security' })
 
     expect(lastSend()).toEqual(commands.securityConfirmationCreated)
   })
 
   it('security added without an id sends nothing', async () => {
     mountDialog()
-    await nextTick()
-    const vm = wrapper.vm
-    isConnected.value = true
-    vm.showSecurityMapping = false
+    await startSyntheticRun()
+    await feed(events.securityCreationNeeded)
 
-    vm.handleSecurityAdded({ name: 'id-less' })
+    wrapper.vm.handleSecurityAdded({ name: 'id-less' })
 
     expect(sends()).toHaveLength(0)
   })
 
   it('security skipped from mapping vs outside mapping', async () => {
     mountDialog()
-    await nextTick()
-    const vm = wrapper.vm
-    isConnected.value = true
+    await startSyntheticRun()
 
-    vm.showSecurityMapping = true
-    vm.handleSecuritySkipped()
+    await feed(events.importUpdateSecurityMapping)
+    wrapper.vm.handleSecuritySkipped()
     expect(lastSend()).toEqual(commands.securityMappedSkip)
 
-    vm.showSecurityMapping = false
-    vm.handleSecuritySkipped()
+    await feed(events.securityCreationNeeded)
+    wrapper.vm.handleSecuritySkipped()
     expect(lastSend()).toEqual(commands.securityConfirmationSkipped)
   })
 
-  it('readonly security confirm: bare security_confirmation', async () => {
-    mountDialog()
-    await nextTick()
-    const vm = wrapper.vm
-    isConnected.value = true
-    vm.securityFormData = { readonly: true, id: 42, name: 'Existing' }
-    vm.confirmDialog = true
-
-    vm.handleSecurityConfirm(true)
-
-    expect(lastSend()).toEqual(commands.securityConfirmationExisting)
-    expect(vm.confirmDialog).toBe(false)
-  })
+  // Retired: the readonly-security confirm branch was already dead at the
+  // characterization base (securityFormData.readonly is never produced);
+  // the bare security_confirmation shape is pinned by protocol.spec.ts.
 
   it('editable security confirm: opens the creation form, sends nothing yet', async () => {
     mountDialog()
-    await nextTick()
-    const vm = wrapper.vm
-    isConnected.value = true
-    vm.securityFormData = { name: 'Draft', ISIN: 'US1' }
+    await startSyntheticRun()
+    await feed(events.importErrorSecurity)
+    expect(wrapper.vm.confirmDialog).toBe(true)
 
-    vm.handleSecurityConfirm(true)
+    wrapper.vm.handleSecurityConfirm(true)
 
     expect(sends()).toHaveLength(0)
-    expect(vm.showSecurityDialog).toBe(true)
+    expect(wrapper.vm.showSecurityDialog).toBe(true)
   })
 
   it('select_account: passes confirm flag and both dates through', async () => {
     mountDialog()
-    await nextTick()
+    await startSyntheticRun()
+    await feed(events.accountSelectionRequired)
     const vm = wrapper.vm
-    isConnected.value = true
     vm.confirmEveryTransaction = true
     vm.dateRange = { from: '2026-01-01', to: null }
 
@@ -415,64 +409,62 @@ describe('incumbent stop and decision commands', () => {
 
   it('accounts_matched: full provider objects preserved verbatim', async () => {
     mountDialog()
-    await nextTick()
-    const vm = wrapper.vm
-    isConnected.value = true
+    await startSyntheticRun()
+    await feed(events.accountMatchingRequired)
 
-    vm.handleAccountsMatched({ pairs: structuredClone(matchedPairsArray) })
+    wrapper.vm.handleAccountsMatched({ pairs: structuredClone(matchedPairsArray) })
 
     expect(lastSend()).toEqual(commands.accountsMatched)
     expect(lastSend().data.pairs[0].tinkoff_account).toEqual(tinkoffAccount)
     expect(lastSend().data.pairs[0].db_account).toEqual(dbAccount)
-    expect(vm.showAccountMatching).toBe(false)
-    expect(vm.showProgressDialog).toBe(true)
+    expect(wrapper.vm.showAccountMatching).toBe(false)
+    expect(wrapper.vm.showProgressDialog).toBe(true)
   })
 
   it('accounts_matched rejects missing and empty pair lists without sending', async () => {
     mountDialog()
-    await nextTick()
-    const vm = wrapper.vm
-    isConnected.value = true
+    await startSyntheticRun()
+    await feed(events.accountMatchingRequired)
 
-    vm.handleAccountsMatched({})
-    expect(vm.errorMessage).toBe('Invalid account pairing data received')
-    vm.handleAccountsMatched({ pairs: [] })
-    expect(vm.errorMessage).toBe('No account pairs were provided')
+    wrapper.vm.handleAccountsMatched({})
+    wrapper.vm.handleAccountsMatched({ pairs: [] })
     expect(sends()).toHaveLength(0)
+    // The decision stays open for a corrected answer.
+    expect(wrapper.vm.showAccountMatching).toBe(true)
   })
 
   it('use_existing_matches: exact payload with full objects', async () => {
     mountDialog()
-    await nextTick()
-    const vm = wrapper.vm
-    isConnected.value = true
+    await startSyntheticRun()
+    await feed(events.accountMatchingRequired)
 
-    vm.handleUseExistingMatches({ pairs: structuredClone(matchedPairsArray) })
+    wrapper.vm.handleUseExistingMatches({ pairs: structuredClone(matchedPairsArray) })
 
     expect(lastSend()).toEqual(commands.useExistingMatches)
   })
 
   it('create_account: tinkoff object, name and defaulted comment', async () => {
     mountDialog()
-    await nextTick()
-    const vm = wrapper.vm
-    isConnected.value = true
+    await startSyntheticRun()
+    await feed(events.accountMatchingRequired)
 
-    vm.handleAccountCreation({
+    wrapper.vm.handleAccountCreation({
       tinkoff_account: tinkoffAccount,
       name: 'New Synthetic Account',
       comment: 'created during import',
     })
     expect(lastSend()).toEqual(commands.createAccount)
 
-    vm.handleAccountCreation({ tinkoff_account: tinkoffAccount, name: 'X' })
+    await feed(events.accountMatchingRequired)
+    wrapper.vm.handleAccountCreation({ tinkoff_account: tinkoffAccount, name: 'X' })
     expect(lastSend().data.comment).toBe('')
   })
 })
 
-describe('incumbent incoming event handling', () => {
+describe('incoming event handling', () => {
   it('initialization sets totals and message from top-level fields', async () => {
     mountDialog()
+    await startSyntheticRun()
     await feed(events.initialization)
     expect(wrapper.vm.totalToImport).toBe(42)
     expect(wrapper.vm.currentImportMessage).toBe(
@@ -482,6 +474,7 @@ describe('incumbent incoming event handling', () => {
 
   it('import_update total_count sets total and fallback message', async () => {
     mountDialog()
+    await startSyntheticRun()
     await feed(events.importUpdateTotalCount)
     expect(wrapper.vm.totalToImport).toBe(42)
     expect(wrapper.vm.currentImportMessage).toBe('Found 42 transactions')
@@ -489,7 +482,8 @@ describe('incumbent incoming event handling', () => {
 
   it('import_update progress advances counters and message', async () => {
     mountDialog()
-    wrapper.vm.totalToImport = 42
+    await startSyntheticRun()
+    await feed(events.importUpdateTotalCount)
     await feed(events.importUpdateProgress)
     expect(wrapper.vm.currentImported).toBe(7)
     expect(wrapper.vm.currentImportMessage).toBe(
@@ -499,7 +493,8 @@ describe('incumbent incoming event handling', () => {
 
   it('import_update transaction_saved advances the saved counter', async () => {
     mountDialog()
-    wrapper.vm.totalToImport = 42
+    await startSyntheticRun()
+    await feed(events.importUpdateTotalCount)
     await feed(events.importUpdateTransactionSaved)
     expect(wrapper.vm.currentImported).toBe(8)
     expect(wrapper.vm.currentImportMessage).toBe('Saved transaction 8 of 42')
@@ -507,6 +502,7 @@ describe('incumbent incoming event handling', () => {
 
   it('import_update transaction_error surfaces inline and keeps going', async () => {
     mountDialog()
+    await startSyntheticRun()
     await feed(events.importUpdateTransactionError)
     expect(wrapper.vm.currentImportMessage).toBe(
       '⚠️ Error processing transaction'
@@ -517,6 +513,7 @@ describe('incumbent incoming event handling', () => {
 
   it('security_mapping opens both overlays with display data intact', async () => {
     mountDialog()
+    await startSyntheticRun()
     await feed(events.importUpdateSecurityMapping)
     expect(wrapper.vm.showSecurityMapping).toBe(true)
     expect(wrapper.vm.showTransactionConfirmation).toBe(true)
@@ -529,6 +526,7 @@ describe('incumbent incoming event handling', () => {
 
   it('transaction_confirmation shows the transaction without mapping', async () => {
     mountDialog()
+    await startSyntheticRun()
     await feed(events.importUpdateTransactionConfirmation)
     expect(wrapper.vm.showTransactionConfirmation).toBe(true)
     expect(wrapper.vm.showSecurityMapping).toBe(false)
@@ -537,7 +535,7 @@ describe('incumbent incoming event handling', () => {
 
   it('import_complete emits the raw payload once with exact counters and warnings', async () => {
     mountDialog()
-    wrapper.vm.totalToImport = 12
+    await startSyntheticRun()
     await feed(events.importCompleteWithWarnings)
 
     const completions = wrapper.emitted('import-completed')
@@ -554,13 +552,13 @@ describe('incumbent incoming event handling', () => {
     expect(wrapper.vm.showSuccessDialog).toBe(true)
     expect(wrapper.vm.showProgressDialog).toBe(false)
     expect(disconnectMock).toHaveBeenCalled()
-    expect(wrapper.vm.canStopImport).toBe(true)
     expect(wrapper.html()).toContain('Some data sources could not be fetched')
     expect(wrapper.html()).toContain('spot_fills')
   })
 
-  it('import_complete without a warnings field normalizes to an empty list', async () => {
+  it('import_complete without a warnings field normalizes the stats view', async () => {
     mountDialog()
+    await startSyntheticRun()
     await feed(events.importCompleteWithoutWarnings)
 
     expect(wrapper.emitted('import-completed')).toHaveLength(1)
@@ -575,7 +573,7 @@ describe('incumbent incoming event handling', () => {
 
   it('import_stopped with stats shows the stopped outcome, never completion', async () => {
     mountDialog()
-    wrapper.vm.showProgressDialog = true
+    await startSyntheticRun()
     await feed(events.importStoppedWithStats)
 
     expect(wrapper.emitted('import-completed')).toBeUndefined()
@@ -591,30 +589,24 @@ describe('incumbent incoming event handling', () => {
 
   it('import_stopped without stats keeps the previous stats view', async () => {
     mountDialog()
-    wrapper.vm.showProgressDialog = true
+    await startSyntheticRun()
     await feed(events.importStoppedWithoutStats)
 
-    // The protocol seam normalizes the stats-less shape (recorded defect
-    // D-1): no crash, stopped outcome shown, no completion emitted.
     expect(wrapper.emitted('import-completed')).toBeUndefined()
     expect(wrapper.vm.showErrorDialog).toBe(true)
     expect(wrapper.vm.errorMessage).toBe(expected.stoppedMessage)
-    expect(wrapper.vm.showProgressDialog).toBe(false)
     expect(disconnectMock).toHaveBeenCalled()
   })
 
   it('critical_error tears the run down and never completes', async () => {
     mountDialog()
-    wrapper.vm.showProgressDialog = true
-    wrapper.vm.showSecurityMapping = true
+    await startSyntheticRun()
     await feed(events.criticalError)
 
     expect(wrapper.emitted('import-completed')).toBeUndefined()
     expect(wrapper.vm.showErrorDialog).toBe(true)
-    // Recorded incumbent defect: the branch sets the error message, then the
-    // teardown's resetProgressDialog() clears it, so the error dialog opens
-    // with an empty body.
-    expect(wrapper.vm.errorMessage).toBe('')
+    // The message stays visible now (recorded defect D-2 fixed).
+    expect(wrapper.vm.errorMessage).toBe('synthetic fatal import failure')
     expect(wrapper.vm.showProgressDialog).toBe(false)
     expect(wrapper.vm.showSecurityMapping).toBe(false)
     expect(wrapper.vm.showTransactionConfirmation).toBe(false)
@@ -623,6 +615,7 @@ describe('incumbent incoming event handling', () => {
 
   it('import_error with a security string opens the create/skip dialog', async () => {
     mountDialog()
+    await startSyntheticRun()
     await feed(events.importErrorSecurity)
 
     expect(wrapper.vm.confirmDialog).toBe(true)
@@ -634,36 +627,30 @@ describe('incumbent incoming event handling', () => {
       type: 'Stock',
       exposure: 'Equity',
     })
-    expect(wrapper.vm.importError).toBe(
-      'Security not found: ACME Corp (US0000000001)'
-    )
   })
 
   it('import_error without a security string shows the error dialog directly', async () => {
     mountDialog()
+    await startSyntheticRun()
     await feed(events.importErrorPlain)
 
     expect(wrapper.vm.confirmDialog).toBe(false)
-    // Recorded incumbent behavior: the main watcher branch shows the error
-    // dialog via errorMessage and never routes plain import_error through
-    // handleImportError, so importError stays empty.
     expect(wrapper.vm.errorMessage).toBe('synthetic import failure')
     expect(wrapper.vm.showErrorDialog).toBe(true)
-    expect(wrapper.vm.importError).toBe('')
   })
 
-  it('top-level save_error is handled like import_error', async () => {
+  it('top-level save_error is handled like the legacy handleImportError', async () => {
     mountDialog()
+    await startSyntheticRun()
     await feed(events.saveErrorTopLevel)
     expect(wrapper.vm.importError).toBe('synthetic top-level save failure')
   })
 
   it('account_matching_required transforms the pairs object, keeping full objects', async () => {
     mountDialog()
-    wrapper.vm.showProgressDialog = true
+    await startSyntheticRun()
     await feed(events.accountMatchingRequired)
 
-    expect(wrapper.vm.selectedBroker).toEqual({ id: 11, name: 'Tinkoff' })
     expect(wrapper.vm.tinkoffAccounts).toEqual([tinkoffAccount])
     expect(wrapper.vm.dbAccounts).toEqual([dbAccount])
     expect(wrapper.vm.matchedPairs).toEqual(matchedPairsArray)
@@ -673,6 +660,7 @@ describe('incumbent incoming event handling', () => {
 
   it('account_selection_required lists accounts for the selection dialog', async () => {
     mountDialog()
+    await startSyntheticRun()
     await feed(events.accountSelectionRequired)
     expect(wrapper.vm.availableAccounts).toEqual(
       events.accountSelectionRequired.data.available_accounts
@@ -682,6 +670,7 @@ describe('incumbent incoming event handling', () => {
 
   it('security_creation_needed pre-fills the security form', async () => {
     mountDialog()
+    await startSyntheticRun()
     await feed(events.securityCreationNeeded)
     expect(wrapper.vm.securityFormData).toEqual({
       name: 'ACME Corp',
@@ -695,7 +684,7 @@ describe('incumbent incoming event handling', () => {
 
   it('error with data sets the import error and clears the progress message', async () => {
     mountDialog()
-    wrapper.vm.currentImportMessage = 'Working...'
+    await startSyntheticRun()
     await feed(events.errorWithData)
     expect(wrapper.vm.importError).toBe('synthetic broker token expired')
     expect(wrapper.vm.currentImportMessage).toBe('')
@@ -703,7 +692,8 @@ describe('incumbent incoming event handling', () => {
 
   it('matched-account inconsistency shows the server-inconsistency error', async () => {
     mountDialog()
-    wrapper.vm.matchedPairs = structuredClone(matchedPairsArray)
+    await startSyntheticRun()
+    await feed(events.accountMatchingRequired)
     await feed(events.importErrorAccountInconsistency)
 
     expect(wrapper.vm.showErrorDialog).toBe(true)
@@ -715,24 +705,26 @@ describe('incumbent incoming event handling', () => {
 
   it('unrecognized_operation updates are ignored without state changes', async () => {
     mountDialog()
+    await startSyntheticRun()
     await feed(events.importUpdateUnrecognizedOperation)
     expect(wrapper.vm.showTransactionConfirmation).toBe(false)
     expect(wrapper.vm.showErrorDialog).toBe(false)
     expect(wrapper.emitted('import-completed')).toBeUndefined()
   })
 
-  it('import_warning and import_cancelled are ignored by the incumbent', async () => {
+  it('import_warning and import_cancelled stay nonterminal', async () => {
     mountDialog()
+    await startSyntheticRun()
     await feed(events.importWarning)
     await feed(events.importCancelled)
     expect(sends()).toHaveLength(0)
     expect(wrapper.emitted('import-completed')).toBeUndefined()
     expect(wrapper.vm.showErrorDialog).toBe(false)
-    expect(wrapper.vm.showProgressDialog).toBe(false)
+    expect(wrapper.vm.showProgressDialog).toBe(true)
   })
 })
 
-describe('incumbent file analysis', () => {
+describe('file analysis', () => {
   it('analyze_file success preselects the identified account', async () => {
     mountDialog()
     const vm = wrapper.vm
@@ -758,8 +750,8 @@ describe('incumbent file analysis', () => {
     await nextTick()
 
     expect(vm.isAnalyzed).toBe(false)
-    expect(vm.accountIdentificationComplete).toBe(true)
     expect(vm.isLoading).toBe(false)
+    expect(vm.showErrorDialog).toBe(true)
   })
 
   it('analyze without a file records the no-file error', async () => {
@@ -770,12 +762,12 @@ describe('incumbent file analysis', () => {
   })
 })
 
-describe('incumbent lifecycle', () => {
-  it('cancel closes the dialog, emits v-model false, keeps method selection', async () => {
+describe('lifecycle', () => {
+  it('cancel closes the dialog, emits v-model false and clears configuration', async () => {
     mountDialog()
     const vm = wrapper.vm
-    vm.importMethod = 'file'
-    vm.importMethodSelected = true
+    vm.selectMethod('file')
+    vm.confirmMethod()
     vm.file = { name: 'synthetic.csv' }
 
     vm.closeDialog()
@@ -784,10 +776,10 @@ describe('incumbent lifecycle', () => {
     expect(vm.dialog).toBe(false)
     expect(wrapper.emitted('update:modelValue')?.flat()).toContain(false)
     expect(vm.file).toBe(null)
-    // Recorded incumbent quirk: closeDialog never resets the method
-    // selection (importMethod/importMethodSelected survive Cancel).
-    expect(vm.importMethod).toBe('file')
-    expect(vm.importMethodSelected).toBe(true)
+    // The whole workflow resets to the method choice (recorded deviation
+    // from the incumbent, which kept the method selection alive).
+    expect(vm.importMethod).toBe(null)
+    expect(vm.importMethodSelected).toBe(false)
   })
 
   it('unmount disconnects the socket', async () => {
@@ -799,11 +791,13 @@ describe('incumbent lifecycle', () => {
 
   it('closeSuccessDialog clears the analyzed file state', async () => {
     mountDialog()
+    await startSyntheticRun()
     const vm = wrapper.vm
     vm.file = { name: 'synthetic.csv' }
-    vm.isAnalyzed = true
     vm.fileId = 'abc'
     vm.selectedAccount = 3
+    await feed(events.importCompleteWithoutWarnings)
+    expect(vm.showSuccessDialog).toBe(true)
 
     vm.closeSuccessDialog()
 

@@ -8,12 +8,14 @@ import { useWebSocket } from '@/composables/useWebSocket'
 
 // Mock API calls
 vi.mock('@/services/api', () => ({
-  getBrokersWithTokens: vi.fn()
+  getBrokersWithTokens: vi.fn(),
+  analyzeFile: vi.fn(),
+  getAccounts: vi.fn(),
 }))
 
 // Mock WebSocket composable
 vi.mock('@/composables/useWebSocket', () => ({
-  useWebSocket: vi.fn()
+  useWebSocket: vi.fn(),
 }))
 
 // Silence noisy console output during the test
@@ -32,8 +34,10 @@ afterAll(() => {
 
 describe('TransactionImportDialog — partial_failures warnings', () => {
   let wrapper
+  let lastMessage
+  let connect
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks()
 
     getBrokersWithTokens.mockResolvedValue([
@@ -42,12 +46,13 @@ describe('TransactionImportDialog — partial_failures warnings', () => {
     ])
 
     const isConnected = ref(true)
-    const lastMessage = ref(null)
+    lastMessage = ref(null)
+    connect = vi.fn(async () => true)
     useWebSocket.mockReturnValue({
       isConnected,
       lastMessage,
-      sendMessage: vi.fn(),
-      connect: vi.fn(),
+      sendMessage: vi.fn(() => true),
+      connect,
       disconnect: vi.fn(),
       reset: vi.fn()
     })
@@ -70,6 +75,7 @@ describe('TransactionImportDialog — partial_failures warnings', () => {
         }
       }
     })
+    await wrapper.vm.$nextTick()
   })
 
   afterEach(() => {
@@ -79,12 +85,34 @@ describe('TransactionImportDialog — partial_failures warnings', () => {
     }
   })
 
-  it('renders warnings when import_complete payload includes a warnings field', async () => {
+  // The import workflow only accepts completions inside an active session,
+  // so the driver starts a synthetic API run before feeding the event.
+  const startSyntheticRun = async () => {
+    wrapper.vm.selectedBroker = { id: 11, name: 'Tinkoff Broker' }
+    await wrapper.vm.startApiImport()
+    lastMessage.value = {
+      type: 'import_update',
+      data: { status: 'progress', current: 1, message: 'Importing...', progress: 10 }
+    }
     await wrapper.vm.$nextTick()
+  }
+
+  const completeWith = async (payload) => {
+    lastMessage.value = {
+      type: 'import_complete',
+      data: payload,
+      message: 'Import process completed'
+    }
+    await wrapper.vm.$nextTick()
+    await wrapper.vm.$nextTick()
+  }
+
+  it('renders warnings when import_complete payload includes a warnings field', async () => {
+    await startSyntheticRun()
 
     // Simulate the backend sending import_complete with partial_failures
     // threaded through as a warnings array (one entry per failed endpoint).
-    wrapper.vm.handleImportSuccess({
+    await completeWith({
       totalTransactions: 5,
       importedTransactions: 5,
       skippedTransactions: 0,
@@ -95,12 +123,12 @@ describe('TransactionImportDialog — partial_failures warnings', () => {
         { endpoint: 'option_settlements', error: 'OKX API error: bills archive cap' }
       ]
     })
-    await wrapper.vm.$nextTick()
 
     // The success dialog must be open and the warning alert must render with
     // both endpoint names and error messages.
-    expect(wrapper.vm.showSuccessDialog).toBe(true)
-    expect(wrapper.vm.importStats.warnings).toHaveLength(2)
+    const completions = wrapper.emitted('import-completed')
+    expect(completions).toHaveLength(1)
+    expect(completions[0][0].warnings).toHaveLength(2)
 
     const html = wrapper.html()
     expect(html).toContain('Some data sources could not be fetched')
@@ -111,19 +139,20 @@ describe('TransactionImportDialog — partial_failures warnings', () => {
   })
 
   it('does not render the warnings alert when warnings is empty or absent', async () => {
-    await wrapper.vm.$nextTick()
+    await startSyntheticRun()
 
     // No warnings field at all (e.g. a clean import or a Tinkoff import).
-    wrapper.vm.handleImportSuccess({
+    await completeWith({
       totalTransactions: 3,
       importedTransactions: 3,
       skippedTransactions: 0,
       duplicateTransactions: 0,
       importErrors: 0
     })
-    await wrapper.vm.$nextTick()
 
-    expect(wrapper.vm.showSuccessDialog).toBe(true)
+    const completions = wrapper.emitted('import-completed')
+    expect(completions).toHaveLength(1)
+    expect(completions[0][0]).not.toHaveProperty('warnings')
     expect(wrapper.vm.importStats.warnings).toEqual([])
     expect(wrapper.html()).not.toContain('Some data sources could not be fetched')
   })
