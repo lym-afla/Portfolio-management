@@ -6,200 +6,46 @@
       <v-card-text>
         <!-- Initial Method Selection -->
         <v-fade-transition>
-          <v-row v-if="!importMethodSelected">
-            <!-- Direct Import Card -->
-            <v-col cols="6">
-              <v-tooltip
-                :disabled="hasConnectedBrokers"
-                text="Please add broker API tokens in User Settings to enable direct import"
-                location="top"
-                open-delay="200"
-              >
-                <template v-slot:activator="{ props }">
-                  <div v-bind="props">
-                    <v-card
-                      class="import-method-card"
-                      elevation="2"
-                      @click="selectMethod('api')"
-                      :class="{
-                        selected: importMethod === 'api',
-                        disabled: !hasConnectedBrokers,
-                      }"
-                      :disabled="!hasConnectedBrokers"
-                    >
-                      <v-card-item>
-                        <v-avatar color="primary" size="64" class="mb-4">
-                          <v-icon size="32" icon="mdi-api" />
-                        </v-avatar>
-                        <v-card-title>Direct Import</v-card-title>
-                        <v-card-subtitle class="text-wrap">
-                          Import transactions directly from your broker
-                          <v-chip size="x-small" color="primary" class="ml-2"
-                            >Recommended</v-chip
-                          >
-                        </v-card-subtitle>
-                        <v-card-text>
-                          <v-list density="compact">
-                            <v-list-item prepend-icon="mdi-check">
-                              Faster and more reliable
-                            </v-list-item>
-                            <v-list-item prepend-icon="mdi-check">
-                              No manual file preparation
-                            </v-list-item>
-                            <v-list-item prepend-icon="mdi-check">
-                              Automatic broker detection
-                            </v-list-item>
-                          </v-list>
-                        </v-card-text>
-                      </v-card-item>
-                    </v-card>
-                  </div>
-                </template>
-              </v-tooltip>
-            </v-col>
-
-            <!-- File Import Card -->
-            <v-col cols="6">
-              <v-card
-                class="import-method-card"
-                elevation="2"
-                @click="selectMethod('file')"
-                :class="{ selected: importMethod === 'file' }"
-              >
-                <v-card-item>
-                  <v-avatar color="secondary" size="64" class="mb-4">
-                    <v-icon size="32" icon="mdi-file-upload" />
-                  </v-avatar>
-                  <v-card-title>File Import</v-card-title>
-                  <v-card-subtitle>
-                    Import from Excel or CSV file
-                  </v-card-subtitle>
-                  <v-card-text>
-                    <v-list density="compact">
-                      <v-list-item prepend-icon="mdi-check">
-                        Works with any broker
-                      </v-list-item>
-                      <v-list-item prepend-icon="mdi-check">
-                        Custom file formats
-                      </v-list-item>
-                      <v-list-item prepend-icon="mdi-check">
-                        Historical data import
-                      </v-list-item>
-                    </v-list>
-                  </v-card-text>
-                </v-card-item>
-              </v-card>
-            </v-col>
-          </v-row>
+          <ImportMethodStep
+            v-if="!importMethodSelected"
+            :selected="importMethod"
+            :has-connected-brokers="hasConnectedBrokers"
+            @select="selectMethod"
+          />
         </v-fade-transition>
 
-        <!-- API Import Form -->
-        <v-expand-transition>
-          <div v-if="importMethodSelected && importMethod === 'api'">
-            <v-select
-              v-model="selectedBroker"
-              :items="connectedBrokers"
-              item-title="name"
-              :item-value="(item) => item"
-              label="Select Broker Account"
-              :error-messages="
-                showValidation && !selectedBroker?.id
-                  ? 'Please select a broker account'
-                  : ''
-              "
-              required
-              class="mb-4"
-              @update:model-value="handleBrokerAccountChange"
-              return-object
-            />
-
-            <v-row>
-              <v-col cols="6">
-                <v-text-field
-                  v-model="dateRange.from"
-                  label="From Date (Optional)"
-                  type="date"
-                />
-              </v-col>
-              <v-col cols="6">
-                <v-text-field
-                  v-model="dateRange.to"
-                  label="To Date (Optional)"
-                  type="date"
-                />
-              </v-col>
-            </v-row>
-          </div>
-        </v-expand-transition>
-
-        <!-- File Import Form -->
-        <v-expand-transition>
-          <div v-if="importMethodSelected && importMethod === 'file'">
-            <v-file-input
-              v-model="file"
-              label="Select Excel or CSV file to import"
-              accept=".csv, .xlsx, .xls"
-              :rules="[(v) => !!v || 'File is required']"
-              @change="handleFileChange"
-              :disabled="isAnalyzed"
-            />
-
-            <v-checkbox
-              v-model="isGalaxy"
-              label="Galaxy"
-              class="mt-2"
-              :disabled="isAnalyzed"
-            />
-
-            <v-select
-              v-if="isGalaxy && isAnalyzed"
-              v-model="selectedCurrency"
-              :items="currencies"
-              label="Select Currency"
-              class="mt-2"
-              :rules="[(v) => !!v || 'Currency is required']"
-            />
-
-            <v-alert
-              v-if="isAnalyzed && accountIdentificationComplete && !isGalaxy"
-              :type="accountIdentified ? 'success' : 'info'"
-              class="mt-4 mb-4"
-            >
-              {{
-                accountIdentified
-                  ? `Broker account "${identifiedAccount.name}" was automatically identified. Please confirm or select a different broker account.`
-                  : 'Broker account could not be automatically identified. Please select a broker account below.'
-              }}
-            </v-alert>
-
-            <v-select
-              v-if="isAnalyzed && accountIdentificationComplete && !isGalaxy"
-              v-model="selectedAccount"
-              :items="accountDisplayItems"
-              item-title="title"
-              item-value="id"
-              label="Select Account"
-              class="mt-2"
-              :error-messages="
-                showValidation && !selectedAccount
-                  ? 'Please select an account'
-                  : ''
-              "
-              required
-            />
-          </div>
-        </v-expand-transition>
-
-        <!-- Common settings shown after method selection -->
-        <v-expand-transition>
-          <div v-if="importMethodSelected">
-            <v-checkbox
-              v-model="confirmEveryTransaction"
-              label="Confirm every transaction manually"
-              class="mt-4"
-            />
-          </div>
-        </v-expand-transition>
+        <!-- Method-specific configuration and the post-analysis review -->
+        <ImportSourceStep
+          v-if="importMethodSelected"
+          :method="importMethod"
+          :brokers="connectedBrokers"
+          :selected-broker="selectedBroker"
+          :date-range="dateRange"
+          :file="file"
+          :is-galaxy="isGalaxy"
+          :confirm-every-transaction="confirmEveryTransaction"
+          :validation="showValidation"
+          :busy="isAnalyzed || isLoading"
+          @update:selected-broker="selectedBroker = $event"
+          @update:date-range="dateRange = $event"
+          @update:is-galaxy="isGalaxy = $event"
+          @update:confirm-every-transaction="confirmEveryTransaction = $event"
+          @file-changed="handleFileChange"
+        />
+        <ImportReviewStep
+          v-if="isAnalyzed"
+          :identified="accountIdentified"
+          :identified-name="identifiedAccount?.name ?? null"
+          :accounts="accountDisplayItems"
+          :selected-account="selectedAccount"
+          :validation="showValidation"
+          :show-currency="isGalaxy"
+          :show-account="!isGalaxy"
+          :currency="selectedCurrency"
+          :currencies="currencies"
+          @update:selected-account="selectedAccount = $event"
+          @update:currency="selectedCurrency = $event"
+        />
       </v-card-text>
 
       <v-card-actions>
@@ -314,108 +160,7 @@
         Import Completed
       </v-card-title>
       <v-card-text>
-        <v-row dense>
-          <v-col cols="12">
-            <v-card outlined>
-              <v-list-item>
-                <template v-slot:prepend>
-                  <v-avatar color="primary" size="40">
-                    <v-icon dark>mdi-database-import</v-icon>
-                  </v-avatar>
-                </template>
-                <v-list-item-title class="text-h6">
-                  {{ importStats.totalTransactions }}
-                </v-list-item-title>
-                <v-list-item-subtitle
-                  >Total transactions processed</v-list-item-subtitle
-                >
-              </v-list-item>
-            </v-card>
-          </v-col>
-          <v-col cols="6">
-            <v-card outlined>
-              <v-list-item>
-                <template v-slot:prepend>
-                  <v-avatar color="success" size="40">
-                    <v-icon dark>mdi-check-circle</v-icon>
-                  </v-avatar>
-                </template>
-                <v-list-item-title class="text-h6">
-                  {{ importStats.importedTransactions }}
-                </v-list-item-title>
-                <v-list-item-subtitle
-                  >Successfully imported</v-list-item-subtitle
-                >
-              </v-list-item>
-            </v-card>
-          </v-col>
-          <v-col cols="6">
-            <v-card outlined>
-              <v-list-item>
-                <template v-slot:prepend>
-                  <v-avatar color="warning" size="40">
-                    <v-icon dark>mdi-alert-circle</v-icon>
-                  </v-avatar>
-                </template>
-                <v-list-item-title class="text-h6">
-                  {{ importStats.duplicateTransactions }}
-                </v-list-item-title>
-                <v-list-item-subtitle>Duplicates found</v-list-item-subtitle>
-              </v-list-item>
-            </v-card>
-          </v-col>
-          <v-col cols="6">
-            <v-card outlined>
-              <v-list-item>
-                <template v-slot:prepend>
-                  <v-avatar color="error" size="40">
-                    <v-icon dark>mdi-alert-circle</v-icon>
-                  </v-avatar>
-                </template>
-                <v-list-item-title class="text-h6">
-                  {{ importStats.skippedTransactions }}
-                </v-list-item-title>
-                <v-list-item-subtitle
-                  >Skipped transactions</v-list-item-subtitle
-                >
-              </v-list-item>
-            </v-card>
-          </v-col>
-          <v-col cols="6">
-            <v-card outlined>
-              <v-list-item>
-                <template v-slot:prepend>
-                  <v-avatar color="error" size="40">
-                    <v-icon dark>mdi-alert-circle</v-icon>
-                  </v-avatar>
-                </template>
-                <v-list-item-title class="text-h6">
-                  {{ importStats.importErrors }}
-                </v-list-item-title>
-                <v-list-item-subtitle>Import Errors</v-list-item-subtitle>
-              </v-list-item>
-            </v-card>
-          </v-col>
-        </v-row>
-        <v-alert
-          v-if="importStats.warnings && importStats.warnings.length"
-          type="warning"
-          variant="tonal"
-          closable
-          class="mt-4"
-          title="Some data sources could not be fetched"
-        >
-          <div class="text-body-2 mb-2">
-            Import completed, but these endpoints returned errors and their data
-            is not included in the results above:
-          </div>
-          <ul class="text-body-2 mb-0">
-            <li v-for="(warning, index) in importStats.warnings" :key="index">
-              <strong>{{ warning.endpoint }}</strong
-              >: {{ warning.error }}
-            </li>
-          </ul>
-        </v-alert>
+        <ImportResult :result="importStats" />
       </v-card-text>
       <v-card-actions>
         <v-spacer />
@@ -537,6 +282,10 @@ import SecurityMappingDialog from './SecurityMappingDialog.vue'
 import TransactionImportProgress from '../TransactionImportProgress.vue'
 import SecurityFormDialog from './SecurityFormDialog.vue'
 import AccountMatchingDialog from './AccountMatchingDialog.vue'
+import ImportMethodStep from '@/features/imports/ImportMethodStep.vue'
+import ImportSourceStep from '@/features/imports/ImportSourceStep.vue'
+import ImportReviewStep from '@/features/imports/ImportReviewStep.vue'
+import ImportResult from '@/features/imports/ImportResult.vue'
 import logger from '@/utils/logger'
 
 const props = defineProps({
@@ -644,7 +393,6 @@ const importMethod = computed(
 )
 
 const isAnalyzed = computed(() => stateKind.value === 'review')
-const accountIdentificationComplete = computed(() => stateKind.value === 'review')
 const isAnalyzingState = computed(() => stateKind.value === 'analyzing')
 
 const brokersLoading = ref(false)
@@ -1002,11 +750,6 @@ const resetImport = () => {
   reset()
 }
 
-const handleBrokerAccountChange = (value) => {
-  selectedBroker.value = value
-  showValidation.value = true
-}
-
 watch(lastMessage, (message) => {
   if (!message) return
   receive(message)
@@ -1024,27 +767,6 @@ onUnmounted(() => {
 
 
 <style scoped>
-.import-method-card {
-  cursor: pointer;
-  transition: all 0.3s;
-  height: 100%;
-  border: 2px solid transparent;
-}
-
-.import-method-card:not(.disabled):hover {
-  transform: translateY(-4px);
-}
-
-.import-method-card.selected {
-  border-color: rgb(var(--v-theme-primary));
-}
-
-.import-method-card.disabled {
-  opacity: 0.7;
-  cursor: not-allowed;
-  pointer-events: auto;
-}
-
 .v-list-item {
   min-height: 32px;
 }

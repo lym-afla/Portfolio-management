@@ -738,7 +738,6 @@ describe('file analysis', () => {
     expect(vm.accountIdentified).toBe(true)
     expect(vm.identifiedAccount).toEqual({ id: 3, name: 'Main account' })
     expect(vm.selectedAccount).toBe(3)
-    expect(vm.accountIdentificationComplete).toBe(true)
   })
 
   it('analyze_file failure is recoverable and returns to configuration', async () => {
