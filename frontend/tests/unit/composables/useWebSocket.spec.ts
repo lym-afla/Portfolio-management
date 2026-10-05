@@ -147,7 +147,6 @@ describe('useWebSocket connection ownership', () => {
     expect(ws.isConnected.value).toBe(true)
     vi.advanceTimersByTime(5000)
     expect(FakeWebSocket.instances).toHaveLength(2)
-    socketB.sent.push // no-op reference for readability
     expect(socketB.readyState).toBe(FakeWebSocket.OPEN)
   })
 

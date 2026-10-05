@@ -169,7 +169,7 @@ export function useWebSocket(baseUrl: string) {
     connectionAttempted.value = false
   }
 
-  const sendMessage = (message) => {
+  const sendMessage = (message: unknown) => {
     if (socket.value && socket.value.readyState === WEBSOCKET_OPEN) {
       logger.log('Unknown', 'Sending message:', message)
       socket.value.send(JSON.stringify(message))
