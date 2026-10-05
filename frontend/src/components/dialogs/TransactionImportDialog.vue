@@ -525,6 +525,7 @@ import { ref, watch, onUnmounted, computed, onMounted } from 'vue'
 import { useWebSocket } from '@/composables/useWebSocket'
 import { useImportState } from '@/composables/useImportState'
 import { useErrorHandler } from '@/composables/useErrorHandler'
+import { decodeImportEvent } from '@/features/imports/legacyImportProtocol'
 import { analyzeFile, getAccounts, getBrokersWithTokens } from '@/services/api'
 import ProgressDialog from './ProgressDialog.vue'
 import SecurityMappingDialog from './SecurityMappingDialog.vue'
@@ -722,171 +723,152 @@ const dialog = ref(props.modelValue)
       canStopImport.value = false // Disable stop button while processing
     }
 
-    const handleWebSocketMessage = (message) => {
-      logger.log(
-        'TransactionImportDialog',
-        'Received WebSocket message in dialog:',
-        message
-      )
-      if (message.type === 'initialization') {
-        totalToImport.value = message.total_to_update
-        currentImportMessage.value = message.message
-      } else if (message.type === 'security_creation_needed') {
-        const securityInfo = message.security_info
-
-        securityFormData.value = {
-          name: securityInfo.name,
-          ISIN: securityInfo.isin,
-          currency: securityInfo.currency || 'RUB',
-          type: 'Stock', // Default values
-          exposure: 'Equity', // Default values
-        }
-        showSecurityDialog.value = true
-      } else if (message.type === 'import_update') {
-        handleImportUpdate(message.data)
-      } else if (
-        message.type === 'import_error' ||
-        message.type === 'save_error'
-      ) {
-        // Check if this is a security error that we can handle
-        const isSecurityError =
-          message.data.error &&
-          (message.data.error.includes('Security not found') ||
-            message.data.error.includes('Could not match security') ||
-            message.data.error.includes('unsupported operand type') ||
-            message.data.error.includes('NoneType'))
-
-        if (isSecurityError) {
-          // Handle security error but don't disconnect
-          handleImportError(message.data.error)
-        } else {
-          // For other errors, handle normally
-          handleImportError(message.data.error)
-        }
-      } else if (message.type === 'critical_error') {
-        showProgressDialog.value = false
-        showSuccessDialog.value = false
-        showSecurityMapping.value = false
-        showTransactionConfirmation.value = false
-
-        errorMessage.value = message.data.error
-        showErrorDialog.value = true
-
-        disconnect()
-
-        resetInitialDialog()
-        resetProgressDialog()
-        resetConfirmationState()
-      } else if (message.type === 'import_complete') {
-        handleImportSuccess(message.data)
-      } else if (message.type === 'import_stopped') {
-        handleImportStopped(message.data)
-      } else if (message.type === 'transaction_confirmation') {
-        handleTransactionConfirmation(message.data)
-      } else if (message.type === 'account_matching_required') {
-        // Handle the data correctly from backend message format
-        logger.log(
-          'TransactionImportDialog',
-          'Received account_matching_required with data:',
-          message.data
-        )
-
-        selectedBroker.value = {
-          id: message.data.broker_id,
-          name: message.data.broker_name,
-        }
-        tinkoffAccounts.value = message.data.unmatched_tinkoff
-        dbAccounts.value = message.data.unmatched_db
-
-        // Transform matched_pairs from an object to an array
-        const rawMatchedPairs = message.data.matched_pairs || {}
-        logger.log(
-          'TransactionImportDialog',
-          'Raw matched pairs:',
-          rawMatchedPairs
-        )
-
-        matchedPairs.value = Object.entries(rawMatchedPairs).map(
-          ([tinkoffAccountId, pairData]) => {
-            const pair = {
-              tinkoff_account_id: tinkoffAccountId,
-              db_account_id: pairData.db_account.id,
-              // Preserve the full account objects
-              tinkoff_account: pairData.tinkoff_account,
-              db_account: pairData.db_account,
+    // Single dispatch (D6 task 1 seam): every incoming frame is validated by
+    // the legacy protocol boundary; this applier reproduces the former
+    // two-path effects exactly.
+    const applyDecodedEvent = (event) => {
+      switch (event.kind) {
+        case 'initialization':
+          totalToImport.value = event.total
+          currentImportMessage.value = event.message
+          break
+        case 'total-count':
+          totalToImport.value = event.total
+          currentImportMessage.value =
+            event.message || `Found ${event.total} transactions to process`
+          break
+        case 'progress':
+          if (event.fromImportUpdate) {
+            currentImported.value = event.current
+            currentImportMessage.value = event.message
+            if (event.percent !== null) {
+              importState.setProgress(event.percent)
+            } else if (totalToImport.value > 0) {
+              importState.setProgress(
+                Math.round(
+                  (currentImported.value / totalToImport.value) * 100
+                )
+              )
             }
-            logger.log('TransactionImportDialog', 'Transformed pair:', pair)
-            return pair
+            importState.setState('importing', event.message)
+          } else {
+            currentImportMessage.value = event.message
+            if (event.total) {
+              totalToImport.value = event.total
+            }
+            if (event.current) {
+              currentImported.value = event.current
+            }
           }
-        )
+          break
+        case 'transaction-saved':
+          currentImported.value = event.current
+          currentImportMessage.value = event.message || 'Saving transactions...'
+          if (totalToImport.value > 0) {
+            importState.setProgress(
+              Math.round((currentImported.value / totalToImport.value) * 100)
+            )
+          }
+          break
+        case 'item-error':
+          logger.error('TransactionImportDialog', 'Transaction error:', event.message)
+          currentImportMessage.value = `⚠️ ${event.message}`
+          break
+        case 'security-mapping':
+          securityToMap.value = event.description
+          bestMatch.value = event.bestMatch
+          currentTransaction.value = event.transaction
+          currentMappingData.value = {
+            security_description: event.description,
+            isin: event.isin,
+            symbol: event.symbol,
+            best_match: event.bestMatch,
+          }
+          showSecurityMapping.value = true
+          showTransactionConfirmation.value = true
+          break
+        case 'transaction-confirmation':
+          currentTransaction.value = event.transaction
+          showTransactionConfirmation.value = true
+          showSecurityMapping.value = false
+          break
+        case 'import-error':
+          if (event.securityRelated) {
+            handleImportError(event.error)
+          } else {
+            showAccountMatching.value = false
+            showProgressDialog.value = false
+            showSuccessDialog.value = false
+            showSecurityMapping.value = false
+            showTransactionConfirmation.value = false
+            errorMessage.value = event.error
+            showErrorDialog.value = true
+          }
+          break
+        case 'save-error':
+          handleImportError(event.error)
+          break
+        case 'critical-error':
+          showAccountMatching.value = false
+          showProgressDialog.value = false
+          showSuccessDialog.value = false
+          showSecurityMapping.value = false
+          showTransactionConfirmation.value = false
 
-        logger.log(
-          'TransactionImportDialog',
-          'Transformed matched pairs array:',
-          matchedPairs.value
-        )
+          errorMessage.value = event.error
+          showErrorDialog.value = true
 
-        showAccountMatching.value = true
-        // Hide the progress dialog while showing the account matching dialog
-        showProgressDialog.value = false
-      }
-    }
-
-    const handleImportUpdate = (update) => {
-      if (update.status === 'total_count') {
-        // Set total transactions count
-        totalToImport.value = update.total || 0
-        currentImportMessage.value =
-          update.message || `Found ${update.total} transactions to process`
-        logger.log(
-          'TransactionImportDialog',
-          `Total transactions to process: ${update.total}`
-        )
-      } else if (update.status === 'progress') {
-        currentImported.value = update.current || 0
-        currentImportMessage.value = update.message
-        if (update.progress !== undefined) {
-          importState.setProgress(update.progress)
-        } else if (totalToImport.value > 0) {
-          // Calculate progress percentage
-          const progress = Math.round(
-            (currentImported.value / totalToImport.value) * 100
+          // The effective incumbent path tears down via resetImport, which
+          // also clears errorMessage (recorded defect D-2: dialog opens
+          // empty). Preserved here until the Task 2 state owner.
+          disconnect()
+          resetImport()
+          break
+        case 'run-error':
+          importError.value = event.message
+          currentImportMessage.value = ''
+          importState.setState('error', event.message)
+          break
+        case 'complete':
+          handleImportSuccess(event.raw)
+          break
+        case 'stopped':
+          handleImportStopped(event)
+          break
+        case 'account-matching-required':
+          selectedBroker.value = {
+            id: event.broker.id,
+            name: event.broker.name,
+          }
+          tinkoffAccounts.value = event.unmatchedTinkoff
+          dbAccounts.value = event.unmatchedDb
+          matchedPairs.value = event.matchedPairs
+          showAccountMatching.value = true
+          showProgressDialog.value = false
+          break
+        case 'account-selection-required':
+          availableAccounts.value = event.accounts
+          showAccountSelection.value = true
+          break
+        case 'security-creation-needed':
+          securityFormData.value = {
+            name: event.info.name,
+            ISIN: event.info.isin ?? '',
+            currency: event.info.currency || 'RUB',
+            type: 'Stock',
+            exposure: 'Equity',
+          }
+          showSecurityDialog.value = true
+          break
+        case 'ignored':
+          break
+        case 'protocol-error':
+          logger.warn(
+            'TransactionImportDialog',
+            'Ignored unrecognized import message:',
+            event.reason
           )
-          importState.setProgress(progress)
-        }
-        importState.setState('importing', update.message)
-      } else if (update.status === 'transaction_saved') {
-        // Update progress for each saved transaction
-        currentImported.value = update.current || 0
-        currentImportMessage.value = update.message || 'Saving transactions...'
-        if (totalToImport.value > 0) {
-          const progress = Math.round(
-            (currentImported.value / totalToImport.value) * 100
-          )
-          importState.setProgress(progress)
-        }
-      } else if (
-        update.status === 'transaction_error' ||
-        update.status === 'save_error'
-      ) {
-        // Show error but continue processing
-        const errorMsg =
-          update.message ||
-          update.error_detail ||
-          'Error processing transaction'
-        logger.error('TransactionImportDialog', 'Transaction error:', errorMsg)
-
-        // Display error in UI (non-blocking)
-        currentImportMessage.value = `⚠️ ${errorMsg}`
-
-        // Optionally show a toast or snackbar for errors
-        // For now, just log and continue
-      } else if (update.status === 'security_mapping') {
-        handleSecurityMapping(update)
-      } else if (update.status === 'transaction_confirmation') {
-        handleTransactionConfirmation(update)
-      } else if (update.error) {
-        handleImportError(update.error)
+          break
       }
     }
 
@@ -953,15 +935,6 @@ const dialog = ref(props.modelValue)
       handleApiError({ message: error })
     }
 
-    const handleSecurityMapping = (data) => {
-      securityToMap.value = data.mapping_data.security_description
-      bestMatch.value = data.mapping_data.best_match
-      currentTransaction.value = data.transaction_data
-      currentMappingData.value = data.mapping_data
-      showSecurityMapping.value = true
-      showTransactionConfirmation.value = true
-    }
-
     const handleCreateSecurityFromMapping = () => {
       logger.log(
         'TransactionImportDialog',
@@ -982,12 +955,6 @@ const dialog = ref(props.modelValue)
       // Hide progress dialog while showing the security form
       showProgressDialog.value = false
       showSecurityDialog.value = true
-    }
-
-    const handleTransactionConfirmation = (data) => {
-      currentTransaction.value = data.data
-      showTransactionConfirmation.value = true
-      showSecurityMapping.value = false
     }
 
     const handleSecuritySelected = (securityId) => {
@@ -1098,10 +1065,14 @@ const dialog = ref(props.modelValue)
       importState.setState('idle')
     }
 
-    const handleImportStopped = (data) => {
+    const handleImportStopped = (event) => {
       showProgressDialog.value = false
-      currentImportMessage.value = data.message
-      importStats.value = data.stats
+      currentImportMessage.value = event.message
+      // Stats-less stop (the backend finally-block shape): keep the previous
+      // stats view instead of crashing the result template (recorded D-1).
+      if (event.stats) {
+        importStats.value = event.stats
+      }
 
       // Show a notification that import was stopped
       showErrorDialog.value = true
@@ -1115,17 +1086,10 @@ const dialog = ref(props.modelValue)
       resetConfirmationState()
     }
 
-    // Main watcher for WebSocket messages
-    watch(lastMessage, (message) => {
-      if (!message) return
-
-      logger.log(
-        'TransactionImportDialog',
-        'Received WebSocket message in dialog:',
-        message
-      )
-
-      // Check for account matching inconsistency in logs
+    // Matched-account inconsistency guard, checked exactly where the
+    // incumbent checked it: before any dispatch, for any envelope carrying a
+    // data.error string.
+    const isAccountMatchingInconsistency = (message) => {
       if (
         message.data &&
         message.data.error &&
@@ -1133,86 +1097,33 @@ const dialog = ref(props.modelValue)
         matchedPairs.value &&
         matchedPairs.value.length > 0
       ) {
-        // Extract the account ID from the error message
         const accountIdMatch = message.data.error.match(/ID: (\d+)/)
         if (accountIdMatch && accountIdMatch[1]) {
           const accountId = accountIdMatch[1]
-
-          // Check if this account ID was in our matched pairs
           const wasMatched = matchedPairs.value.some(
             (pair) => String(pair.tinkoff_account_id) === String(accountId)
           )
-
           if (wasMatched) {
-            // Show special error for this backend inconsistency
             errorMessage.value =
               'Server inconsistency detected: An account you matched was not recognized during import. This is likely a server-side bug. Please try again or contact support.'
             showErrorDialog.value = true
-
-            // Log this for debugging
             logger.error(
               'TransactionImportDialog',
               'Account matching inconsistency detected:',
-              { accountId, matchedPairs: matchedPairs.value }
+              { accountId }
             )
-
-            return
+            return true
           }
         }
       }
+      return false
+    }
 
-      if (message.type === 'account_selection_required') {
-        availableAccounts.value = message.data.available_accounts
-        showAccountSelection.value = true
-      } else if (
-        message.type === 'import_error' ||
-        message.type === 'critical_error'
-      ) {
-        // Check if this is a security error we can handle
-        const isSecurityError =
-          message.data &&
-          message.data.error &&
-          (message.data.error.includes('Security not found') ||
-            message.data.error.includes('Could not match security') ||
-            message.data.error.includes('unsupported operand type') ||
-            message.data.error.includes('NoneType'))
-
-        if (isSecurityError) {
-          // For security errors, keep the connection but handle the error
-          handleImportError(message.data.error)
-        } else {
-          // For non-security errors, show the error to the user
-          showAccountMatching.value = false
-          showProgressDialog.value = false
-          showSuccessDialog.value = false
-          showSecurityMapping.value = false
-          showTransactionConfirmation.value = false
-
-          errorMessage.value = message.data?.error || 'An unexpected error occurred during import'
-          showErrorDialog.value = true
-
-          if (message.type === 'critical_error') {
-            // Handle critical errors that require disconnecting
-            disconnect()
-            resetImport()
-          }
-        }
-      } else if (message.type === 'error') {
-        importError.value = message.data.message
-        currentImportMessage.value = '' // Clear progress message
-        importState.setState('error', message.data.message)
-      } else if (message.type === 'progress') {
-        currentImportMessage.value = message.data.message
-        if (message.data.total) {
-          totalToImport.value = message.data.total
-        }
-        if (message.data.current) {
-          currentImported.value = message.data.current
-        }
-      } else {
-        // Handle other message types through the main handler
-        handleWebSocketMessage(message)
-      }
+    // Main watcher for WebSocket messages
+    watch(lastMessage, (message) => {
+      if (!message) return
+      if (isAccountMatchingInconsistency(message)) return
+      applyDecodedEvent(decodeImportEvent(message))
     })
 
     onUnmounted(() => {

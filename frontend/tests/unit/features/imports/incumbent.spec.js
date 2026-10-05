@@ -581,23 +581,25 @@ describe('incumbent incoming event handling', () => {
     expect(wrapper.emitted('import-completed')).toBeUndefined()
     expect(wrapper.vm.showErrorDialog).toBe(true)
     expect(wrapper.vm.errorMessage).toBe(expected.stoppedMessage)
-    expect(wrapper.vm.importStats).toEqual(
-      events.importStoppedWithStats.data.stats
-    )
+    expect(wrapper.vm.importStats).toEqual({
+      ...events.importStoppedWithStats.data.stats,
+      warnings: [],
+    })
     expect(wrapper.vm.showProgressDialog).toBe(false)
     expect(disconnectMock).toHaveBeenCalled()
   })
 
-  it('import_stopped without stats still stops and disconnects', async () => {
+  it('import_stopped without stats keeps the previous stats view', async () => {
     mountDialog()
     wrapper.vm.showProgressDialog = true
-    // Recorded incumbent defect: stats-less import_stopped (the shape the
-    // backend's process_import finally block sends) overwrites importStats
-    // with undefined and the result template crashes reading .warnings.
-    await expect(feed(events.importStoppedWithoutStats)).rejects.toThrow(
-      /warnings/
-    )
+    await feed(events.importStoppedWithoutStats)
+
+    // The protocol seam normalizes the stats-less shape (recorded defect
+    // D-1): no crash, stopped outcome shown, no completion emitted.
     expect(wrapper.emitted('import-completed')).toBeUndefined()
+    expect(wrapper.vm.showErrorDialog).toBe(true)
+    expect(wrapper.vm.errorMessage).toBe(expected.stoppedMessage)
+    expect(wrapper.vm.showProgressDialog).toBe(false)
     expect(disconnectMock).toHaveBeenCalled()
   })
 
