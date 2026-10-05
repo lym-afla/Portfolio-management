@@ -381,6 +381,51 @@ describe('stop and decision commands', () => {
   // characterization base (securityFormData.readonly is never produced);
   // the bare security_confirmation shape is pinned by protocol.spec.ts.
 
+  it('create New Security from mapping opens the form with mapping data', async () => {
+    mountDialog()
+    await startSyntheticRun()
+    await feed(events.importUpdateSecurityMapping)
+    expect(wrapper.vm.showSecurityMapping).toBe(true)
+
+    wrapper.vm.handleCreateSecurityFromMapping()
+
+    expect(wrapper.vm.showSecurityDialog).toBe(true)
+    expect(wrapper.vm.securityFormData).toEqual({
+      name: 'ACME Corp',
+      ISIN: 'US0000000001',
+      symbol: 'ACME',
+      currency: 'RUB',
+      type: 'Stock',
+      exposure: 'Equity',
+    })
+    // Nothing is sent until the form resolves; the created security then
+    // maps back onto the transaction.
+    expect(sends()).toHaveLength(0)
+    wrapper.vm.handleSecurityAdded({ id: 77, name: 'ACME Corp' })
+    expect(lastSend()).toEqual({
+      type: 'security_mapped',
+      action: 'map',
+      security_id: 77,
+    })
+  })
+
+  it('the security selection never leaks between mapping decisions', async () => {
+    mountDialog()
+    await startSyntheticRun()
+    await feed(events.importUpdateSecurityMapping)
+    wrapper.vm.handleSecuritySelected(31)
+    wrapper.vm.handleConfirm()
+    expect(lastSend()).toEqual(commands.securityMappedMap)
+
+    // A new mapping decision starts with a clean selection: confirming
+    // without choosing cannot reuse the previous security.
+    await feed(events.importUpdateSecurityMapping)
+    expect(wrapper.vm.showSecurityMapping).toBe(true)
+    expect(wrapper.vm.selectedSecurityId).toBe(null)
+    wrapper.vm.handleConfirm()
+    expect(lastSend()).toEqual(commands.securityMappedSkip)
+  })
+
   it('editable security confirm: opens the creation form, sends nothing yet', async () => {
     mountDialog()
     await startSyntheticRun()
@@ -629,7 +674,7 @@ describe('incoming event handling', () => {
     })
   })
 
-  it('import_error without a security string shows the error dialog directly', async () => {
+  it('import_error without a security string surfaces without leaving the session', async () => {
     mountDialog()
     await startSyntheticRun()
     await feed(events.importErrorPlain)
@@ -637,13 +682,20 @@ describe('incoming event handling', () => {
     expect(wrapper.vm.confirmDialog).toBe(false)
     expect(wrapper.vm.errorMessage).toBe('synthetic import failure')
     expect(wrapper.vm.showErrorDialog).toBe(true)
+    // The run keeps tracking: progress and Stop stay live, and a later
+    // completion still reaches the parent.
+    expect(wrapper.vm.showProgressDialog).toBe(true)
+    expect(wrapper.vm.canStopImport).toBe(true)
+    await feed(events.importCompleteWithWarnings)
+    expect(wrapper.emitted('import-completed')).toHaveLength(1)
+    expect(wrapper.vm.lastRunError).toBe(null)
   })
 
   it('top-level save_error is handled like the legacy handleImportError', async () => {
     mountDialog()
     await startSyntheticRun()
     await feed(events.saveErrorTopLevel)
-    expect(wrapper.vm.importError).toBe('synthetic top-level save failure')
+    expect(wrapper.vm.lastRunError).toBe('synthetic top-level save failure')
   })
 
   it('account_matching_required transforms the pairs object, keeping full objects', async () => {
@@ -682,12 +734,13 @@ describe('incoming event handling', () => {
     expect(wrapper.vm.showSecurityDialog).toBe(true)
   })
 
-  it('error with data sets the import error and clears the progress message', async () => {
+  it('error with data surfaces the message without leaving the session', async () => {
     mountDialog()
     await startSyntheticRun()
     await feed(events.errorWithData)
-    expect(wrapper.vm.importError).toBe('synthetic broker token expired')
-    expect(wrapper.vm.currentImportMessage).toBe('')
+    expect(wrapper.vm.lastRunError).toBe('synthetic broker token expired')
+    expect(wrapper.vm.showErrorDialog).toBe(true)
+    expect(wrapper.vm.showProgressDialog).toBe(true)
   })
 
   it('matched-account inconsistency shows the server-inconsistency error', async () => {
@@ -701,6 +754,8 @@ describe('incoming event handling', () => {
       'Server inconsistency detected: An account you matched was not recognized during import. This is likely a server-side bug. Please try again or contact support.'
     )
     expect(wrapper.vm.confirmDialog).toBe(false)
+    // The matching decision stays open so the user can correct the answer.
+    expect(wrapper.vm.showAccountMatching).toBe(true)
   })
 
   it('unrecognized_operation updates are ignored without state changes', async () => {

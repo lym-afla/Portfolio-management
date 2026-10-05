@@ -310,7 +310,9 @@ watch(dialog, (newValue) => {
 // interface (Boolean(await connect())). The adapter preserves the incumbent
 // restart rule of clearing intentionalClose/connectionAttempted before each
 // connect attempt so a later run can reconnect after a teardown; no second
-// socket or reconnect logic is introduced.
+// socket or reconnect logic is introduced. Every connect first closes the
+// previous socket, so an orphaned old server session cannot keep feeding
+// events into a replacement run.
 const {
   isConnected,
   lastMessage,
@@ -320,13 +322,24 @@ const {
   reset: resetTransportFlags,
 } = useWebSocket('/ws/transactions/')
 
+// Disconnections we caused ourselves (teardown, close-before-reconnect) are
+// not service losses; only an unexpected remote close notifies the run.
+let selfDisconnected = false
 const transport = {
   connect: async () => {
+    selfDisconnected = true
+    disconnect()
     resetTransportFlags()
-    return Boolean(await connect())
+    const connected = Boolean(await connect())
+    if (connected) selfDisconnected = false
+    return connected
   },
   send: (command) => Boolean(sendMessage(command)),
-  disconnect,
+  disconnect: () => {
+    selfDisconnected = true
+    disconnect()
+  },
+  causedDisconnect: () => selfDisconnected,
 }
 
 const { handleApiError } = useErrorHandler()
@@ -347,6 +360,7 @@ const {
   state,
   configuration,
   stats,
+  lastRunError,
   selectMethod: selectWorkflowMethod,
   back,
   analyze,
@@ -356,6 +370,7 @@ const {
   notifyDisconnected,
   receive,
   reset,
+  dispose,
   dismissError,
   resolveSecurityMapping,
   resolveSecurityCreated,
@@ -408,8 +423,17 @@ const isLoading = computed(() => isAnalyzingState.value || brokersLoading.value)
 const importError = computed(() =>
   stateKind.value === 'error' ? state.value.message : ''
 )
-const errorMessage = importError
-const showErrorDialog = computed(() => stateKind.value === 'error')
+// Terminal errors come from the error state; recoverable in-run errors
+// (row-level import_error etc.) surface through lastRunError while the run
+// keeps tracking.
+const errorMessage = computed(() =>
+  stateKind.value === 'error'
+    ? state.value.message
+    : (lastRunError.value ?? '')
+)
+const showErrorDialog = computed(
+  () => stateKind.value === 'error' || lastRunError.value !== null
+)
 
 // The main configuration dialog closes while a run owns the flow; it
 // reopens when the workflow returns to a configurable state (recoverable
@@ -476,17 +500,19 @@ const currentTransaction = computed(() => {
 const showSuccessDialog = computed(() => stateKind.value === 'complete')
 const importStats = computed(() => stats.value)
 
-// Security creation form: opened directly for creation-needed decisions or
-// after the create/skip confirmation for error-origin decisions.
+// Security creation form: opened directly for creation-needed decisions,
+// after the create/skip confirmation for error-origin decisions, and via
+// "Create New Security" from a mapping decision (name/ISIN/symbol carried
+// over from the mapping payload).
 const securityFormRequested = ref(false)
 const showSecurityDialog = computed(() => {
-  if (securityDecisionOrigin.value === 'creation-needed') return true
-  return (
-    securityDecisionOrigin.value === 'error' && securityFormRequested.value
-  )
+  const origin = securityDecisionOrigin.value
+  if (origin === 'creation-needed') return true
+  return origin !== null && securityFormRequested.value
 })
 const securityFormData = computed(() => {
-  if (securityDecisionOrigin.value === 'creation-needed') {
+  const origin = securityDecisionOrigin.value
+  if (origin === 'creation-needed') {
     const info = decisionPayload.value.info
     return {
       name: info.name,
@@ -496,11 +522,22 @@ const securityFormData = computed(() => {
       exposure: 'Equity',
     }
   }
-  if (securityDecisionOrigin.value === 'error') {
+  if (origin === 'error') {
     const info = decisionPayload.value.info
     return {
       name: info.name,
       ISIN: info.isin ?? '',
+      currency: 'RUB',
+      type: 'Stock',
+      exposure: 'Equity',
+    }
+  }
+  if (origin === 'mapping' && securityFormRequested.value) {
+    const payload = decisionPayload.value
+    return {
+      name: payload.description ?? '',
+      ISIN: payload.isin ?? '',
+      symbol: payload.symbol ?? '',
       currency: 'RUB',
       type: 'Stock',
       exposure: 'Equity',
@@ -759,25 +796,44 @@ const closeSuccessDialog = () => {
 }
 
 const closeErrorDialog = () => {
-  dismissError()
+  if (stateKind.value === 'error') {
+    dismissError()
+  } else {
+    // Recoverable in-run error: dismiss the notice; the run keeps tracking.
+    lastRunError.value = null
+  }
 }
 
 const resetImport = () => {
   reset()
 }
 
+// Messages are only owned while a connection is open: frames that straggle
+// in from a socket we just closed (or during a reconnect window) must not
+// reach the workflow.
 watch(lastMessage, (message) => {
   if (!message) return
+  if (!isConnected.value) return
   receive(message)
 })
 
 watch(isConnected, (connected) => {
-  if (!connected) notifyDisconnected()
+  if (!connected && !transport.causedDisconnect()) {
+    notifyDisconnected()
+  }
+})
+
+// A new decision clears presentation leftovers from the previous one: the
+// mapping selection must never leak into the next confirmation.
+watch(decision, () => {
+  selectedSecurityId.value = null
+  securityFormRequested.value = false
 })
 
 onUnmounted(() => {
-  // Intentional disconnect on unmount: teardown owns this connection.
-  disconnect()
+  // Final teardown: invalidates every pending await (a pending connect can
+  // no longer send its start) and closes the owned connection.
+  dispose()
 })
 </script>
 

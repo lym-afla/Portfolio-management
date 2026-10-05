@@ -128,6 +128,10 @@ export function useTransactionImport(options: TransactionImportOptions) {
   const progress = ref(0)
   const stats = ref<ImportResultData>({ ...EMPTY_STATS, warnings: [] })
   const lastProtocolIssue = ref<string | null>(null)
+  // Recoverable in-run errors (row import_error, top-level save_error,
+  // consumer `error` envelopes): the backend keeps importing after these, so
+  // they are surfaced without leaving the session. Null once superseded.
+  const lastRunError = ref<string | null>(null)
 
   // Server-owned run data; the running state mirrors it. Updated even while
   // a decision overlay holds the state so a resolved decision restores the
@@ -150,6 +154,7 @@ export function useTransactionImport(options: TransactionImportOptions) {
     runData.total = 0
     runData.message = ''
     progress.value = 0
+    lastRunError.value = null
   }
 
   const syncRunningState = () => {
@@ -286,8 +291,12 @@ export function useTransactionImport(options: TransactionImportOptions) {
       }
       if (myGeneration !== generation) return
       configuration.fileId.value = result.fileId ?? null
-      configuration.accounts.value = await options.fetchAccounts()
+      // Ownership is verified before anything from the late lookups is
+      // committed: a reset while they are in flight must not mutate the
+      // cleared configuration.
+      const accounts = await options.fetchAccounts()
       if (myGeneration !== generation) return
+      configuration.accounts.value = accounts
       if (result.status === 'account_identified' && result.identifiedAccount) {
         configuration.accountIdentified.value = true
         configuration.identifiedAccount.value = result.identifiedAccount
@@ -411,15 +420,20 @@ export function useTransactionImport(options: TransactionImportOptions) {
     sendFromDecision(transactionConfirmedCommand(confirmed))
   }
 
-  const resolveAccountSelection = (account: { id: number }) => {
+  // Account resolvers require the LIVE accounts decision: after reset (or
+  // any state change) a late callback must neither send nor resurrect the
+  // run by restoring a running state.
+  const currentAccountsVariant = (): 'match' | 'select' | null => {
     const current = state()
-    if (
-      current.kind !== 'decision' ||
-      current.decision !== 'accounts' ||
-      (current.payload as { variant?: string }).variant !== 'select'
-    ) {
-      return
+    if (current.kind !== 'decision' || current.decision !== 'accounts') {
+      return null
     }
+    const variant = (current.payload as { variant?: string }).variant
+    return variant === 'match' || variant === 'select' ? variant : null
+  }
+
+  const resolveAccountSelection = (account: { id: number }) => {
+    if (currentAccountsVariant() !== 'select') return
     sendFromDecision(
       selectAccountCommand(
         account.id,
@@ -431,6 +445,7 @@ export function useTransactionImport(options: TransactionImportOptions) {
   }
 
   const resolveAccountMatched = (pairs: AccountMatchPair[]) => {
+    if (currentAccountsVariant() === null) return
     if (!Array.isArray(pairs)) {
       options.onError?.('Invalid account pairing data received')
       return
@@ -443,6 +458,7 @@ export function useTransactionImport(options: TransactionImportOptions) {
   }
 
   const resolveUseExistingMatches = (pairs: AccountMatchPair[]) => {
+    if (currentAccountsVariant() === null) return
     if (!Array.isArray(pairs)) {
       options.onError?.('Invalid existing account pairs data')
       return
@@ -459,6 +475,7 @@ export function useTransactionImport(options: TransactionImportOptions) {
     name: string
     comment?: string
   }) => {
+    if (currentAccountsVariant() === null) return
     if (!data || !data.tinkoffAccount || !data.name) {
       options.onError?.('Invalid account creation data')
       return
@@ -521,9 +538,19 @@ export function useTransactionImport(options: TransactionImportOptions) {
     transition({ kind: 'choose-method' })
   }
 
+  // Final teardown (component unmount): invalidates every pending await —
+  // a pending connect can no longer send its start — and closes the owned
+  // connection.
+  const dispose = () => {
+    generation += 1
+    stopRequested = false
+    options.transport.disconnect()
+  }
+
   // ------------------------------------------------------------ receive
 
   const applyComplete = (result: ImportResultData, raw: Record<string, JsonValue>) => {
+    lastRunError.value = null
     stats.value = result
     transition({ kind: 'complete', result })
     options.onCompleted?.(raw)
@@ -557,7 +584,17 @@ export function useTransactionImport(options: TransactionImportOptions) {
     )
   }
 
-  const receive = (raw: unknown) => {
+  const toDecision = (
+    decisionKind: 'security' | 'transaction' | 'accounts',
+    payload: unknown
+  ) => {
+    // A decision supersedes any recoverable run error: the overlay must
+    // never be blocked by the error dialog.
+    lastRunError.value = null
+    transition({ kind: 'decision', method: runMethod, decision: decisionKind, payload })
+  }
+
+    const receive = (raw: unknown) => {
     const decoded = decodeImportEvent(raw)
     switch (decoded.kind) {
       case 'protocol-error':
@@ -571,6 +608,24 @@ export function useTransactionImport(options: TransactionImportOptions) {
         break
     }
     if (!sessionActive()) return
+
+    // While a stop is pending the outcome is owned by the stop
+    // acknowledgment: progress family and the terminal pair stay live, but
+    // no event may reopen a decision or fork the run into another state.
+    if (state().kind === 'stopping') {
+      switch (decoded.kind) {
+        case 'initialization':
+        case 'total-count':
+        case 'progress':
+        case 'transaction-saved':
+        case 'item-error':
+        case 'complete':
+        case 'stopped':
+          break
+        default:
+          return
+      }
+    }
 
     switch (decoded.kind) {
       case 'initialization':
@@ -613,73 +668,44 @@ export function useTransactionImport(options: TransactionImportOptions) {
         syncRunningState()
         break
       case 'security-mapping':
-        transition({
-          kind: 'decision',
-          method: runMethod,
-          decision: 'security',
-          payload: {
-            origin: 'mapping',
-            description: decoded.description,
-            isin: decoded.isin,
-            symbol: decoded.symbol,
-            bestMatch: decoded.bestMatch,
-            transaction: decoded.transaction,
-          },
+        toDecision('security', {
+          origin: 'mapping',
+          description: decoded.description,
+          isin: decoded.isin,
+          symbol: decoded.symbol,
+          bestMatch: decoded.bestMatch,
+          transaction: decoded.transaction,
         })
         break
       case 'transaction-confirmation':
-        transition({
-          kind: 'decision',
-          method: runMethod,
-          decision: 'transaction',
-          payload: { transaction: decoded.transaction },
-        })
+        toDecision('transaction', { transaction: decoded.transaction })
         break
       case 'import-error':
         if (decoded.securityRelated) {
           const info = extractSecurityInfoFromError(decoded.error, runData.message)
-          transition({
-            kind: 'decision',
-            method: runMethod,
-            decision: 'security',
-            payload: {
-              origin: 'error',
-              info: { name: info.name, isin: info.isin, currency: null },
-            },
-          })
-        } else if (matchedAccountInconsistency(decoded.error)) {
-          transition({
-            kind: 'error',
-            message: INCONSISTENCY_MESSAGE,
-            canReturnToConfiguration: false,
+          toDecision('security', {
+            origin: 'error',
+            info: { name: info.name, isin: info.isin, currency: null },
           })
         } else {
-          transition({
-            kind: 'error',
-            message: decoded.error,
-            canReturnToConfiguration: false,
-          })
+          // Recoverable: the backend emits row-level import_error and
+          // keeps importing, so the run stays tracked (progress,
+          // decisions, stop and completion all remain live).
+          lastRunError.value = matchedAccountInconsistency(decoded.error)
+            ? INCONSISTENCY_MESSAGE
+            : decoded.error
         }
         break
       case 'save-error':
         if (decoded.securityRelated) {
           const info = extractSecurityInfoFromError(decoded.error, runData.message)
-          transition({
-            kind: 'decision',
-            method: runMethod,
-            decision: 'security',
-            payload: {
-              origin: 'error',
-              info: { name: info.name, isin: info.isin, currency: null },
-            },
+          toDecision('security', {
+            origin: 'error',
+            info: { name: info.name, isin: info.isin, currency: null },
           })
         } else {
           options.onError?.({ message: decoded.error })
-          transition({
-            kind: 'error',
-            message: decoded.error,
-            canReturnToConfiguration: false,
-          })
+          lastRunError.value = decoded.error
         }
         break
       case 'critical-error':
@@ -694,11 +720,9 @@ export function useTransactionImport(options: TransactionImportOptions) {
         })
         break
       case 'run-error':
-        transition({
-          kind: 'error',
-          message: decoded.message,
-          canReturnToConfiguration: false,
-        })
+        // The consumer reports these (invalid payload, missing key) and
+        // keeps the import running; surface without leaving the session.
+        lastRunError.value = decoded.message
         break
       case 'complete':
         applyComplete(decoded.result, decoded.raw)
@@ -714,34 +738,19 @@ export function useTransactionImport(options: TransactionImportOptions) {
         })
         break
       case 'account-matching-required':
-        transition({
-          kind: 'decision',
-          method: runMethod,
-          decision: 'accounts',
-          payload: {
-            variant: 'match',
-            broker: decoded.broker,
-            matchedPairs: decoded.matchedPairs,
-            unmatchedTinkoff: decoded.unmatchedTinkoff,
-            unmatchedDb: decoded.unmatchedDb,
-          },
+        toDecision('accounts', {
+          variant: 'match',
+          broker: decoded.broker,
+          matchedPairs: decoded.matchedPairs,
+          unmatchedTinkoff: decoded.unmatchedTinkoff,
+          unmatchedDb: decoded.unmatchedDb,
         })
         break
       case 'account-selection-required':
-        transition({
-          kind: 'decision',
-          method: runMethod,
-          decision: 'accounts',
-          payload: { variant: 'select', accounts: decoded.accounts },
-        })
+        toDecision('accounts', { variant: 'select', accounts: decoded.accounts })
         break
       case 'security-creation-needed':
-        transition({
-          kind: 'decision',
-          method: runMethod,
-          decision: 'security',
-          payload: { origin: 'creation-needed', info: decoded.info },
-        })
+        toDecision('security', { origin: 'creation-needed', info: decoded.info })
         break
       default:
         break
@@ -756,6 +765,7 @@ export function useTransactionImport(options: TransactionImportOptions) {
     isMapping: importState.isMapping,
     isComplete: importState.isComplete,
     isError: importState.isError,
+    lastRunError,
     configuration,
     progress,
     stats,
@@ -770,6 +780,7 @@ export function useTransactionImport(options: TransactionImportOptions) {
     notifyDisconnected,
     receive,
     reset,
+    dispose,
     resolveSecurityMapping,
     resolveSecurityCreated,
     resolveSecuritySkipped,

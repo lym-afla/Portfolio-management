@@ -6,7 +6,12 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { useTransactionImport } from '@/features/imports/useTransactionImport'
 import type { ImportCommand, ImportTransport } from '@/features/imports/types'
-import { commands, events, matchedPairsArray } from './fixtures'
+import {
+  commands,
+  events,
+  matchedPairsArray,
+  tinkoffAccount,
+} from './fixtures'
 
 function makeTransport() {
   const sent: ImportCommand[] = []
@@ -431,6 +436,130 @@ describe('completion, stop and stale-event containment', () => {
     h.orchestrator.resolveTransaction(true)
     expect(h.sent).toHaveLength(0)
     expect(lastState(h.orchestrator).kind).toBe('stopping')
+
+    // A late decision event cannot reopen a decision while stopping.
+    h.orchestrator.receive(structuredClone(events.importUpdateTransactionConfirmation))
+    h.orchestrator.receive(structuredClone(events.importUpdateSecurityMapping))
+    h.orchestrator.receive(structuredClone(events.accountMatchingRequired))
+    expect(lastState(h.orchestrator).kind).toBe('stopping')
+    expect(h.sent).toHaveLength(0)
+
+    // The acknowledgment still ends the run with the stopped outcome.
+    h.orchestrator.receive(structuredClone(events.importStoppedWithStats))
+    expect(lastState(h.orchestrator).kind).toBe('error')
+    expect(h.completed).toHaveLength(0)
+  })
+
+  it('recoverable import errors keep the run tracked end to end', async () => {
+    const h = makeHarness()
+    await startRun(h)
+    h.orchestrator.receive(structuredClone(events.importErrorPlain))
+    // Non-fatal: the run keeps tracking, Stop stays available.
+    expect(lastState(h.orchestrator).kind).toBe('running')
+    expect(h.orchestrator.lastRunError.value).toBe('synthetic import failure')
+
+    h.orchestrator.receive(structuredClone(events.importUpdateProgress))
+    expect(lastState(h.orchestrator)).toMatchObject({ kind: 'running', current: 7 })
+
+    h.orchestrator.requestStop()
+    expect(h.sent).toEqual([commands.stop])
+    expect(lastState(h.orchestrator).kind).toBe('stopping')
+  })
+
+  it('a completion after recoverable errors still reaches the parent once', async () => {
+    const h = makeHarness()
+    await startRun(h)
+    h.orchestrator.receive(structuredClone(events.importErrorPlain))
+    h.orchestrator.receive(structuredClone(events.importCompleteWithWarnings))
+
+    expect(h.completed).toHaveLength(1)
+    expect(h.completed[0]).toEqual(events.importCompleteWithWarnings.data)
+    expect(h.orchestrator.lastRunError.value).toBe(null)
+    expect(lastState(h.orchestrator).kind).toBe('complete')
+  })
+
+  it('consumer error envelopes surface without leaving the session', async () => {
+    const h = makeHarness()
+    await startRun(h)
+    h.orchestrator.receive(structuredClone(events.errorWithData))
+    expect(h.orchestrator.lastRunError.value).toBe('synthetic broker token expired')
+    expect(lastState(h.orchestrator).kind).toBe('running')
+
+    h.orchestrator.receive(structuredClone(events.importCompleteWithWarnings))
+    expect(h.completed).toHaveLength(1)
+  })
+
+  it('account resolvers are inert after reset', async () => {
+    const h = makeHarness()
+    await startRun(h)
+    h.orchestrator.receive(structuredClone(events.accountMatchingRequired))
+    expect(lastState(h.orchestrator).kind).toBe('decision')
+
+    h.orchestrator.reset()
+    h.sent.length = 0
+
+    h.orchestrator.resolveAccountMatched(structuredClone(matchedPairsArray))
+    h.orchestrator.resolveUseExistingMatches(structuredClone(matchedPairsArray))
+    h.orchestrator.resolveCreateAccount({
+      tinkoffAccount: tinkoffAccount,
+      name: 'New Synthetic Account',
+    })
+    h.orchestrator.resolveAccountSelection({ id: 5 })
+
+    expect(h.sent).toHaveLength(0)
+    expect(lastState(h.orchestrator).kind).toBe('choose-method')
+  })
+
+  it('late account loading cannot mutate reset configuration', async () => {
+    const h = makeHarness()
+    h.orchestrator.selectMethod('file')
+    let releaseAccounts: (value: Array<Record<string, unknown>>) => void = () => {}
+    h.analyze.mockResolvedValue({
+      status: 'account_identified',
+      fileId: 'late-accounts',
+      identifiedAccount: { id: 3, name: 'Main account' },
+    })
+    h.fetchAccounts.mockImplementation(
+      () => new Promise((resolve) => {
+        releaseAccounts = resolve
+      })
+    )
+    const pending = h.orchestrator.analyze(new Blob(['x']) as unknown as File)
+    // Wait until the workflow is actually parked on the account fetch so
+    // the reset races the LATE lookup, not the analyzer response.
+    await vi.waitFor(() => expect(h.fetchAccounts).toHaveBeenCalled())
+    expect(h.orchestrator.configuration.fileId.value).toBe('late-accounts')
+    h.orchestrator.reset()
+    releaseAccounts([{ id: 3, name: 'Main account' }])
+    await pending
+
+    expect(lastState(h.orchestrator).kind).toBe('choose-method')
+    expect(h.orchestrator.configuration.fileId.value).toBe(null)
+    expect(h.orchestrator.configuration.accounts.value).toEqual([])
+    expect(h.orchestrator.configuration.selectedAccount.value).toBe(null)
+  })
+
+  it('dispose invalidates a pending connection so no start is sent', async () => {
+    const h = makeHarness()
+    let releaseConnect: (value: boolean) => void = () => {}
+    h.connect.mockImplementation(
+      () => new Promise<boolean>((resolve) => {
+        releaseConnect = resolve
+      })
+    )
+    const pending = h.orchestrator.startApi({
+      brokerId: 11,
+      confirmEvery: false,
+      dateFrom: null,
+      dateTo: null,
+    })
+    h.orchestrator.dispose()
+    releaseConnect(true)
+    await pending
+
+    expect(h.sent).toHaveLength(0)
+    expect(h.disconnect).toHaveBeenCalled()
+    expect(h.completed).toHaveLength(0)
   })
 
   it('stale events after reset cannot repopulate or complete the next run', async () => {
