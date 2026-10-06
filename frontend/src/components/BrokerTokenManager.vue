@@ -6,6 +6,7 @@
       <v-btn
         color="primary"
         prepend-icon="mdi-plus"
+        data-testid="add-broker-token"
         @click="showAddTokenDialog = true"
       >
         Add Token
