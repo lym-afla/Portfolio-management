@@ -53,7 +53,24 @@
                     v-model="selectedPeriod"
                     :effective-current-date="effectiveCurrentDate"
                   />
-                  <div style="height: 400px">
+                  <!-- C4: the gated modern composition (view-only zoom plus
+                       the exact observed-point table); the fallback slot
+                       keeps the incumbent Chart.js chart one click away. -->
+                  <SecurityHistoryChart
+                    v-if="priceDocument"
+                    :document="priceDocument"
+                    :requested="true"
+                  >
+                    <template #fallback>
+                      <div style="height: 400px">
+                        <LineChart
+                          :chart-data="priceChartData"
+                          :options="priceChartOptions"
+                        />
+                      </div>
+                    </template>
+                  </SecurityHistoryChart>
+                  <div v-else style="height: 400px">
                     <v-skeleton-loader v-if="loadingPriceChart" type="image" />
                     <LineChart
                       v-else
@@ -75,7 +92,21 @@
                     v-model="selectedPeriod"
                     :effective-current-date="effectiveCurrentDate"
                   />
-                  <div style="height: 400px">
+                  <SecurityHistoryChart
+                    v-if="positionDocument"
+                    :document="positionDocument"
+                    :requested="true"
+                  >
+                    <template #fallback>
+                      <div style="height: 400px">
+                        <LineChart
+                          :chart-data="positionChartData"
+                          :options="positionChartOptions"
+                        />
+                      </div>
+                    </template>
+                  </SecurityHistoryChart>
+                  <div v-else style="height: 400px">
                     <v-skeleton-loader v-if="loadingPositionChart" type="image" />
                     <LineChart
                       v-else
@@ -120,6 +151,8 @@ import { useRoute } from 'vue-router'
 import { usePortfolioContextStore } from '@/stores/portfolioContext'
 import { useAppStore } from '@/stores/app'
 import { useSecurityDetail } from '@/features/securities/useSecurityDetail'
+import SecurityHistoryChart from '@/features/charts/SecurityHistoryChart.vue'
+import { securityEchartsRequested } from '@/features/charts/rendererPolicy'
 import SecurityOverview from '@/features/securities/SecurityOverview.vue'
 import SecurityMetadata from '@/features/securities/SecurityMetadata.vue'
 import SecurityActivity from '@/features/securities/SecurityActivity.vue'
@@ -181,6 +214,8 @@ const {
   security,
   priceHistory,
   positionHistory,
+  priceChartResult,
+  positionChartResult,
   transactions,
   chartOptions,
   chartOptionsLoaded,
@@ -202,6 +237,19 @@ const {
 watch(security, (value) => { emit('update-page-title', value?.name ?? '') }, { flush: 'sync' })
 
 const effectiveCurrentDate = computed(() => appStore.effectiveCurrentDate)
+
+// C4: the gated modern history renderers — active only while the security
+// gate is on and the negotiated result is a validated v2 document; legacy_only
+// payloads keep the incumbent Chart.js charts unchanged.
+const securityPilotRequested = securityEchartsRequested()
+const priceDocument = computed(() => {
+  if (!securityPilotRequested || priceChartResult.value?.capability !== 'v2') return null
+  return priceChartResult.value.document
+})
+const positionDocument = computed(() => {
+  if (!securityPilotRequested || positionChartResult.value?.capability !== 'v2') return null
+  return positionChartResult.value.document
+})
 
 // ---- Display views: pure mappings from the accepted server response to the
 // section models. Every value stays the server display string; conditions

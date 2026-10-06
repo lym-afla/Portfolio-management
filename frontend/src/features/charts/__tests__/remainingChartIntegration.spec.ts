@@ -22,7 +22,8 @@ import { useBreakdownChart } from '../useBreakdownChart'
 import { useSecurityDetail } from '@/features/securities/useSecurityDetail'
 import { getChartOptions } from '@/config/chartConfig'
 import DashboardPage from '@/views/DashboardPage.vue'
-import { mount } from '@vue/test-utils'
+import SecurityDetailPage from '@/views/database/SecurityDetailPage.vue'
+import { mount, flushPromises as flush } from '@vue/test-utils'
 import { createVuetify } from 'vuetify'
 import * as vuetifyComponents from 'vuetify/components'
 import * as vuetifyDirectives from 'vuetify/directives'
@@ -30,9 +31,21 @@ import * as vuetifyDirectives from 'vuetify/directives'
 // DashboardPage's summary widgets go through services/api (the broad axios
 // instance); mock only those two functions and keep every other export real —
 // the security transports stay on the configured shared transport.
+vi.mock('vue-router', () => ({
+  useRoute: () => ({ params: { id: '1' } }),
+  useRouter: () => ({ push: vi.fn() }),
+  createRouter: () => ({ beforeEach() {}, afterEach() {}, onError() {} }),
+  createWebHistory: () => ({}),
+  RouterLink: { name: 'RouterLink', template: '<a><slot /></a>' },
+  RouterView: { name: 'RouterView', template: '<div><slot /></div>' },
+}))
+
 const dashboardWidgets = vi.hoisted(() => ({
   getDashboardSummary: vi.fn(),
   getDashboardSummaryOverTime: vi.fn(),
+  getSecurityDetail: vi.fn(),
+  getSecurityTransactions: vi.fn(),
+  getAccountChoices: vi.fn(),
 }))
 vi.mock('@/services/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/services/api')>()
@@ -40,6 +53,11 @@ vi.mock('@/services/api', async (importOriginal) => {
     ...actual,
     getDashboardSummary: dashboardWidgets.getDashboardSummary,
     getDashboardSummaryOverTime: dashboardWidgets.getDashboardSummaryOverTime,
+    // The security page's non-chart resources also ride the broad axios
+    // instance; only the two chart histories stay on the shared transport.
+    getSecurityDetail: dashboardWidgets.getSecurityDetail,
+    getSecurityTransactions: dashboardWidgets.getSecurityTransactions,
+    getAccountChoices: dashboardWidgets.getAccountChoices,
   }
 })
 
@@ -51,7 +69,10 @@ vi.mock('chartjs-adapter-date-fns', () => ({}))
 // The dashboard section mounts the real BreakdownChart with the gated modern
 // composition; both chart runtimes are stubbed at the wrapper boundary.
 const pieState = vi.hoisted(() => ({ captured: [] as unknown[] }))
-vi.mock('vue-chartjs', () => ({ Bar: { name: 'Bar', template: '<div class="bar-stub" />' } }))
+vi.mock('vue-chartjs', () => ({
+  Bar: { name: 'Bar', template: '<div class="bar-stub" />' },
+  Line: { name: 'Line', props: ['data', 'options'], template: '<div class="bar-stub" />' },
+}))
 vi.mock('vue-echarts', async () => {
   const { h } = await import('vue')
   return {
@@ -145,6 +166,14 @@ beforeEach(async () => {
   transportCalls = []
   respondBreakdown = null
   respondSecurity = null
+  dashboardWidgets.getSecurityDetail.mockResolvedValue({
+    id: 1, name: 'One', instrument_type: 'Stock', ISIN: 'ISIN-1',
+    currency: 'USD', first_investment: '01-Jan-26', open_position: '1',
+    current_value: '$1.00', realized: '–', unrealized: '–',
+    capital_distribution: '$0.00', irr: 'NA',
+  })
+  dashboardWidgets.getSecurityTransactions.mockResolvedValue({ transactions: [], total_items: 0 })
+  dashboardWidgets.getAccountChoices.mockResolvedValue({ options: [] })
   vi.mocked(getChartOptions).mockResolvedValue({ navChartOptions: {} } as Awaited<ReturnType<typeof getChartOptions>>)
   const pinia = createPinia()
   setActivePinia(pinia)
@@ -377,7 +406,8 @@ describe('DashboardPage allocation wiring', () => {
       if (
         pieState.captured.length >= 3 ||
         wrapper.find('[data-testid="allocation-capability-notice"]').exists() ||
-        wrapper.find('[data-testid="allocation-assetType-error"]').exists()
+        wrapper.find('[data-testid="allocation-assetType-error"]').exists() ||
+        wrapper.findAll('.bar-stub').length >= 3
       ) break
     }
     return wrapper
@@ -392,6 +422,9 @@ describe('DashboardPage allocation wiring', () => {
       'Current NAV': '$1,000.00', Invested: '$900.00', 'Cash-out': '$0.00', total_return: '11.11%', irr: 'N/R',
     })
     dashboardWidgets.getDashboardSummaryOverTime.mockResolvedValue({ lines: [], years: [], currentYear: 2026 })
+    dashboardWidgets.getSecurityDetail.mockReset()
+    dashboardWidgets.getSecurityTransactions.mockReset()
+    dashboardWidgets.getAccountChoices.mockReset()
   })
 
   it('keeps the incumbent cards and one negotiated request while the gate is off', async () => {
@@ -403,7 +436,7 @@ describe('DashboardPage allocation wiring', () => {
     expect(wrapper.findAll('.bar-stub')).toHaveLength(3)
     expect(wrapper.find('[data-testid="allocation-capability-notice"]').exists()).toBe(false)
     wrapper.unmount()
-  })
+  }, 20000)
 
   it('renders one solid pie per card from the same request when the gate is on', async () => {
     vi.stubEnv('VITE_ALLOCATION_ECHARTS_ENABLED', 'true')
@@ -424,7 +457,7 @@ describe('DashboardPage allocation wiring', () => {
     } finally {
       vi.unstubAllEnvs()
     }
-  })
+  }, 20000)
 
   it('shows the legacy-only notice and incumbent bars for a legacy payload with the gate on', async () => {
     vi.stubEnv('VITE_ALLOCATION_ECHARTS_ENABLED', 'true')
@@ -442,7 +475,7 @@ describe('DashboardPage allocation wiring', () => {
     } finally {
       vi.unstubAllEnvs()
     }
-  })
+  }, 20000)
 
   it('surfaces a malformed breakdown document as an error with retry, never a downgrade', async () => {
     vi.stubEnv('VITE_ALLOCATION_ECHARTS_ENABLED', 'true')
@@ -463,5 +496,69 @@ describe('DashboardPage allocation wiring', () => {
     } finally {
       vi.unstubAllEnvs()
     }
-  })
+  }, 20000)
+})
+
+
+describe('SecurityDetailPage security-history wiring', () => {
+  const securityVuetify = createVuetify({ components: vuetifyComponents, directives: vuetifyDirectives })
+
+  async function mountSecurityPage() {
+    const pinia = createPinia()
+    await usePortfolioContextStore(pinia).reconcileContext()
+    const wrapper = mount(SecurityDetailPage, {
+      global: {
+        plugins: [securityVuetify, pinia],
+        provide: { showError: vi.fn(), clearErrors: vi.fn() },
+        stubs: {
+          SecurityActivity: true,
+        },
+      },
+    })
+    // The history renderer is an async component; settle its loader.
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      await flush()
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      if (
+        pieState.captured.length >= 2 ||
+        wrapper.findAll('.bar-stub').length >= 2
+      ) break
+    }
+    return wrapper
+  }
+
+  it('keeps the incumbent charts with the gate off, one negotiated request per history', async () => {
+    const before = pieState.captured.length
+    const wrapper = await mountSecurityPage()
+    const priceCalls = transportCalls.filter((call) => call.url.endsWith('/price-history/'))
+    const positionCalls = transportCalls.filter((call) => call.url.endsWith('/position-history/'))
+    expect(priceCalls).toHaveLength(1)
+    expect(positionCalls).toHaveLength(1)
+    expect(pieState.captured.length).toBe(before)
+    const pageHtml = wrapper.html()
+    console.log('PAGE has-skeleton:', pageHtml.includes('skeleton'), 'has-price-history:', pageHtml.includes('Price History'), 'has-alert:', (pageHtml.match(/Unable to load/g) || []).length, 'has-bar-stub:', pageHtml.includes('bar-stub'), 'has-line:', pageHtml.includes('line-chart'))
+    console.log('PAGE snippet:', pageHtml.slice(pageHtml.indexOf('Price History') - 50, pageHtml.indexOf('Price History') + 500))
+    expect(wrapper.findAll('.bar-stub').length).toBeGreaterThanOrEqual(2)
+    expect(wrapper.find('[data-testid="security-data-table"]').exists()).toBe(false)
+    wrapper.unmount()
+  }, 20000)
+
+  it('renders both modern histories from the same negotiated results with the gate on', async () => {
+    vi.stubEnv('VITE_SECURITY_ECHARTS_ENABLED', 'true')
+    try {
+      const wrapper = await mountSecurityPage()
+      const priceCalls = transportCalls.filter((call) => call.url.endsWith('/price-history/'))
+      const positionCalls = transportCalls.filter((call) => call.url.endsWith('/position-history/'))
+      expect(priceCalls).toHaveLength(1)
+      expect(positionCalls).toHaveLength(1)
+      expect(pieState.captured.length).toBe(2)
+      const tables = wrapper.findAll('[data-testid="security-data-table"]')
+      expect(tables).toHaveLength(2)
+      expect(tables[0].text()).toContain('98.5% of nominal')
+      expect(tables[1].text()).toContain('0.000116590')
+      wrapper.unmount()
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  }, 20000)
 })

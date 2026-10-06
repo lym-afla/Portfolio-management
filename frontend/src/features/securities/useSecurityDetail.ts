@@ -108,6 +108,9 @@ export function useSecurityDetail(options: {
   // come from the same negotiated response — identical values, one request.
   const priceHistory = computed(() => priceQuery.data.value?.legacy ?? [])
   const positionHistory = computed(() => positionQuery.data.value?.legacy ?? [])
+  // C4: the full negotiated results for the gated security renderers.
+  const priceChartResult = computed(() => priceQuery.data.value ?? null)
+  const positionChartResult = computed(() => positionQuery.data.value ?? null)
   const transactions = computed(
     () =>
       (transactionsQuery.data.value as { transactions?: unknown[] } | null)?.transactions ??
@@ -207,6 +210,8 @@ export function useSecurityDetail(options: {
     securityName,
     priceHistory,
     positionHistory,
+    priceChartResult,
+    positionChartResult,
     transactions,
     chartOptions,
     chartOptionsLoaded,
