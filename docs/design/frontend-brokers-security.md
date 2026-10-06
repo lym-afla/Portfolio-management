@@ -347,6 +347,44 @@ restart transient at session launch (SIGTERM before any flow executed; the same
 harness transient recorded in D5/D6), clean rerun — 0, zero route failures.
 Backend at `a2fc1dc9`: 1386 passed/10 skipped, coverage 83.25% — 0.
 
+## 4.2 Review round 2 (PR #58) — three corrections
+
+All three reviewer findings (independent probes at `4dcad45c`) were reproduced,
+fixed, and pinned by regressions observed RED first:
+
+1. **Late validation submitted a reopened form.** `BrokerConnectionForm` now
+   tracks a form GENERATION that is invalidated on close/reopen, provider change
+   and unmount; `saveToken` captures it before awaiting `validate()` and discards
+   a late validation from a stale generation. Checking `open`/`busy` alone was
+   insufficient because a reopened dialog is open and idle again — the stale
+   validation read the NEW draft and submitted it without a Save action.
+   Regression (`forms.spec.ts`, RED): late validation after close+reopen+provider
+   change submits nothing; a current-generation save still works.
+2. **The parent blocked replacement delete confirmations.** The composable
+   already supported overlapping confirmations, but `BrokerTokenManager` kept a
+   global `isDeleting`. Delete busy is now confirmation-OWNED in both layers:
+   the entrypoint compares the in-flight identity with the currently open
+   confirmation, so confirmation B can submit while A remains pending
+   (`incumbent.spec.js`, RED: B's Delete was blocked; after the fix both
+   requests hit their endpoints and the stale completion touches nothing).
+3. **Credential redaction was incomplete.** The 6-character minimum skipped
+   short values — a short passphrase leaked; redaction now covers ANY non-empty
+   credential, with 1-2 character values redacted as standalone tokens (so they
+   cannot shred unrelated words). Additionally, tinkoff SUCCESS messages and the
+   reactivation dialog text are now sanitized against the draft's credentials —
+   a server response echoing the token no longer reaches the notice or the
+   message dialog verbatim (`connections.spec.ts` hygiene cases, RED: `ab1`
+   leaked; an echoed token reached the notice and dialog verbatim).
+
+Gate results for review round 2 at `10e9040b` (actual exit codes, sequential):
+`test:unit` 92 files/857 passed — 0; `type-check` — 2 (unwrapped mock calls in
+the new test blocks) fixed in the working tree and re-verified — 0, committed at
+the follow-up head; `type-check:reliability`/`:charts` — 0; `api:types:check` —
+0; `lint` — 0 (0 errors/8 warnings); `build` — 0; `--case
+brokers-security-d7` — 0 (zero mismatches); `test:delivery` — 0; FULL
+`test:browser` — 0 (no failures). Backend at the follow-up head: 1386 passed/
+10 skipped — 0.
+
 ## 5. Final gate matrix (actual exit codes)
 
 Frontend, from `frontend/` with the declared Node v24.20.0 (portable) and lockfile,
