@@ -114,6 +114,10 @@ const mountManager = async () => {
     },
   })
   await flush()
+  // Open the Add Token dialog the way a user does before every save flow.
+  const add = wrapper.findAll('button.v-btn').find((b) => b.text().trim() === 'Add Token')
+  await add.trigger('click')
+  await flush()
   return wrapper
 }
 
@@ -123,6 +127,12 @@ const rowButtons = (root, icon) =>
 const dialogWithButton = (label) =>
   wrapper.findAll('.v-dialog').find((dialog) =>
     dialog.findAll('button.v-btn').some((button) => button.text() === label))
+
+const formComponent = () => {
+  const form = wrapper.findComponent({ name: 'BrokerConnectionForm' })
+  expect(form.exists(), 'BrokerConnectionForm child').toBe(true)
+  return form
+}
 
 const clickDialogButton = async (label) => {
   const dialog = dialogWithButton(label)
@@ -223,7 +233,8 @@ describe('broker connection characterization (incumbent surface)', () => {
     await flush()
     expect(testTinkoffConnection).toHaveBeenCalledWith(1)
     expect(tinkoffTest().attributes('loading')).toBe('true')
-    expect(ibTest().attributes('loading')).toBeUndefined()
+    // The extracted list binds row.busy, so idle rows render an explicit false.
+    expect(ibTest().attributes('loading')).toBe('false')
 
     await ibTest().trigger('click')
     await flush()
@@ -258,7 +269,7 @@ describe('broker connection characterization (incumbent surface)', () => {
     expect(wrapper.emitted('success')).toEqual([['Token revoked successfully']])
   })
 
-  it('deletes exactly the snapshotted inactive token after confirmation', async () => {
+  it('deletes exactly the snapshotted inactive token after naming it in the confirmation', async () => {
     await mountManager()
     wrapper.vm.showInactiveTokens = true
     await flush()
@@ -266,6 +277,12 @@ describe('broker connection characterization (incumbent surface)', () => {
     await rowButtons(inactiveTinkoffRow, 'mdi-delete')[0].trigger('click')
     await flush()
     expect(wrapper.vm.showDeleteDialog).toBe(true)
+    // The confirmation names the broker/connection and never implies
+    // portfolio transactions are affected (D7 design requirement).
+    expect(wrapper.text()).toContain('Delete connection')
+    expect(wrapper.text()).toContain('Tinkoff · Full Access Token (#12)')
+    expect(wrapper.text()).toContain('portfolio transactions are not affected')
+    expect(wrapper.text()).toContain('This action cannot be undone.')
     // Nothing else changed the snapshot between open and confirm.
     await clickDialogButton('Delete')
     expect(deleteToken).toHaveBeenCalledTimes(1)
@@ -290,9 +307,10 @@ describe('broker connection characterization (incumbent surface)', () => {
     saveTinkoffToken.mockResolvedValue({ message: 'Token saved successfully', id: 77 })
     testTinkoffConnection.mockResolvedValue({ valid: true, token: { id: 77, is_active: true } })
     await mountManager()
-    wrapper.vm.newToken = { broker: 1, token: 'synthetic-tk', token_type: 'read_only', sandbox_mode: false }
-    wrapper.vm.selectedBrokerType = 'tinkoff'
-    await wrapper.vm.saveToken()
+    let form = formComponent()
+    await form.vm.handleBrokerSelection(1)
+    form.vm.draft.token = 'synthetic-tk'
+    await form.vm.saveToken()
     await flush()
     expect(saveTinkoffToken).toHaveBeenCalledWith({ broker: 1, token: 'synthetic-tk', token_type: 'read_only', sandbox_mode: false })
     // Post-save testing: the fresh token is tested once; the incumbent
@@ -306,51 +324,72 @@ describe('broker connection characterization (incumbent surface)', () => {
     ])
 
     saveIBToken.mockResolvedValue({ message: 'Token saved successfully', id: 1 })
-    wrapper.vm.newToken = { broker: 2, token: 'synthetic-ib', account_id: 'U123', paper_trading: false }
-    wrapper.vm.selectedBrokerType = 'ib'
-    await wrapper.vm.saveToken()
+    form = formComponent()
+    await form.vm.handleBrokerSelection(2)
+    form.vm.draft.token = 'synthetic-ib'
+    form.vm.draft.accountId = 'U123'
+    await form.vm.saveToken()
+    await flush()
     expect(saveIBToken).toHaveBeenCalledWith({ broker: 2, token: 'synthetic-ib', account_id: 'U123', paper_trading: false })
     expect(wrapper.emitted('success').at(-1)).toEqual(['Token saved successfully'])
 
     saveBybitToken.mockResolvedValue({})
-    wrapper.vm.newToken = { broker: 4, api_key: 'k-synth', api_secret: 's-synth', testnet: true }
-    wrapper.vm.selectedBrokerType = 'bybit'
-    await wrapper.vm.saveToken()
+    form = formComponent()
+    await form.vm.handleBrokerSelection(4)
+    form.vm.draft.apiKey = 'k-synth'
+    form.vm.draft.apiSecret = 's-synth'
+    form.vm.draft.testnet = true
+    await form.vm.saveToken()
+    await flush()
     expect(saveBybitToken).toHaveBeenCalledWith({ broker: 4, api_key: 'k-synth', api_secret: 's-synth', testnet: true })
     expect(wrapper.emitted('success').at(-1)).toEqual(['Bybit token saved successfully'])
 
     saveOKXToken.mockResolvedValue({})
-    wrapper.vm.newToken = { broker: 5, api_key: 'k-synth', api_secret: 's-synth', passphrase: 'p-synth', simulated_trading: true }
-    wrapper.vm.selectedBrokerType = 'okx'
-    await wrapper.vm.saveToken()
+    form = formComponent()
+    await form.vm.handleBrokerSelection(5)
+    form.vm.draft.apiKey = 'k-synth'
+    form.vm.draft.apiSecret = 's-synth'
+    form.vm.draft.passphrase = 'p-synth'
+    form.vm.draft.simulatedTrading = true
+    await form.vm.saveToken()
     expect(saveOKXToken).toHaveBeenCalledWith({
       broker: 5, api_key: 'k-synth', api_secret: 's-synth', passphrase: 'p-synth', simulated_trading: true,
     })
     expect(wrapper.emitted('success').at(-1)).toEqual(['OKX token saved successfully'])
   })
 
-  it('routes the already-active rejection into the Token Already Exists dialog', async () => {
+  it('routes the already-active rejection into the Token Already Exists dialog and erases the draft', async () => {
     saveTinkoffToken.mockRejectedValueOnce({
       response: { status: 400, data: { message: 'This exact token is already active' } },
     })
     await mountManager()
-    wrapper.vm.newToken = { broker: 1, token: 'synthetic-dup', token_type: 'read_only', sandbox_mode: false }
-    wrapper.vm.selectedBrokerType = 'tinkoff'
-    await wrapper.vm.saveToken()
+    const form = formComponent()
+    await form.vm.handleBrokerSelection(1)
+    form.vm.draft.token = 'synthetic-dup'
+    await form.vm.saveToken()
     await flush()
     expect(wrapper.text()).toContain('Token Already Exists')
     expect(wrapper.text()).toContain('This exact token is already active')
+    // The dialog closed as accepted feedback — the credential draft's open
+    // lifetime ended with it, so the secret must be gone (review focus 3).
+    expect(form.props('open')).toBe(false)
+    expect(form.vm.draft.token).toBe('')
   })
 
-  it('routes the reactivation success into the Token Reactivated dialog and refreshes', async () => {
+  it('routes the reactivation success into the Token Reactivated dialog, refreshes and erases the draft', async () => {
     saveTinkoffToken.mockResolvedValueOnce({ message: 'Existing token has been reactivated', id: 12 })
     await mountManager()
-    wrapper.vm.newToken = { broker: 1, token: 'synthetic-react', token_type: 'read_only', sandbox_mode: false }
-    wrapper.vm.selectedBrokerType = 'tinkoff'
-    await wrapper.vm.saveToken()
+    const form = formComponent()
+    await form.vm.handleBrokerSelection(1)
+    form.vm.draft.token = 'synthetic-react'
+    await form.vm.saveToken()
     await flush()
     expect(wrapper.text()).toContain('Token Reactivated')
     expect(wrapper.text()).toContain('Existing token has been reactivated')
     expect(getBrokerTokens).toHaveBeenCalledTimes(2)
+    // The incumbent leaked the token value on this path; the extracted form
+    // must erase the draft when the dialog closes (review focus 3).
+    expect(form.props('open')).toBe(false)
+    expect(form.vm.draft.token).toBe('')
   })
 })
