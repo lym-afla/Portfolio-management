@@ -298,6 +298,55 @@ Captures under `docs/design/assets/brokers-security/` (broker list desktop/mobil
 masked form error, delete confirmation, bond/crypto desktop, bond tablet/mobile,
 200% zoom bond) are taken from synthetic fixtures; no real credentials anywhere.
 
+## 4.1 Review round 1 (PR #58) — five corrections
+
+All five reviewer findings were independently reproduced, fixed, and pinned by
+regressions observed RED first:
+
+1. **Stale saves closed newly reopened forms.** Save completion and busy state in
+   `BrokerTokenManager` are now tied to the dialog form GENERATION: cancel+reopen
+   bumps the generation, so a stale save can neither close the new form nor erase
+   its draft, and the fresh form is not blocked by the older generation's busy
+   flag. Regressions: the stale success leaves the reopened form open with its
+   draft, and a fresh generation can save while the older save is in flight
+   (`incumbent.spec.js`, RED: stale success closed the form / fresh save blocked).
+2. **Stale deletes cleared newer confirmations.** `confirmDelete` guards completion
+   by the CAPTURED confirmation identity and per-identity busy state: a stale
+   successful delete neither emits nor clears a newer confirmation, and a newer
+   confirmation may delete while the older request is in flight
+   (`connections.spec.ts` confirmation-ownership cases, RED: stale success emitted
+   and cleared the newer confirmation).
+3. **Credential errors are sanitized.** Every submitted credential value is
+   redacted from server error text (`[redacted]`) before it reaches a notice, the
+   message dialog or a row — a rejection echoing `Invalid token <secret>` now
+   emits `Invalid token [redacted]` (`connections.spec.ts` credential-hygiene
+   cases, RED: secrets were emitted verbatim).
+4. **Async validation is awaited.** `BrokerConnectionForm.saveToken` awaits the
+   v-form `validate()` result, normalizes `{ valid }`/boolean, and rechecks form
+   ownership (open, busy) after the await — a truthiness check on the promise no
+   longer submits an invalid form, and a dialog closed mid-validation never
+   submits (`forms.spec.ts` async-validation case, RED: empty token submitted
+   despite `{ valid: false }`).
+5. **Responsive pagination footer.** The activity footer wraps below the desktop
+   breakpoint: the rows-per-page select keeps a 150px box while the range label
+   and the pagination take their own full-width lines. The d7 browser fixtures now
+   serve distinct rows per transactions page and the flow asserts the RENDERED
+   rows change (server security-name markers present/absent) — not merely the
+   outgoing `page=2` request — and probes the mobile footer controls
+   individually: the select box is >= 140px wide, in-viewport and hittable below
+   the fixed header, and every non-disabled pagination button and the range label
+   are hittable. `d7-bond-mobile.png`/`d7-bond-tablet.png` re-taken with the fixed
+   footer.
+
+Gate results for the review round at `a2fc1dc9` (actual exit codes, sequential):
+`test:unit` 93 files/861 passed — 0; `type-check`/`:reliability`/`:charts` — 0;
+`api:types:check` — 0; `lint` — 0 (0 errors/8 warnings); `build` — 0;
+`--case brokers-security-d7` — 0 (zero mismatches); `test:delivery` — 0; FULL
+`test:browser` — first run died on the known agent-browser daemon version-mismatch
+restart transient at session launch (SIGTERM before any flow executed; the same
+harness transient recorded in D5/D6), clean rerun — 0, zero route failures.
+Backend at `a2fc1dc9`: 1386 passed/10 skipped, coverage 83.25% — 0.
+
 ## 5. Final gate matrix (actual exit codes)
 
 Frontend, from `frontend/` with the declared Node v24.20.0 (portable) and lockfile,
