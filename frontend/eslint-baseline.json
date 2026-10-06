@@ -8,30 +8,6 @@
     "severity": 1
   },
   {
-    "file": "src/components/BrokerTokenManager.vue",
-    "line": 646,
-    "column": 7,
-    "ruleId": "@typescript-eslint/no-unused-vars",
-    "message": "'brokerOptions' is assigned a value but never used. Allowed unused vars must match /^_/u.",
-    "severity": 1
-  },
-  {
-    "file": "src/components/BrokerTokenManager.vue",
-    "line": 885,
-    "column": 10,
-    "ruleId": "@typescript-eslint/no-unused-vars",
-    "message": "'getTokenStatusText' is defined but never used. Allowed unused vars must match /^_/u.",
-    "severity": 1
-  },
-  {
-    "file": "src/components/BrokerTokenManager.vue",
-    "line": 890,
-    "column": 10,
-    "ruleId": "@typescript-eslint/no-unused-vars",
-    "message": "'getTokenStatusColor' is defined but never used. Allowed unused vars must match /^_/u.",
-    "severity": 1
-  },
-  {
     "file": "src/config/chartConfig.js",
     "line": 206,
     "column": 19,
@@ -66,22 +42,6 @@
   {
     "file": "src/services/api.ts",
     "line": 1066,
-    "column": 7,
-    "ruleId": "preserve-caught-error",
-    "message": "There is no `cause` attached to the symptom error being thrown.",
-    "severity": 1
-  },
-  {
-    "file": "src/services/api.ts",
-    "line": 1125,
-    "column": 7,
-    "ruleId": "preserve-caught-error",
-    "message": "There is no `cause` attached to the symptom error being thrown.",
-    "severity": 1
-  },
-  {
-    "file": "src/services/api.ts",
-    "line": 1127,
     "column": 7,
     "ruleId": "preserve-caught-error",
     "message": "There is no `cause` attached to the symptom error being thrown.",

@@ -27,7 +27,7 @@ function close(server) {
   })
 }
 
-export async function startFixtureServer({ longAccount = false, contextFailures = false, dateFlow = false, requestFlow = false, recoveryFlow = false, d4Flow = false, chartsC2Flow = false, chartsC3Flow = false, settingsAccountFlow = false, d5States = false, importsD6Flow = false } = {}) {
+export async function startFixtureServer({ longAccount = false, contextFailures = false, dateFlow = false, requestFlow = false, recoveryFlow = false, d4Flow = false, chartsC2Flow = false, chartsC3Flow = false, settingsAccountFlow = false, d5States = false, importsD6Flow = false, brokersSecurityD7Flow = false } = {}) {
   const importsWs = importsD6Flow ? createImportsWs() : null
   let releaseMutation
   let pendingMutation = false
@@ -116,6 +116,32 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
       envelope.chartV2.totals = envelope.chartV2.totals.slice(0, 1)
       return envelope
     })(),
+  }
+  // D7 broker/security flow: stateful broker-token records (mutation-aware),
+  // recorded credential write bodies, queued save rejections and a failure
+  // switch for the security resources. Synthetic credential VALUES live only
+  // in the flow's form inputs; recorded bodies never go into screenshots.
+  const brokersSecurityD7 = {
+    tokens: {
+      tinkoff_tokens: [
+        { id: 11, token_type: 'read_only', sandbox_mode: false, is_active: true, created_at: '2026-09-01T10:30:00Z' },
+        { id: 12, token_type: 'full_access', sandbox_mode: false, is_active: false, created_at: '2026-08-01T09:00:00Z' },
+      ],
+      ib_tokens: [{ id: 1 }],
+      bybit_tokens: [
+        { id: 21, api_key: 'bybit-synthetic-key', testnet: true, is_active: true, created_at: '2026-07-15T08:00:00Z' },
+      ],
+      okx_tokens: [
+        { id: 31, api_key: 'okx-synthetic-key', simulated_trading: true, is_active: false, created_at: '2026-06-02T12:00:00Z' },
+      ],
+    },
+    saveBodies: [],
+    revokes: [],
+    deletes: [],
+    tests: [],
+    rejectNextSave: false,
+    failSecurityOnce: false,
+    securityRequests: [],
   }
   const server = createServer(async (request, response) => {
     const url = new URL(request.url, 'http://127.0.0.1')
@@ -496,6 +522,232 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
         return
       }
 
+      // ---- D7 broker/security flow: backend-faithful token endpoints with
+      // recorded (never logged) write bodies, plus populated bond/crypto
+      // security resources with a failure switch. -------------------------
+      if (brokersSecurityD7Flow && requestedMethod === 'OPTIONS') {
+        requests.push({ method: 'OPTIONS', path: url.pathname })
+        response.writeHead(204)
+        response.end()
+        return
+      }
+      if (brokersSecurityD7Flow && fixtureMethod === 'GET' && url.pathname === '/database/api/brokers/') {
+        response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+        response.end(JSON.stringify([
+          { id: 1, name: 'Tinkoff' },
+          { id: 2, name: 'Interactive Brokers' },
+          { id: 3, name: 'Custom Broker' },
+          { id: 4, name: 'Bybit' },
+          { id: 5, name: 'OKX' },
+        ]))
+        requests.push({ method: fixtureMethod, path: url.pathname })
+        return
+      }
+      if (brokersSecurityD7Flow && fixtureMethod === 'GET' && url.pathname === '/users/api/broker_tokens/') {
+        response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+        response.end(JSON.stringify(brokersSecurityD7.tokens))
+        requests.push({ method: fixtureMethod, path: url.pathname })
+        return
+      }
+      if (brokersSecurityD7Flow && fixtureMethod === 'POST' && url.pathname === '/users/api/tinkoff-tokens/save_read_only_token/') {
+        const body = await readBody()
+        brokersSecurityD7.saveBodies.push({ endpoint: 'tinkoff', body })
+        requests.push({ method: fixtureMethod, path: url.pathname })
+        if (brokersSecurityD7.rejectNextSave) {
+          brokersSecurityD7.rejectNextSave = false
+          response.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' })
+          response.end(JSON.stringify({ error: 'Token verification failed' }))
+        } else if (body.token === 'synthetic-duplicate-token') {
+          response.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' })
+          response.end(JSON.stringify({ message: 'This exact token is already active' }))
+        } else {
+          response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+          response.end(JSON.stringify({ message: 'Token saved successfully', id: 77 }))
+        }
+        return
+      }
+      if (brokersSecurityD7Flow && fixtureMethod === 'POST' && ['/users/api/ib-tokens/', '/users/api/bybit-tokens/', '/users/api/okx-tokens/'].includes(url.pathname)) {
+        const body = await readBody()
+        brokersSecurityD7.saveBodies.push({ endpoint: url.pathname, body })
+        requests.push({ method: fixtureMethod, path: url.pathname })
+        response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+        response.end(JSON.stringify({ id: 91, message: 'Token saved successfully' }))
+        return
+      }
+      if (brokersSecurityD7Flow && fixtureMethod === 'POST' && /^\/users\/api\/(tinkoff|ib)-tokens\/\d+\/test_connection\//.test(url.pathname)) {
+        await readBody()
+        brokersSecurityD7.tests.push(url.pathname)
+        requests.push({ method: fixtureMethod, path: url.pathname })
+        response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+        response.end(JSON.stringify({ valid: true, message: 'Token is valid', token: { id: 11, is_active: true } }))
+        return
+      }
+      if (brokersSecurityD7Flow && fixtureMethod === 'POST' && url.pathname === '/users/api/revoke_token/') {
+        const body = await readBody()
+        brokersSecurityD7.revokes.push(body)
+        requests.push({ method: fixtureMethod, path: url.pathname })
+        response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+        response.end(JSON.stringify({ message: 'Token revoked successfully' }))
+        return
+      }
+      if (brokersSecurityD7Flow && fixtureMethod === 'DELETE' && /^\/users\/api\/(tinkoff|ib|bybit|okx)-tokens\/\d+\/$/.test(url.pathname)) {
+        const match = url.pathname.match(/^\/users\/api\/(?<provider>[a-z]+)-tokens\/(?<id>\d+)\/$/)
+        const provider = `${match.groups.provider}_tokens`
+        const id = Number(match.groups.id)
+        const record = brokersSecurityD7.tokens[provider]?.find((token) => token.id === id)
+        brokersSecurityD7.deletes.push({ path: url.pathname, provider, id })
+        requests.push({ method: fixtureMethod, path: url.pathname })
+        if (record && record.is_active) {
+          response.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' })
+          response.end(JSON.stringify({ error: 'Cannot delete active token. Deactivate it first.' }))
+          return
+        }
+        if (record) {
+          brokersSecurityD7.tokens[provider] = brokersSecurityD7.tokens[provider].filter((token) => token.id !== id)
+        }
+        response.writeHead(204)
+        response.end()
+        return
+      }
+      if (brokersSecurityD7Flow && fixtureMethod === 'GET' && url.pathname === '/users/api/get_account_choices/') {
+        const fixture = resolveFixture(fixtureMethod, url.pathname, { longAccount })
+        fixture.body.options = [
+          ['All accounts', { type: 'all', id: null }],
+          ['Your Accounts', [
+            ['Main', { type: 'account', id: 7, display_name: 'Main synthetic account' }],
+          ]],
+        ]
+        requests.push({ method: fixtureMethod, actualMethod: requestedMethod, path: url.pathname })
+        response.writeHead(fixture.status, { 'Content-Type': 'application/json; charset=utf-8' })
+        response.end(JSON.stringify(fixture.body))
+        return
+      }
+      if (brokersSecurityD7Flow && fixtureMethod === 'GET' && url.pathname.startsWith('/database/api/securities/')) {
+        brokersSecurityD7.securityRequests.push({ path: url.pathname, query: Object.fromEntries(url.searchParams) })
+        requests.push({ method: fixtureMethod, actualMethod: requestedMethod, path: url.pathname })
+        const send = (status, body) => {
+          response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' })
+          response.end(JSON.stringify(body))
+        }
+        if (brokersSecurityD7.failSecurityOnce) {
+          brokersSecurityD7.failSecurityOnce = false
+          send(503, { detail: 'Synthetic security resource failure' })
+          return
+        }
+        const bondDetail = {
+          id: 2,
+          instrument_type: 'Bond',
+          ISIN: 'US0000000002',
+          name: 'Fixture Bond',
+          currency: 'USD',
+          first_investment: '01-Feb-24',
+          open_position: '2.000000000',
+          buy_in_price: '99.125000%',
+          current_value: '$1,982.50',
+          realized: '($17.50)',
+          unrealized: '–',
+          capital_distribution: '$87.50',
+          irr: 'NA',
+          bond_data: {
+            current_notional: '2,000.00',
+            is_amortizing: true,
+            initial_notional: '2,400.00',
+            issue_date: '2024-02-01',
+            maturity_date: '2031-02-01',
+            coupon_type: 'Fixed',
+            credit_rating: 'AA-',
+            coupon_amount: '43.75',
+            coupon_rate: '4.375000%',
+            coupon_frequency: 2,
+            next_coupon_date: '2027-02-01',
+            current_aci: { aci_amount: '2.19', aci_days: 90, total_days: 181 },
+            total_aci: '25.00',
+            ytm: '4.51%',
+          },
+        }
+        const cryptoDetail = {
+          id: 3,
+          instrument_type: 'Crypto',
+          ISIN: 'CRYPTO:BTC',
+          name: 'Fixture Coin',
+          currency: 'USD',
+          first_investment: '01-Jan-26',
+          open_position: '9007199254740993.123456789',
+          current_value: '$500.00',
+          realized: '–',
+          unrealized: '–',
+          capital_distribution: '$500.00',
+          irr: 'NA',
+          crypto_reward_native_quantity: '9007199254740993.123456789',
+          crypto_reward_fiat_value: '500.00',
+        }
+        if (url.pathname === '/database/api/securities/2/') { send(200, bondDetail); return }
+        if (url.pathname === '/database/api/securities/3/') { send(200, cryptoDetail); return }
+        if (url.pathname === '/database/api/securities/1/') {
+          send(200, {
+            id: 1,
+            instrument_type: 'Stock',
+            ISIN: 'US0000000001',
+            name: 'Fixture Stock',
+            currency: 'USD',
+            first_investment: '08-Sep-26',
+            open_position: '10.000000000',
+            buy_in_price: '101.50',
+            current_price: '102.25',
+            current_value: '$1,022.50',
+            realized: '$12.50',
+            unrealized: '$7.50',
+            capital_distribution: '$0.00',
+            irr: '1.25%',
+          })
+          return
+        }
+        if (/\/price-history\/$/.test(url.pathname)) { send(200, [{ date: '2025-06-01', price: '100' }]); return }
+        if (/\/position-history\/$/.test(url.pathname)) { send(200, [{ date: '2025-06-01', position: '1' }]); return }
+        if (/\/transactions\/$/.test(url.pathname)) {
+          const idMatch = url.pathname.match(/securities\/(\d+)\/transactions\//)
+          if (idMatch && idMatch[1] === '3') {
+            // Crypto: characterized empty activity state.
+            send(200, { transactions: [], total_items: 0 })
+            return
+          }
+          // Distinct rows per page so the flow can assert the RENDERED rows
+          // actually change with the requested page (server-owned pagination).
+          const transactionsPage = Number(url.searchParams.get('page') ?? '1')
+          const transactionRows = transactionsPage === 2
+            ? [
+                {
+                  id: 11, date: '05-Feb-26', broker_account: 'Main synthetic account',
+                  type: 'Sell', security: { id: 2, name: 'Page Two Instrument' },
+                  quantity: '2.000000000', price: '99.875000', cash_flow: '$982.50',
+                },
+                {
+                  id: 12, date: '18-Feb-26', broker_account: 'Main synthetic account',
+                  type: 'Broker commission', cash_flow: '($2.50)',
+                },
+              ]
+            : [
+                {
+                  id: 1, date: '01-Jan-26', broker_account: 'Main synthetic account',
+                  type: 'Buy', security: { id: 2, name: 'Page One Instrument' },
+                  quantity: '2.000000000', price: '99.125000', cash_flow: '($1,982.50)',
+                },
+                {
+                  id: 2, date: '15-Jan-26', broker_account: 'Main synthetic account',
+                  type: 'Coupon', security: { id: 2, name: 'Page One Instrument' },
+                  cash_flow: '$43.75',
+                },
+              ]
+          send(200, { transactions: transactionRows, total_items: 23 })
+          return
+        }
+        if (url.pathname === '/database/api/securities/99/') {
+          send(404, { detail: 'Not found.' })
+          return
+        }
+        // Fall through to the generic fixtures for anything else.
+      }
+
       const isContextMutation = contextFailures && ['/users/api/update_user_data_for_new_account/', '/users/api/update_dashboard_settings/'].includes(url.pathname)
       const dateSettingsPost = dateFlow && fixtureMethod === 'POST' && url.pathname === '/users/api/update_dashboard_settings/'
       const dateRefreshPost = dateFlow && fixtureMethod === 'POST' && url.pathname === '/users/api/refresh-token/'
@@ -631,6 +883,7 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
     queueContextRejection: () => { settingsAccount.rejectContextMutation = true },
     resetSettingsAccount: () => { settingsAccount.selection = { type: 'account', id: 42 } },
     importsWs,
+    brokersSecurityD7,
     origin: `http://127.0.0.1:${address.port}`,
     requests,
     unmatchedRequests,

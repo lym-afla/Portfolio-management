@@ -21,6 +21,15 @@ vi.mock('@/services/api', () => ({
   getBrokerTokens: vi.fn()
 }))
 
+// D7: list/form/request ownership moved into features/brokers; this retained
+// suite drives the same capabilities through the compatibility entrypoint and
+// its BrokerConnectionForm child (the component that owns the draft now).
+const formComponent = (wrapper) => {
+  const form = wrapper.findComponent({ name: 'BrokerConnectionForm' })
+  expect(form.exists(), 'BrokerConnectionForm child').toBe(true)
+  return form
+}
+
 describe('BrokerTokenManager', () => {
   const originalConsoleWarn = console.warn
   const originalConsoleError = console.error
@@ -98,63 +107,65 @@ describe('BrokerTokenManager', () => {
   })
 
   it('automatically detects Tinkoff broker type', async () => {
-    await wrapper.vm.handleBrokerSelection(1)
-    expect(wrapper.vm.selectedBrokerType).toBe('tinkoff')
-    expect(wrapper.vm.showBrokerTypeDialog).toBe(false)
+    await formComponent(wrapper).vm.handleBrokerSelection(1)
+    expect(formComponent(wrapper).vm.selectedProvider).toBe('tinkoff')
+    expect(formComponent(wrapper).vm.brokerTypeDialogOpen).toBe(false)
   })
 
   it('automatically detects IB broker type', async () => {
-    await wrapper.vm.handleBrokerSelection(2)
-    expect(wrapper.vm.selectedBrokerType).toBe('ib')
-    expect(wrapper.vm.showBrokerTypeDialog).toBe(false)
+    await formComponent(wrapper).vm.handleBrokerSelection(2)
+    expect(formComponent(wrapper).vm.selectedProvider).toBe('ib')
+    expect(formComponent(wrapper).vm.brokerTypeDialogOpen).toBe(false)
   })
 
   it('automatically detects Bybit broker type', async () => {
-    await wrapper.vm.handleBrokerSelection(4)
-    expect(wrapper.vm.selectedBrokerType).toBe('bybit')
-    expect(wrapper.vm.showBrokerTypeDialog).toBe(false)
+    await formComponent(wrapper).vm.handleBrokerSelection(4)
+    expect(formComponent(wrapper).vm.selectedProvider).toBe('bybit')
+    expect(formComponent(wrapper).vm.brokerTypeDialogOpen).toBe(false)
   })
 
   it('automatically detects OKX broker type', async () => {
-    await wrapper.vm.handleBrokerSelection(5)
-    expect(wrapper.vm.selectedBrokerType).toBe('okx')
-    expect(wrapper.vm.showBrokerTypeDialog).toBe(false)
+    await formComponent(wrapper).vm.handleBrokerSelection(5)
+    expect(formComponent(wrapper).vm.selectedProvider).toBe('okx')
+    expect(formComponent(wrapper).vm.brokerTypeDialogOpen).toBe(false)
   })
 
   it('shows broker type dialog for custom broker', async () => {
-    await wrapper.vm.handleBrokerSelection(3)
-    expect(wrapper.vm.showBrokerTypeDialog).toBe(true)
-    expect(wrapper.vm.selectedBrokerName).toBe('Custom Broker')
+    await formComponent(wrapper).vm.handleBrokerSelection(3)
+    expect(formComponent(wrapper).vm.brokerTypeDialogOpen).toBe(true)
+    expect(formComponent(wrapper).vm.unknownBrokerName).toBe('Custom Broker')
   })
 
   it('handles broker type selection confirmation', async () => {
     // Setup
-    await wrapper.vm.handleBrokerSelection(3)
-    wrapper.vm.selectedBrokerType = 'tinkoff'
+    const form = formComponent(wrapper)
+    await form.vm.handleBrokerSelection(3)
+    form.vm.selectedBrokerType = 'tinkoff'
 
     // Confirm selection
-    await wrapper.vm.confirmBrokerType()
+    await form.vm.confirmBrokerType()
 
     // Verify results
-    expect(wrapper.vm.newToken.broker).toBe(3)
-    expect(wrapper.vm.newToken.token_type).toBe('read_only')
-    expect(wrapper.vm.showBrokerTypeDialog).toBe(false)
+    expect(form.vm.selectedBrokerId).toBe(3)
+    expect(form.vm.draft.tokenType).toBe('read_only')
+    expect(form.vm.brokerTypeDialogOpen).toBe(false)
   })
 
-  it('saves Tinkoff token correctly', async () => {
-    // Setup token data
-    wrapper.vm.newToken = {
-      broker: 1,
-      token: 'test-token',
-      token_type: 'read_only',
-      sandbox_mode: false
-    }
-    wrapper.vm.selectedBrokerType = 'tinkoff'
+  const openAddDialog = async () => {
+    const add = wrapper.findAll('.v-btn').find((b) => b.text() === 'Add Token')
+    await add.trigger('click')
+    await wrapper.vm.$nextTick()
+  }
 
-    // No need to set $refs.form here as it's handled by the stub
+  it('saves Tinkoff token correctly', async () => {
+    await openAddDialog()
+    const form = formComponent(wrapper)
+    expect(form.props('open')).toBe(true)
+    await form.vm.handleBrokerSelection(1)
+    form.vm.draft.token = 'test-token'
 
     // Trigger save
-    await wrapper.vm.saveToken()
+    await form.vm.saveToken()
 
     // Verify API call
     expect(saveTinkoffToken).toHaveBeenCalledWith({
@@ -166,14 +177,11 @@ describe('BrokerTokenManager', () => {
   })
 
   it('saves IB token correctly', async () => {
-    // Setup token data
-    wrapper.vm.newToken = {
-      broker: 2,
-      token: 'test-token',
-      account_id: 'U123456',
-      paper_trading: false
-    }
-    wrapper.vm.selectedBrokerType = 'ib'
+    await openAddDialog()
+    const form = formComponent(wrapper)
+    await form.vm.handleBrokerSelection(2)
+    form.vm.draft.token = 'test-token'
+    form.vm.draft.accountId = 'U123456'
 
     // Mock successful API response
     saveIBToken.mockResolvedValue({
@@ -182,7 +190,7 @@ describe('BrokerTokenManager', () => {
     })
 
     // Trigger save
-    await wrapper.vm.saveToken()
+    await form.vm.saveToken()
 
     // Verify API call
     expect(saveIBToken).toHaveBeenCalledWith({
@@ -194,15 +202,14 @@ describe('BrokerTokenManager', () => {
   })
 
   it('saves Bybit token correctly', async () => {
-    wrapper.vm.newToken = {
-      broker: 4,
-      api_key: 'bybit-key',
-      api_secret: 'bybit-secret',
-      testnet: true
-    }
-    wrapper.vm.selectedBrokerType = 'bybit'
+    await openAddDialog()
+    const form = formComponent(wrapper)
+    await form.vm.handleBrokerSelection(4)
+    form.vm.draft.apiKey = 'bybit-key'
+    form.vm.draft.apiSecret = 'bybit-secret'
+    form.vm.draft.testnet = true
 
-    await wrapper.vm.saveToken()
+    await form.vm.saveToken()
 
     expect(saveBybitToken).toHaveBeenCalledWith({
       broker: 4,
@@ -213,16 +220,15 @@ describe('BrokerTokenManager', () => {
   })
 
   it('saves OKX token correctly', async () => {
-    wrapper.vm.newToken = {
-      broker: 5,
-      api_key: 'okx-key',
-      api_secret: 'okx-secret',
-      passphrase: 'okx-passphrase',
-      simulated_trading: true
-    }
-    wrapper.vm.selectedBrokerType = 'okx'
+    await openAddDialog()
+    const form = formComponent(wrapper)
+    await form.vm.handleBrokerSelection(5)
+    form.vm.draft.apiKey = 'okx-key'
+    form.vm.draft.apiSecret = 'okx-secret'
+    form.vm.draft.passphrase = 'okx-passphrase'
+    form.vm.draft.simulatedTrading = true
 
-    await wrapper.vm.saveToken()
+    await form.vm.saveToken()
 
     expect(saveOKXToken).toHaveBeenCalledWith({
       broker: 5,
@@ -237,20 +243,20 @@ describe('BrokerTokenManager', () => {
     // Setup error scenario
     saveTinkoffToken.mockRejectedValue(new Error('API Error'))
 
-    // Setup token data
-    wrapper.vm.newToken = {
-      broker: 1,
-      token: 'test-token',
-      token_type: 'read_only',
-      sandbox_mode: false
-    }
-    wrapper.vm.selectedBrokerType = 'tinkoff'
+    await openAddDialog()
+    const form = formComponent(wrapper)
+    await form.vm.handleBrokerSelection(1)
+    form.vm.draft.token = 'test-token'
 
     // Trigger save
-    await wrapper.vm.saveToken()
+    await form.vm.saveToken()
+    await form.vm.$nextTick()
 
-    // Verify error handling: the component emits an 'error' event and resets isSaving
+    // Verify error handling: the manager emits an 'error' event and the
+    // rejected save leaves the dialog open with the entry for retry.
     expect(wrapper.emitted('error')).toBeTruthy()
     expect(wrapper.vm.isSaving).toBe(false)
+    expect(form.props('open')).toBe(true)
+    expect(form.vm.draft.token).toBe('test-token')
   })
 })

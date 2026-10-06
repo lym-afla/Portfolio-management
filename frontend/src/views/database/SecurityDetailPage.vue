@@ -43,405 +43,69 @@
     </template>
 
     <template v-else-if="security">
-      <v-row>
-        <v-col cols="12" md="6">
-          <WorkspaceSection heading-id="security-basic" title="Basic Information">
-            <div>
-              <v-list>
-                <v-list-item>
-                  <v-list-item-title>ISIN:</v-list-item-title>
-                  <v-list-item-subtitle>{{
-                    security.ISIN
-                  }}</v-list-item-subtitle>
-                </v-list-item>
-                <v-list-item>
-                  <v-list-item-title>Type:</v-list-item-title>
-                  <v-list-item-subtitle>{{
-                    security.instrument_type
-                  }}</v-list-item-subtitle>
-                </v-list-item>
-                <v-list-item>
-                  <v-list-item-title>Currency:</v-list-item-title>
-                  <v-list-item-subtitle>{{
-                    security.currency
-                  }}</v-list-item-subtitle>
-                </v-list-item>
-                <v-list-item>
-                  <v-list-item-title>First Investment:</v-list-item-title>
-                  <v-list-item-subtitle>{{
-                    security.first_investment
-                  }}</v-list-item-subtitle>
-                </v-list-item>
-              </v-list>
-            </div>
-          </WorkspaceSection>
-        </v-col>
-        <v-col cols="12" md="6">
-          <WorkspaceSection heading-id="security-performance" title="Performance Metrics">
-            <div>
-              <!-- Table format for better readability -->
-              <v-table density="compact">
-                <thead>
-                  <tr>
-                    <th>Metric</th>
-                    <th>Value</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>Current Position:</td>
-                    <td>{{ security.open_position }}</td>
-                  </tr>
-
-                  <!-- Buy-in Price -->
-                  <tr v-if="security.buy_in_price">
-                    <td>Buy-in Price:</td>
-                    <td>
-                      {{ security.buy_in_price }}
-                    </td>
-                  </tr>
-
-                  <!-- Current Price -->
-                  <tr v-if="security.current_price">
-                    <td>Current Price:</td>
-                    <td>{{ security.current_price }}</td>
-                  </tr>
-
-                  <tr>
-                    <td>Current Value:</td>
-                    <td>{{ security.current_value }}</td>
-                  </tr>
-
-                  <!-- Bond-specific: Total ACI for Position -->
-                  <tr
-                    v-if="
-                      security.instrument_type === 'Bond' &&
-                      security.bond_data &&
-                      security.bond_data.total_aci !== undefined &&
-                      security.bond_data.total_aci !== '–'
-                    "
-                  >
-                    <td>Total Accrued Interest:</td>
-                    <td>
-                      {{ security.bond_data.total_aci }}
-                      <span class="text-caption text-grey">
-                        (net of ACI paid at acquisition)</span
-                      >
-                    </td>
-                  </tr>
-
-                  <!-- Bond-specific: YTM -->
-                  <tr
-                    v-if="
-                      security.instrument_type === 'Bond' &&
-                      security.bond_data &&
-                      security.bond_data.ytm
-                    "
-                  >
-                    <td>YTM at Acquisition:</td>
-                    <td>{{ security.bond_data.ytm }}</td>
-                  </tr>
-
-                  <tr>
-                    <td>Realized Gain/Loss:</td>
-                    <td>{{ security.realized }}</td>
-                  </tr>
-                  <tr>
-                    <td>Unrealized Gain/Loss:</td>
-                    <td>{{ security.unrealized }}</td>
-                  </tr>
-                  <tr>
-                    <td>Capital Distribution:</td>
-                    <td>{{ security.capital_distribution }}</td>
-                  </tr>
-                  <tr>
-                    <td>IRR:</td>
-                    <td>{{ security.irr }}</td>
-                  </tr>
-                </tbody>
-              </v-table>
-            </div>
-          </WorkspaceSection>
-        </v-col>
-      </v-row>
-
-      <v-row v-if="security.instrument_type === 'Crypto'">
-        <v-col cols="12">
-          <WorkspaceSection heading-id="security-crypto" title="Crypto Rewards">
-            <div>
-              <v-table density="compact">
-                <tbody>
-                  <tr>
-                    <td>Native rewards</td>
-                    <td>{{ security.crypto_reward_native_quantity }}</td>
-                  </tr>
-                  <tr>
-                    <td>Fiat reward value</td>
-                    <td>{{ security.crypto_reward_fiat_value }}</td>
-                  </tr>
-                </tbody>
-              </v-table>
-            </div>
-          </WorkspaceSection>
-        </v-col>
-      </v-row>
-
-      <!-- Bond-specific Information -->
-      <v-row v-if="security.instrument_type === 'Bond' && security.bond_data">
-        <v-col cols="12">
-          <WorkspaceSection heading-id="security-bond" title="Bond Information">
-            <div>
-              <v-row>
-                <!-- Basic Bond Details -->
-                <v-col cols="12" md="6">
-                  <v-table density="compact">
-                    <thead>
-                      <tr>
-                        <th>Detail</th>
-                        <th>Value</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <!-- Show notional based on amortizing status -->
-                      <tr
-                        v-if="
-                          security.bond_data.current_notional !== null &&
-                          security.bond_data.current_notional !== undefined
-                        "
-                      >
-                        <td>
-                          {{
-                            security.bond_data.is_amortizing
-                              ? 'Current Nominal'
-                              : 'Notional'
-                          }}:
-                        </td>
-                        <td>
-                          {{ security.bond_data.current_notional }}
-                        </td>
-                      </tr>
-
-                      <!-- Show initial notional only for amortizing bonds -->
-                      <tr
-                        v-if="
-                          security.bond_data.is_amortizing &&
-                          security.bond_data.initial_notional !== null &&
-                          security.bond_data.initial_notional !== undefined
-                        "
-                      >
-                        <td>Initial Nominal:</td>
-                        <td>
-                          {{ security.bond_data.initial_notional }}
-                        </td>
-                      </tr>
-
-                      <tr v-if="security.bond_data.issue_date">
-                        <td>Issue Date:</td>
-                        <td>{{ security.bond_data.issue_date }}</td>
-                      </tr>
-
-                      <tr v-if="security.bond_data.maturity_date">
-                        <td>Maturity Date:</td>
-                        <td>{{ security.bond_data.maturity_date }}</td>
-                      </tr>
-
-                      <!-- Show bond type with amortizing status -->
-                      <tr>
-                        <td>Bond Type:</td>
-                        <td>
-                          {{ security.bond_data.coupon_type || 'Standard' }}
-                          <span
-                            v-if="security.bond_data.is_amortizing"
-                            class="text-caption text-grey"
-                            >(Amortizing)</span
-                          >
-                        </td>
-                      </tr>
-
-                      <tr v-if="security.bond_data.credit_rating">
-                        <td>Credit Rating:</td>
-                        <td>{{ security.bond_data.credit_rating }}</td>
-                      </tr>
-                    </tbody>
-                  </v-table>
-                </v-col>
-
-                <!-- Coupon Details -->
-                <v-col cols="12" md="6">
-                  <v-table density="compact">
-                    <thead>
-                      <tr>
-                        <th>Detail</th>
-                        <th>Value</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr
-                        v-if="
-                          security.bond_data.coupon_amount !== null &&
-                          security.bond_data.coupon_amount !== undefined
-                        "
-                      >
-                        <td>Coupon per Bond:</td>
-                        <td>
-                          {{ security.bond_data.coupon_amount }}
-                        </td>
-                      </tr>
-
-                      <tr v-if="security.bond_data.coupon_rate">
-                        <td>Coupon Rate:</td>
-                        <td>{{ security.bond_data.coupon_rate }}</td>
-                      </tr>
-
-                      <tr v-if="security.bond_data.coupon_frequency">
-                        <td>Coupon Frequency:</td>
-                        <td>
-                          {{ security.bond_data.coupon_frequency }}x per year
-                        </td>
-                      </tr>
-
-                      <!-- Show next coupon date from bond_data -->
-                      <tr v-if="security.bond_data.next_coupon_date">
-                        <td>Next Coupon Payment:</td>
-                        <td>{{ security.bond_data.next_coupon_date }}</td>
-                      </tr>
-
-                      <!-- Show ACI data from bond_data -->
-                      <template v-if="security.bond_data.current_aci">
-                        <tr v-if="security.bond_data.current_aci.aci_amount">
-                          <td>Current Accrued Interest:</td>
-                          <td>
-                            {{ security.bond_data.current_aci.aci_amount }}
-                          </td>
-                        </tr>
-
-                        <tr v-if="security.bond_data.current_aci.aci_days">
-                          <td>Days Accrued:</td>
-                          <td>
-                            {{ security.bond_data.current_aci.aci_days }} /
-                            {{ security.bond_data.current_aci.total_days }} days
-                          </td>
-                        </tr>
-                      </template>
-                    </tbody>
-                  </v-table>
-                </v-col>
-              </v-row>
-            </div>
-          </WorkspaceSection>
-        </v-col>
-      </v-row>
-
-      <v-row v-if="chartOptionsLoaded">
-        <v-col cols="12">
-          <WorkspaceSection heading-id="security-price-history" title="Price History">
-            <div>
-              <TimelineSelector
-                v-model="selectedPeriod"
-                :effective-current-date="effectiveCurrentDate"
-              />
-              <div style="height: 400px">
-                <v-skeleton-loader v-if="loadingPriceChart" type="image" />
-                <LineChart
-                  v-else
-                  :chart-data="priceChartData"
-                  :options="priceChartOptions"
-                />
-              </div>
-            </div>
-          </WorkspaceSection>
-        </v-col>
-      </v-row>
-
-      <v-row v-if="chartOptionsLoaded">
-        <v-col cols="12">
-          <WorkspaceSection heading-id="security-position-history" title="Position History">
-            <div>
-              <TimelineSelector
-                v-model="selectedPeriod"
-                :effective-current-date="effectiveCurrentDate"
-              />
-              <div style="height: 400px">
-                <v-skeleton-loader v-if="loadingPositionChart" type="image" />
-                <LineChart
-                  v-else
-                  :chart-data="positionChartData"
-                  :options="positionChartOptions"
-                />
-              </div>
-            </div>
-          </WorkspaceSection>
-        </v-col>
-      </v-row>
-
-      <v-row>
-        <v-col cols="12">
-          <WorkspaceSection heading-id="security-transactions" title="Transaction History">
-            <TimelineSelector
-              v-model="selectedPeriod"
-              :effective-current-date="effectiveCurrentDate"
-            />
-            <div>
-              <v-data-table
-                :headers="transactionHeaders"
-                :items="transactions"
-                :loading="loadingTransactions"
-                :items-per-page="transactionOptions.itemsPerPage"
-                disable-sort
-              >
-                <template #item="{ item }">
-                  <transaction-row
-                    :transaction="item"
-                    :currencies="[]"
-                    :show-balances="false"
-                    :show-cash-flow="false"
-                    :show-single-cash-flow="true"
-                    :show-broker-account="true"
-                    :show-actions="false"
+      <SecurityOverview :view="overviewView">
+        <template #price-chart>
+          <v-row v-if="chartOptionsLoaded">
+            <v-col cols="12">
+              <WorkspaceSection heading-id="security-price-history" title="Price History">
+                <div>
+                  <TimelineSelector
+                    v-model="selectedPeriod"
+                    :effective-current-date="effectiveCurrentDate"
                   />
-                </template>
-
-                <template #bottom>
-                  <div class="d-flex align-center justify-space-between pa-2">
-                    <v-select
-                      v-model="transactionOptions.itemsPerPage"
-                      :items="itemsPerPageOptions"
-                      label="Rows per page"
-                      density="compact"
-                      variant="outlined"
-                      hide-details
-                      class="rows-per-page-select mr-4"
-                      style="max-width: 150px"
-                      bg-color="white"
-                    />
-                    <span class="text-caption">
-                      Showing
-                      {{
-                        (transactionOptions.page - 1) *
-                          transactionOptions.itemsPerPage +
-                        1
-                      }}-{{
-                        Math.min(
-                          transactionOptions.page *
-                            transactionOptions.itemsPerPage,
-                          totalTransactions
-                        )
-                      }}
-                      of {{ totalTransactions }} entries
-                    </span>
-                    <v-pagination
-                      v-model="transactionOptions.page"
-                      :length="pageCount"
-                      :total-visible="7"
-                      rounded="circle"
+                  <div style="height: 400px">
+                    <v-skeleton-loader v-if="loadingPriceChart" type="image" />
+                    <LineChart
+                      v-else
+                      :chart-data="priceChartData"
+                      :options="priceChartOptions"
                     />
                   </div>
-                </template>
-              </v-data-table>
-            </div>
-          </WorkspaceSection>
-        </v-col>
-      </v-row>
+                </div>
+              </WorkspaceSection>
+            </v-col>
+          </v-row>
+        </template>
+        <template #position-chart>
+          <v-row v-if="chartOptionsLoaded">
+            <v-col cols="12">
+              <WorkspaceSection heading-id="security-position-history" title="Position History">
+                <div>
+                  <TimelineSelector
+                    v-model="selectedPeriod"
+                    :effective-current-date="effectiveCurrentDate"
+                  />
+                  <div style="height: 400px">
+                    <v-skeleton-loader v-if="loadingPositionChart" type="image" />
+                    <LineChart
+                      v-else
+                      :chart-data="positionChartData"
+                      :options="positionChartOptions"
+                    />
+                  </div>
+                </div>
+              </WorkspaceSection>
+            </v-col>
+          </v-row>
+        </template>
+      </SecurityOverview>
+
+      <SecurityMetadata :bond="bondView" :crypto="cryptoView" />
+
+      <SecurityActivity
+        :view="activityView"
+        :items-per-page-options="itemsPerPageOptions"
+        :loading="loadingTransactions"
+        @update:page="transactionOptions.page = $event"
+        @update:items-per-page="transactionOptions.itemsPerPage = $event"
+      >
+        <template #timeline>
+          <TimelineSelector
+            v-model="selectedPeriod"
+            :effective-current-date="effectiveCurrentDate"
+          />
+        </template>
+      </SecurityActivity>
     </template>
 
     <template v-else>
@@ -451,23 +115,17 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { usePortfolioContextStore } from '@/stores/portfolioContext'
-import { usePortfolioRequest } from '@/composables/usePortfolioRequest'
-import { snapshotContext } from '@/types/query'
 import { useAppStore } from '@/stores/app'
-import {
-  getSecurityDetail,
-  getSecurityPriceHistory,
-  getSecurityPositionHistory,
-  getSecurityTransactions,
-  getAccountChoices,
-} from '@/services/api'
-import { formatAccountChoices } from '@/utils/accountUtils'
+import { useSecurityDetail } from '@/features/securities/useSecurityDetail'
+import SecurityOverview from '@/features/securities/SecurityOverview.vue'
+import SecurityMetadata from '@/features/securities/SecurityMetadata.vue'
+import SecurityActivity from '@/features/securities/SecurityActivity.vue'
 import LineChart from '@/components/charts/LineChart.vue'
 import TimelineSelector from '@/components/TimelineSelector.vue'
-import { getChartOptions, colorPalette } from '@/config/chartConfig'
+import { colorPalette } from '@/config/chartConfig'
 import 'chartjs-adapter-date-fns'
 import {
   Chart,
@@ -487,7 +145,6 @@ import {
   differenceInDays,
 } from 'date-fns'
 
-import TransactionRow from '@/components/transactions/TransactionRow.vue'
 import WorkspacePage from '@/components/workspace/WorkspacePage.vue'
 import WorkspaceSection from '@/components/workspace/WorkspaceSection.vue'
 
@@ -512,64 +169,155 @@ Chart.defaults.locale = 'en-US'
 const route = useRoute()
 const appStore = useAppStore()
 const context = usePortfolioContextStore()
-const snapshotDetail = (params) => Object.freeze({
-  ...params, context: snapshotContext(params.context),
-  ...(params.pagination ? { pagination: Object.freeze({ ...params.pagination }) } : {}),
-})
-const detailQuery = usePortfolioRequest(async (params, options) => {
-  const security = await getSecurityDetail(params.id, params.account, options)
-  const chartOptions = await getChartOptions(security.currency)
-  return { security, chartOptions }
-}, snapshotDetail)
-const priceQuery = usePortfolioRequest((params, options) => getSecurityPriceHistory(params.id, params.period, options), snapshotDetail)
-const positionQuery = usePortfolioRequest((params, options) => getSecurityPositionHistory(params.id, params.period, params.account, options), snapshotDetail)
-const transactionsQuery = usePortfolioRequest((params, options) => getSecurityTransactions(params.id, params.pagination, params.period, params.account, options), snapshotDetail)
-const accountsQuery = usePortfolioRequest((_params, options) => getAccountChoices(options), snapshotContext)
-const security = computed(() => detailQuery.data.value?.security ?? null)
-const priceHistory = computed(() => priceQuery.data.value ?? [])
-const positionHistory = computed(() => positionQuery.data.value ?? [])
-const transactions = computed(() => transactionsQuery.data.value?.transactions ?? [])
-const chartOptions = computed(() => detailQuery.data.value?.chartOptions ?? null)
-const chartOptionsLoaded = computed(() => chartOptions.value !== null)
-const loading = computed(() => !context.canRead || detailQuery.loading.value)
-const loadingPriceChart = priceQuery.loading
-const loadingPositionChart = positionQuery.loading
-const loadingTransactions = transactionsQuery.loading
-const totalTransactions = computed(() => transactionsQuery.data.value?.total_items ?? 0)
-const loadError = computed(() => detailQuery.error.value || priceQuery.error.value || positionQuery.error.value || transactionsQuery.error.value || accountsQuery.error.value)
-watch(security, (value) => { emit('update-page-title', value?.name ?? '') }, { flush: 'sync' })
-// Account filtering
-const selectedAccount = ref(null)
-const accountOptions = computed(() => formatAccountChoices(accountsQuery.data.value?.options ?? []))
 
-const selectedAccountId = computed(() => {
-  if (!selectedAccount.value || selectedAccount.value.type === 'all')
-    return null
-  return selectedAccount.value.id
+// D7: the five resources, their triggers and their invalidation live in the
+// security feature owner; this entrypoint keeps the route/title surface and
+// the chart presentation unchanged.
+const {
+  selectedAccount,
+  selectedPeriod,
+  transactionOptions,
+  itemsPerPageOptions,
+  security,
+  priceHistory,
+  positionHistory,
+  transactions,
+  chartOptions,
+  chartOptionsLoaded,
+  accountOptions,
+  loading,
+  loadingPriceChart,
+  loadingPositionChart,
+  loadingTransactions,
+  totalTransactions,
+  pageCount,
+  loadError,
+} = useSecurityDetail({
+  securityId: () => Number(route.params.id),
+  canRead: () => context.canRead,
+  refreshTrigger: () => appStore.dataRefreshTrigger,
+  committed: () => context.committed,
 })
+
+watch(security, (value) => { emit('update-page-title', value?.name ?? '') }, { flush: 'sync' })
 
 const effectiveCurrentDate = computed(() => appStore.effectiveCurrentDate)
 
-const selectedPeriod = ref('1Y')
+// ---- Display views: pure mappings from the accepted server response to the
+// section models. Every value stays the server display string; conditions
+// replicate the incumbent rows exactly.
 
-const transactionOptions = ref({
-  page: 1,
-  itemsPerPage: 10,
+const asText = (value) => (value === undefined || value === null ? '' : String(value))
+
+const overviewView = computed(() => {
+  const record = security.value
+  if (!record) return null
+  const isBond = record.instrument_type === 'Bond'
+  const bond = record.bond_data ?? null
+  const fields = [{ label: 'Current Position:', value: asText(record.open_position) }]
+  if (record.buy_in_price) {
+    fields.push({ label: 'Buy-in Price:', value: asText(record.buy_in_price) })
+  }
+  if (record.current_price) {
+    fields.push({ label: 'Current Price:', value: asText(record.current_price) })
+  }
+  fields.push({ label: 'Current Value:', value: asText(record.current_value) })
+  if (
+    isBond &&
+    bond &&
+    bond.total_aci !== undefined &&
+    bond.total_aci !== '–'
+  ) {
+    fields.push({
+      label: 'Total Accrued Interest:',
+      value: asText(bond.total_aci),
+      explanation: '(net of ACI paid at acquisition)',
+    })
+  }
+  if (isBond && bond && bond.ytm) {
+    fields.push({ label: 'YTM at Acquisition:', value: asText(bond.ytm) })
+  }
+  fields.push(
+    { label: 'Realized Gain/Loss:', value: asText(record.realized) },
+    { label: 'Unrealized Gain/Loss:', value: asText(record.unrealized) },
+    { label: 'Capital Distribution:', value: asText(record.capital_distribution) },
+    { label: 'IRR:', value: asText(record.irr) },
+  )
+  return {
+    securityId: record.id,
+    name: asText(record.name),
+    identifier: asText(record.ISIN),
+    instrumentType: asText(record.instrument_type),
+    currency: asText(record.currency),
+    firstInvestment: asText(record.first_investment),
+    fields,
+  }
 })
 
-const itemsPerPageOptions = [10, 25, 50, 100]
+const bondView = computed(() => {
+  const bond = security.value?.bond_data
+  if (security.value?.instrument_type !== 'Bond' || !bond) return null
+  const primary = []
+  if (bond.current_notional !== null && bond.current_notional !== undefined) {
+    primary.push({
+      label: bond.is_amortizing ? 'Current Nominal:' : 'Notional:',
+      value: asText(bond.current_notional),
+    })
+  }
+  if (bond.is_amortizing && bond.initial_notional !== null && bond.initial_notional !== undefined) {
+    primary.push({ label: 'Initial Nominal:', value: asText(bond.initial_notional) })
+  }
+  if (bond.issue_date) primary.push({ label: 'Issue Date:', value: asText(bond.issue_date) })
+  if (bond.maturity_date) primary.push({ label: 'Maturity Date:', value: asText(bond.maturity_date) })
+  primary.push({
+    label: 'Bond Type:',
+    value: bond.coupon_type || 'Standard',
+    explanation: bond.is_amortizing ? 'Amortizing' : undefined,
+  })
+  if (bond.credit_rating) {
+    primary.push({ label: 'Credit Rating:', value: asText(bond.credit_rating) })
+  }
+  const coupon = []
+  if (bond.coupon_amount !== null && bond.coupon_amount !== undefined) {
+    coupon.push({ label: 'Coupon per Bond:', value: asText(bond.coupon_amount) })
+  }
+  if (bond.coupon_rate) coupon.push({ label: 'Coupon Rate:', value: asText(bond.coupon_rate) })
+  if (bond.coupon_frequency) {
+    coupon.push({ label: 'Coupon Frequency:', value: `${bond.coupon_frequency}x per year` })
+  }
+  if (bond.next_coupon_date) {
+    coupon.push({ label: 'Next Coupon Payment:', value: asText(bond.next_coupon_date) })
+  }
+  if (bond.current_aci) {
+    if (bond.current_aci.aci_amount) {
+      coupon.push({ label: 'Current Accrued Interest:', value: asText(bond.current_aci.aci_amount) })
+    }
+    if (bond.current_aci.aci_days) {
+      coupon.push({
+        label: 'Days Accrued:',
+        value: `${bond.current_aci.aci_days} / ${bond.current_aci.total_days} days`,
+      })
+    }
+  }
+  return { primary, coupon }
+})
 
-const transactionHeaders = [
-  { title: 'Date', key: 'date', align: 'start' },
-  { title: 'Account', key: 'broker_account', align: 'start' },
-  { title: 'Description', key: 'description', align: 'start' },
-  { title: 'Type', key: 'type', align: 'center' },
-  { title: 'Cash Flow', key: 'cash_flow', align: 'center' },
-]
+const cryptoView = computed(() => {
+  const record = security.value
+  if (record?.instrument_type !== 'Crypto') return null
+  return {
+    nativeQuantity: asText(record.crypto_reward_native_quantity),
+    fiatValue: asText(record.crypto_reward_fiat_value),
+  }
+})
 
-const pageCount = computed(() =>
-  Math.ceil(totalTransactions.value / transactionOptions.value.itemsPerPage)
-)
+const activityView = computed(() => ({
+  transactions: transactions.value,
+  totalItems: totalTransactions.value,
+  page: transactionOptions.value.page,
+  itemsPerPage: transactionOptions.value.itemsPerPage,
+  pageCount: pageCount.value,
+}))
 
 const getStartDate = (period) => {
   const currentDate = new Date(effectiveCurrentDate.value)
@@ -613,33 +361,6 @@ const filteredPositionHistory = computed(() => {
   )
 })
 
-const detailParams = () => ({
-  context: context.committed, id: Number(route.params.id),
-  account: selectedAccountId.value, period: selectedPeriod.value,
-})
-watch([() => route.params.id, selectedAccount, selectedPeriod], () => {
-  transactionOptions.value = { ...transactionOptions.value, page: 1 }
-}, { flush: 'sync' })
-watch(() => route.params.id, () => {
-  detailQuery.invalidate()
-  priceQuery.invalidate()
-  positionQuery.invalidate()
-  transactionsQuery.invalidate()
-}, { flush: 'sync' })
-watch([() => context.canRead, () => appStore.dataRefreshTrigger, () => route.params.id, selectedAccountId], () => {
-  if (context.canRead) detailQuery.run(detailParams())
-}, { immediate: true })
-watch([() => context.canRead, () => appStore.dataRefreshTrigger, () => route.params.id, selectedAccountId, selectedPeriod], () => {
-  if (!context.canRead) return
-  priceQuery.run(detailParams())
-  positionQuery.run(detailParams())
-}, { immediate: true })
-watch([() => context.canRead, () => appStore.dataRefreshTrigger, () => route.params.id, selectedAccountId, selectedPeriod, transactionOptions], () => {
-  if (context.canRead) transactionsQuery.run({ ...detailParams(), pagination: transactionOptions.value })
-}, { immediate: true, deep: true })
-watch([() => context.canRead, () => appStore.dataRefreshTrigger], () => {
-  if (context.canRead) accountsQuery.run(context.committed)
-}, { immediate: true })
 const getLastAvailableDataPoint = (data, targetDate) => {
   const sortedData = [...data].sort(
     (a, b) => new Date(b.date) - new Date(a.date)
