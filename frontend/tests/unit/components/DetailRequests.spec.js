@@ -24,6 +24,12 @@ vi.mock('vue-router', () => ({
 vi.mock('@/services/api', () => ({
   ...mocks, getPriceDetails: vi.fn(), deletePrice: vi.fn(),
 }))
+// C4: the two history resources negotiate chart contract v2 through the
+// shared chart transport. The bridge forwards each negotiated request to the
+// characterized legacy signatures (id, period[, account], options) so these
+// pins keep binding the page's actual request behavior.
+const chartMocks = vi.hoisted(() => ({ fetchSecurityHistory: vi.fn() }))
+vi.mock('@/features/charts/chartApi', () => chartMocks)
 vi.mock('@/config/chartConfig', () => ({ getChartOptions: vi.fn().mockResolvedValue({}), colorPalette: [] }))
 vi.mock('chartjs-adapter-date-fns', () => ({}))
 
@@ -38,6 +44,12 @@ beforeEach(() => {
   mocks.getSecurityDetail.mockResolvedValue({ id: 1, name: 'One', currency: 'USD' })
   mocks.getSecurityPriceHistory.mockResolvedValue([])
   mocks.getSecurityPositionHistory.mockResolvedValue([])
+  chartMocks.fetchSecurityHistory.mockImplementation((query, kind, options) => {
+    const rows = kind === 'price'
+      ? mocks.getSecurityPriceHistory(query.securityId, query.period, options)
+      : mocks.getSecurityPositionHistory(query.securityId, query.period, query.accountId, options)
+    return Promise.resolve(rows).then((legacy) => ({ capability: 'legacy_only', legacy }))
+  })
   mocks.getSecurityTransactions.mockResolvedValue({ transactions: [], total_items: 0 })
   mocks.getAssetTypes.mockResolvedValue([])
   mocks.getAccounts.mockResolvedValue([])

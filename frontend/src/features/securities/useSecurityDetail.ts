@@ -5,6 +5,10 @@
 // incumbent exactly; children never fetch. No resource commits after the
 // owner's scope is disposed or superseded (latest-request generations via
 // usePortfolioRequest).
+//
+// C4: the two history resources negotiate chart contract v2 through the
+// shared chart transport (ONE request per history, same triggers) and keep
+// the characterized legacy projections for the incumbent charts.
 import { computed, ref, watch } from 'vue'
 
 import { usePortfolioRequest } from '@/composables/usePortfolioRequest'
@@ -13,10 +17,10 @@ import type { PortfolioContext } from '@/types/portfolioContext'
 import {
   getAccountChoices,
   getSecurityDetail,
-  getSecurityPositionHistory,
-  getSecurityPriceHistory,
   getSecurityTransactions,
 } from '@/services/api'
+import { fetchSecurityHistory } from '@/features/charts/chartApi'
+import { requireReadyChartContext } from '@/features/charts/useNavChart'
 import { formatAccountChoices } from '@/utils/accountUtils'
 import { getChartOptions } from '@/config/chartConfig'
 
@@ -54,14 +58,25 @@ export function useSecurityDetail(options: {
     },
     snapshotDetail,
   )
+  // C4: the two histories negotiate v2 in the same single request that feeds
+  // the legacy projection. requireReadyChartContext is total under canRead()
+  // (a readable committed context always carries date and currency); a local
+  // account filter is sent for position only — the price endpoint has no
+  // account parameter.
+  const securityHistoryParams = (params: DetailQueryParams, kind: 'price' | 'position') => ({
+    context: requireReadyChartContext(params.context),
+    securityId: params.id,
+    accountId: kind === 'position' ? params.account : null,
+    period: params.period,
+  })
   const priceQuery = usePortfolioRequest(
     (params: DetailFetcherParams, abort) =>
-      getSecurityPriceHistory(params.id, params.period, abort),
+      fetchSecurityHistory(securityHistoryParams(params, 'price'), 'price', { signal: abort.signal }),
     snapshotDetail,
   )
   const positionQuery = usePortfolioRequest(
     (params: DetailFetcherParams, abort) =>
-      getSecurityPositionHistory(params.id, params.period, params.account, abort),
+      fetchSecurityHistory(securityHistoryParams(params, 'position'), 'position', { signal: abort.signal }),
     snapshotDetail,
   )
   const transactionsQuery = usePortfolioRequest(
@@ -89,8 +104,10 @@ export function useSecurityDetail(options: {
 
   const security = computed(() => detailQuery.data.value?.security ?? null)
   const securityName = computed(() => security.value?.name ?? '')
-  const priceHistory = computed(() => priceQuery.data.value ?? [])
-  const positionHistory = computed(() => positionQuery.data.value ?? [])
+  // The characterized legacy projections (price floats / position strings)
+  // come from the same negotiated response — identical values, one request.
+  const priceHistory = computed(() => priceQuery.data.value?.legacy ?? [])
+  const positionHistory = computed(() => positionQuery.data.value?.legacy ?? [])
   const transactions = computed(
     () =>
       (transactionsQuery.data.value as { transactions?: unknown[] } | null)?.transactions ??

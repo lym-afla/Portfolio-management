@@ -21,18 +21,20 @@ import TransactionRow from '@/components/transactions/TransactionRow.vue'
 import {
   getAccountChoices,
   getSecurityDetail,
-  getSecurityPositionHistory,
-  getSecurityPriceHistory,
   getSecurityTransactions,
 } from '@/services/api'
+import { fetchSecurityHistory } from '@/features/charts/chartApi'
 import { getChartOptions } from '@/config/chartConfig'
 
 vi.mock('@/services/api', () => ({
   getAccountChoices: vi.fn(),
   getSecurityDetail: vi.fn(),
-  getSecurityPositionHistory: vi.fn(),
-  getSecurityPriceHistory: vi.fn(),
   getSecurityTransactions: vi.fn(),
+}))
+// C4: the two history resources negotiate chart contract v2 through the
+// shared chart transport; the owner's triggers stay the characterized ones.
+vi.mock('@/features/charts/chartApi', () => ({
+  fetchSecurityHistory: vi.fn(),
 }))
 vi.mock('@/config/chartConfig', () => ({
   getChartOptions: vi.fn(),
@@ -44,6 +46,11 @@ const flush = async () => {
   await new Promise((resolve) => setTimeout(resolve, 0))
   await new Promise((resolve) => setTimeout(resolve, 0))
 }
+
+type SecurityHistoryResult = Awaited<ReturnType<typeof fetchSecurityHistory>>
+/** A legacy-only transport result carrying the characterized rows. */
+const historyResult = (rows: unknown): SecurityHistoryResult =>
+  ({ capability: 'legacy_only', legacy: rows }) as SecurityHistoryResult
 
 interface Harness {
   detail: ReturnType<typeof useSecurityDetail>
@@ -101,12 +108,7 @@ beforeEach(() => {
     current_value: '$1.00', realized: '–', unrealized: '–',
     capital_distribution: '$0.00', irr: 'NA',
   })
-  vi.mocked(getSecurityPriceHistory).mockResolvedValue(
-  [] as unknown as Awaited<ReturnType<typeof getSecurityPriceHistory>>,
-)
-  vi.mocked(getSecurityPositionHistory).mockResolvedValue(
-  [] as unknown as Awaited<ReturnType<typeof getSecurityPositionHistory>>,
-)
+  vi.mocked(fetchSecurityHistory).mockResolvedValue(historyResult([]))
   vi.mocked(getSecurityTransactions).mockResolvedValue({ transactions: [], total_items: 0 })
 })
 
@@ -120,10 +122,10 @@ describe('useSecurityDetail — characterized triggers and request counts', () =
     expect(vi.mocked(getSecurityDetail).mock.calls[0][0]).toBe(1)
     expect(vi.mocked(getSecurityDetail).mock.calls[0][1]).toBeNull()
     expect(getChartOptions).toHaveBeenCalledWith('USD')
-    expect(getSecurityPriceHistory).toHaveBeenCalledTimes(1)
-    expect(vi.mocked(getSecurityPriceHistory).mock.calls[0][1]).toBe('1Y')
-    expect(getSecurityPositionHistory).toHaveBeenCalledTimes(1)
-    expect(vi.mocked(getSecurityPositionHistory).mock.calls[0][2]).toBeNull()
+    expect(vi.mocked(fetchSecurityHistory).mock.calls.filter(([, kind]) => kind === 'price')).toHaveLength(1)
+    expect(vi.mocked(fetchSecurityHistory).mock.calls.filter(([, kind]) => kind === 'position')).toHaveLength(1)
+    expect(vi.mocked(fetchSecurityHistory).mock.calls[0][0]).toMatchObject({ securityId: 1, period: '1Y', accountId: null })
+    expect(vi.mocked(fetchSecurityHistory).mock.calls[1][0]).toMatchObject({ securityId: 1, accountId: null })
     expect(getSecurityTransactions).toHaveBeenCalledTimes(1)
     expect(vi.mocked(getSecurityTransactions).mock.calls[0][1]).toEqual({ page: 1, itemsPerPage: 10 })
     expect(getAccountChoices).toHaveBeenCalledTimes(1)
@@ -141,10 +143,12 @@ describe('useSecurityDetail — characterized triggers and request counts', () =
     expect(vi.mocked(getSecurityTransactions).mock.calls[1][1]).toEqual({ page: 2, itemsPerPage: 10 })
     detail.selectedPeriod.value = 'All'
     await flush()
-    expect(getSecurityPriceHistory).toHaveBeenCalledTimes(2)
-    expect(vi.mocked(getSecurityPriceHistory).mock.calls[1][1]).toBe('All')
-    expect(getSecurityPositionHistory).toHaveBeenCalledTimes(2)
-    expect(vi.mocked(getSecurityPositionHistory).mock.calls[1][1]).toBe('All')
+    const priceCalls = vi.mocked(fetchSecurityHistory).mock.calls.filter(([, kind]) => kind === 'price')
+    const positionCalls = vi.mocked(fetchSecurityHistory).mock.calls.filter(([, kind]) => kind === 'position')
+    expect(priceCalls).toHaveLength(2)
+    expect(positionCalls).toHaveLength(2)
+    expect(priceCalls[1][0]).toMatchObject({ period: 'All' })
+    expect(positionCalls[1][0]).toMatchObject({ period: 'All' })
     expect(getSecurityTransactions).toHaveBeenCalledTimes(3)
     expect(vi.mocked(getSecurityTransactions).mock.calls[2][1]).toEqual({ page: 1, itemsPerPage: 10 })
     expect(getSecurityDetail).toHaveBeenCalledTimes(1)
@@ -158,8 +162,11 @@ describe('useSecurityDetail — characterized triggers and request counts', () =
     await flush()
     expect(getSecurityDetail).toHaveBeenCalledTimes(2)
     expect(vi.mocked(getSecurityDetail).mock.calls[1][1]).toBe(7)
-    expect(getSecurityPriceHistory).toHaveBeenCalledTimes(2)
-    expect(vi.mocked(getSecurityPositionHistory).mock.calls[1][2]).toBe(7)
+    const historyCalls = vi.mocked(fetchSecurityHistory).mock.calls
+    expect(historyCalls.filter(([, kind]) => kind === 'price')).toHaveLength(2)
+    // The local filter reaches the position endpoint only.
+    expect(historyCalls.filter(([query]) => (query as { accountId: number | null }).accountId === 7)).toHaveLength(1)
+    expect(historyCalls.filter(([query]) => (query as { accountId: number | null }).accountId === 7)[0][1]).toBe('position')
     expect(vi.mocked(getSecurityTransactions).mock.calls[1][3]).toBe(7)
     expect(getAccountChoices).toHaveBeenCalledTimes(1)
   })
@@ -170,8 +177,8 @@ describe('useSecurityDetail — characterized triggers and request counts', () =
     harness.refreshTick.value += 1
     await flush()
     expect(getSecurityDetail).toHaveBeenCalledTimes(2)
-    expect(getSecurityPriceHistory).toHaveBeenCalledTimes(2)
-    expect(getSecurityPositionHistory).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(fetchSecurityHistory).mock.calls.filter(([, kind]) => kind === 'price')).toHaveLength(2)
+    expect(vi.mocked(fetchSecurityHistory).mock.calls.filter(([, kind]) => kind === 'position')).toHaveLength(2)
     expect(getSecurityTransactions).toHaveBeenCalledTimes(2)
     expect(getAccountChoices).toHaveBeenCalledTimes(2)
   })
@@ -208,23 +215,30 @@ describe('useSecurityDetail — characterized triggers and request counts', () =
   })
 
   it('keeps the committed selection when an older price response lands last', async () => {
-    const stale = deferred<Awaited<ReturnType<typeof getSecurityPriceHistory>>>()
-    vi.mocked(getSecurityPriceHistory)
-      .mockImplementationOnce(() => stale.promise)
-      .mockResolvedValueOnce([{ date: '2026-01-01', price: '2' }] as unknown as Awaited<ReturnType<typeof getSecurityPriceHistory>>)
+    const stale = deferred<SecurityHistoryResult>()
+    vi.mocked(fetchSecurityHistory).mockImplementation((_query, kind) =>
+      kind === 'price'
+        ? stale.promise
+        : Promise.resolve(historyResult([])),
+    )
     const { detail } = await startOwner(1)
     await flushPromises()
     detail.selectedPeriod.value = 'All'
     await flushPromises()
-    stale.resolve([{ date: '2019-01-01', price: '1' }] as unknown as Awaited<ReturnType<typeof getSecurityPriceHistory>>)
+    stale.resolve(historyResult([{ date: '2026-01-01', price: '2' }]))
     await flushPromises()
     expect(detail.priceHistory.value).toEqual([{ date: '2026-01-01', price: '2' }])
   })
 
   it('recovers a failed price resource without discarding valid siblings', async () => {
-    vi.mocked(getSecurityPriceHistory)
-      .mockRejectedValueOnce(new Error('offline'))
-      .mockResolvedValueOnce([{ date: '2026-01-01', price: '5' }] as unknown as Awaited<ReturnType<typeof getSecurityPriceHistory>>)
+    let priceRuns = 0
+    vi.mocked(fetchSecurityHistory).mockImplementation((_query, kind) => {
+      if (kind !== 'price') return Promise.resolve(historyResult([]))
+      priceRuns += 1
+      return priceRuns === 1
+        ? Promise.reject(new Error('offline'))
+        : Promise.resolve(historyResult([{ date: '2026-01-01', price: '5' }]))
+    })
     const { detail } = await startOwner(1)
     await flushPromises()
     expect(detail.priceHistory.value).toEqual([])
@@ -260,7 +274,7 @@ describe('useSecurityDetail — characterized triggers and request counts', () =
     await context.changeContext({ effectiveCurrentDate: '2026-02-02' })
     await flushPromises()
     expect(getSecurityDetail).toHaveBeenCalledTimes(2)
-    expect(getSecurityPriceHistory).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(fetchSecurityHistory).mock.calls.filter(([, kind]) => kind === 'price')).toHaveLength(2)
     expect(getAccountChoices).toHaveBeenCalledTimes(2)
     scope.stop()
   })
