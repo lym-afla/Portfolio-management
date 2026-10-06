@@ -46,6 +46,16 @@
         description="Composition of total NAV; each card keeps its Table view for exact values."
         data-testid="allocation-section"
       >
+        <v-alert
+          v-if="allocationLegacyOnlyNotice"
+          type="info"
+          variant="tonal"
+          density="compact"
+          class="mb-4"
+          data-testid="allocation-capability-notice"
+        >
+          {{ allocationLegacyOnlyNotice }}
+        </v-alert>
         <v-row class="equal-height-row">
           <v-col
             v-for="chart in chartTypes"
@@ -65,6 +75,7 @@
               :data="breakdownData[chart]"
               :currency="userCurrency"
               :totalNAV="totalNAV"
+              :chart-document="breakdownDocuments?.[chart] ?? null"
               class="h-100"
             />
             <v-alert v-else type="error" class="h-100" :data-testid="`allocation-${chart}-error`">
@@ -148,10 +159,11 @@ import SummaryOverTimeTable from '@/components/dashboard/SummaryOverTimeTable.vu
 import NavChartPanel from '@/features/charts/NavChartPanel.vue'
 import {
   getDashboardSummary,
-  getDashboardBreakdown,
   getDashboardSummaryOverTime,
 } from '@/services/api'
 import { useNavChart, requireReadyChartContext } from '@/features/charts/useNavChart'
+import { useBreakdownChart } from '@/features/charts/useBreakdownChart'
+import { allocationEchartsRequested } from '@/features/charts/rendererPolicy'
 import type { Frequency, NavMode, NavQuery } from '@/features/charts/contracts'
 
 defineOptions({ name: 'DashboardPage' })
@@ -159,12 +171,6 @@ const emit = defineEmits<{
   (e: 'update-page-title', title: string): void
 }>()
 
-interface BreakdownData {
-  assetType: Record<string, unknown>
-  assetClass: Record<string, unknown>
-  currency: Record<string, unknown>
-  totalNAV?: string
-}
 interface SummaryOverTimeData {
   lines?: unknown[]
   years?: unknown[]
@@ -191,11 +197,7 @@ const summaryQuery = usePortfolioRequest(
   (_params: PortfolioContext, options) => getDashboardSummary(options),
   snapshotContext
 )
-const breakdownQuery = usePortfolioRequest(
-  async (_params: PortfolioContext, options) =>
-    await getDashboardBreakdown(options) as unknown as BreakdownData,
-  snapshotContext
-)
+const breakdownQuery = useBreakdownChart()
 const historyQuery = usePortfolioRequest(
   async (_params: PortfolioContext, options): Promise<SummaryOverTimeData | null> => {
     try {
@@ -212,10 +214,33 @@ const navChartQuery = useNavChart()
 const metrics = computed(() =>
   summaryQuery.data.value ? summaryMetrics(summaryQuery.data.value) : []
 )
-const breakdownData = computed(() => breakdownQuery.data.value ?? {
-  assetType: {}, assetClass: {}, currency: {},
+// The negotiated breakdown feeds both surfaces from ONE request: the
+// incumbent cards render the legacy fields; the gated modern path renders the
+// three validated allocation documents.
+const breakdownResult = computed(() => breakdownQuery.data.value)
+const breakdownData = computed(() => breakdownResult.value?.legacy ?? {
+  assetType: { data: {}, percentage: {} },
+  assetClass: { data: {}, percentage: {} },
+  currency: { data: {}, percentage: {} },
 })
-const totalNAV = computed(() => breakdownQuery.data.value?.totalNAV ?? '')
+const totalNAV = computed(() => {
+  const nav = (breakdownData.value as { totalNAV?: string }).totalNAV
+  return nav ?? ''
+})
+const allocationPilotRequested = allocationEchartsRequested()
+const allocationPilotActive = computed(
+  () => allocationPilotRequested && breakdownResult.value?.capability === 'v2',
+)
+const breakdownDocuments = computed(() => {
+  if (!allocationPilotActive.value || breakdownResult.value?.capability !== 'v2') return null
+  return breakdownResult.value.documents
+})
+const allocationLegacyOnlyNotice = computed(() => {
+  if (error.value.breakdownCharts || !breakdownResult.value) return null
+  return allocationPilotRequested && breakdownResult.value.capability === 'legacy_only'
+    ? 'Allocation data comes from a legacy response without the exact chart contract; values are unverified metadata.'
+    : null
+})
 const summaryOverTimeData = historyQuery.data
 const navChartResult = navChartQuery.data
 const navChartInitialParams = computed(() => appStore.navChartParams)
@@ -252,7 +277,15 @@ const historyReady = computed(() =>
 const chartTypes = ['assetType', 'assetClass', 'currency'] as const
 const chartTitles = { assetType: 'Asset Type', assetClass: 'Asset Class', currency: 'Currency' }
 const fetchSummaryData = () => summaryQuery.run(context.committed)
-const fetchBreakdownData = () => breakdownQuery.run(context.committed)
+// One negotiated breakdown request feeds all three cards (legacy fields and,
+// when the gate is on, the three validated allocation documents).
+function fetchBreakdownData() {
+  const committed = context.committed
+  if (!committed.effectiveCurrentDate || !committed.currency) {
+    return Promise.resolve({ status: 'discarded' } as const)
+  }
+  return breakdownQuery.run({ context: requireReadyChartContext(committed) })
+}
 const fetchSummaryOverTimeData = () => historyQuery.run(context.committed)
 type NavRunResult = Awaited<ReturnType<typeof navChartQuery.run>>
 function fetchNAVChartData(params: NavChartParams = navChartInitialParams.value): Promise<NavRunResult> {

@@ -9,9 +9,6 @@ import { usePortfolioContextStore } from '@/stores/portfolioContext'
 // All dashboard services reject so every widget renders its error alert.
 const mocks = vi.hoisted(() => ({
   getDashboardSummary: vi.fn().mockRejectedValue(new Error('summary failed')),
-  getDashboardBreakdown: vi
-    .fn()
-    .mockRejectedValue(new Error('breakdown failed')),
   getDashboardSummaryOverTime: vi
     .fn()
     .mockRejectedValue(new Error('summary over time failed')),
@@ -19,8 +16,11 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/services/api', () => mocks)
 
+// C4: the breakdown request negotiates chart contract v2 through the shared
+// chart transport (one request still feeds all three card alerts).
 const chartMocks = vi.hoisted(() => ({
   fetchNavChart: vi.fn().mockRejectedValue(new Error('nav chart failed')),
+  fetchBreakdownChart: vi.fn().mockRejectedValue(new Error('breakdown failed')),
 }))
 vi.mock('@/features/charts/chartApi', () => ({
   ...chartMocks,
@@ -79,7 +79,7 @@ describe('DashboardPage widget error retry', () => {
     await flushPromises()
 
     expect(mocks.getDashboardSummary).toHaveBeenCalledTimes(1)
-    expect(mocks.getDashboardBreakdown).toHaveBeenCalledTimes(1)
+    expect(chartMocks.fetchBreakdownChart).toHaveBeenCalledTimes(1)
     expect(mocks.getDashboardSummaryOverTime).toHaveBeenCalledTimes(1)
     expect(chartMocks.fetchNavChart).toHaveBeenCalledTimes(1)
 
@@ -92,7 +92,7 @@ describe('DashboardPage widget error retry', () => {
     await flushPromises()
 
     expect(mocks.getDashboardSummary).toHaveBeenCalledTimes(2)
-    expect(mocks.getDashboardBreakdown).toHaveBeenCalledTimes(2)
+    expect(chartMocks.fetchBreakdownChart).toHaveBeenCalledTimes(2)
     expect(mocks.getDashboardSummaryOverTime).toHaveBeenCalledTimes(2)
     expect(chartMocks.fetchNavChart).toHaveBeenCalledTimes(2)
     wrapper.unmount()

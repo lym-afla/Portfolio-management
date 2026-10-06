@@ -21,12 +21,50 @@ import { ChartContextMismatchError } from '../chartApi'
 import { useBreakdownChart } from '../useBreakdownChart'
 import { useSecurityDetail } from '@/features/securities/useSecurityDetail'
 import { getChartOptions } from '@/config/chartConfig'
+import DashboardPage from '@/views/DashboardPage.vue'
+import { mount } from '@vue/test-utils'
+import { createVuetify } from 'vuetify'
+import * as vuetifyComponents from 'vuetify/components'
+import * as vuetifyDirectives from 'vuetify/directives'
+
+// DashboardPage's summary widgets go through services/api (the broad axios
+// instance); mock only those two functions and keep every other export real —
+// the security transports stay on the configured shared transport.
+const dashboardWidgets = vi.hoisted(() => ({
+  getDashboardSummary: vi.fn(),
+  getDashboardSummaryOverTime: vi.fn(),
+}))
+vi.mock('@/services/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/services/api')>()
+  return {
+    ...actual,
+    getDashboardSummary: dashboardWidgets.getDashboardSummary,
+    getDashboardSummaryOverTime: dashboardWidgets.getDashboardSummaryOverTime,
+  }
+})
 
 vi.mock('@/config/chartConfig', () => ({
   getChartOptions: vi.fn(),
   colorPalette: ['#0F4C81', '#5C6B7A'],
 }))
 vi.mock('chartjs-adapter-date-fns', () => ({}))
+// The dashboard section mounts the real BreakdownChart with the gated modern
+// composition; both chart runtimes are stubbed at the wrapper boundary.
+const pieState = vi.hoisted(() => ({ captured: [] as unknown[] }))
+vi.mock('vue-chartjs', () => ({ Bar: { name: 'Bar', template: '<div class="bar-stub" />' } }))
+vi.mock('vue-echarts', async () => {
+  const { h } = await import('vue')
+  return {
+    default: {
+      name: 'VChart',
+      props: ['option', 'updateOptions', 'autoresize', 'theme'],
+      setup(props: { option: Record<string, unknown> }) {
+        pieState.captured.push(props)
+        return () => h('div', { class: 'pie-stub' })
+      },
+    },
+  }
+})
 
 type TransportCall = { url: string; params: Record<string, unknown>; signal: AbortSignal }
 
@@ -117,6 +155,9 @@ beforeEach(async () => {
       if (url === '/dashboard/api/get-breakdown/') {
         transportCalls.push(call)
         return respondBreakdown ? respondBreakdown() : { data: breakdownEnvelopeWithContext() }
+      }
+      if (url === '/dashboard/api/get-nav-chart-data/') {
+        return { data: { labels: [], datasets: [], currency: 'USDk' } }
       }
       if (/\/database\/api\/securities\/\d+\/(price|position)-history\/$/.test(url)) {
         transportCalls.push(call)
@@ -309,5 +350,118 @@ describe('useSecurityDetail over the v2 history transport', () => {
     // user's back — the error stays until an explicit retry.
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(spy).not.toHaveBeenCalled()
+  })
+})
+
+
+describe('DashboardPage allocation wiring', () => {
+  const vuetify = createVuetify({ components: vuetifyComponents, directives: vuetifyDirectives })
+
+  async function mountDashboard() {
+    const pinia = createPinia()
+    await usePortfolioContextStore(pinia).reconcileContext()
+    const wrapper = mount(DashboardPage, {
+      global: {
+        plugins: [vuetify, pinia],
+        provide: { showError: vi.fn(), clearErrors: vi.fn() },
+        stubs: {
+          SummaryOverTimeTable: true,
+          NAVChart: { template: '<div data-testid="nav-chart" />' },
+        },
+      },
+    })
+    // The pie renderer is an async component; settle its loader.
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      await flushPromises()
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      if (
+        pieState.captured.length >= 3 ||
+        wrapper.find('[data-testid="allocation-capability-notice"]').exists() ||
+        wrapper.find('[data-testid="allocation-assetType-error"]').exists()
+      ) break
+    }
+    return wrapper
+  }
+
+  beforeEach(() => {
+    pieState.captured = []
+    respondBreakdown = null
+    dashboardWidgets.getDashboardSummary.mockReset()
+    dashboardWidgets.getDashboardSummaryOverTime.mockReset()
+    dashboardWidgets.getDashboardSummary.mockResolvedValue({
+      'Current NAV': '$1,000.00', Invested: '$900.00', 'Cash-out': '$0.00', total_return: '11.11%', irr: 'N/R',
+    })
+    dashboardWidgets.getDashboardSummaryOverTime.mockResolvedValue({ lines: [], years: [], currentYear: 2026 })
+  })
+
+  it('keeps the incumbent cards and one negotiated request while the gate is off', async () => {
+    const breakdownCalls = () => transportCalls.filter((call) => call.url === '/dashboard/api/get-breakdown/')
+    const wrapper = await mountDashboard()
+    expect(breakdownCalls()).toHaveLength(1)
+    expect(breakdownCalls()[0].params).toEqual({ chart_contract: 2 })
+    expect(pieState.captured).toHaveLength(0)
+    expect(wrapper.findAll('.bar-stub')).toHaveLength(3)
+    expect(wrapper.find('[data-testid="allocation-capability-notice"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('renders one solid pie per card from the same request when the gate is on', async () => {
+    vi.stubEnv('VITE_ALLOCATION_ECHARTS_ENABLED', 'true')
+    try {
+      const wrapper = await mountDashboard()
+      const breakdownCalls = transportCalls.filter((call) => call.url === '/dashboard/api/get-breakdown/')
+      expect(breakdownCalls).toHaveLength(1)
+      expect(pieState.captured).toHaveLength(3)
+      // v-window renders only the active tab: switch the first card to its
+      // exact table and read the server-certified totals there.
+      await wrapper.findAll('[data-testid^="allocation-"][data-testid$="-card"] .v-tab')[1].trigger('click')
+      await flushPromises()
+      const table = wrapper.get('[data-testid="allocation-data-table"]')
+      expect(table.text()).toContain('USD 100.00')
+      expect(table.text()).toContain('100.0%')
+      expect(wrapper.find('[data-testid="allocation-capability-notice"]').exists()).toBe(false)
+      wrapper.unmount()
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it('shows the legacy-only notice and incumbent bars for a legacy payload with the gate on', async () => {
+    vi.stubEnv('VITE_ALLOCATION_ECHARTS_ENABLED', 'true')
+    try {
+      respondBreakdown = () => {
+        const envelope = breakdownEnvelopeWithContext() as Record<string, unknown>
+        delete envelope.chartV2
+        return Promise.resolve({ data: envelope })
+      }
+      const wrapper = await mountDashboard()
+      expect(wrapper.get('[data-testid="allocation-capability-notice"]').text()).toContain('legacy response')
+      expect(pieState.captured).toHaveLength(0)
+      expect(wrapper.findAll('.bar-stub')).toHaveLength(3)
+      wrapper.unmount()
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it('surfaces a malformed breakdown document as an error with retry, never a downgrade', async () => {
+    vi.stubEnv('VITE_ALLOCATION_ECHARTS_ENABLED', 'true')
+    try {
+      respondBreakdown = () => {
+        const envelope = breakdownEnvelopeWithContext() as { chartV2: Record<string, unknown> }
+        delete envelope.chartV2.assetClass
+        return Promise.resolve({ data: envelope })
+      }
+      const wrapper = await mountDashboard()
+      expect(wrapper.get('[data-testid="allocation-assetType-error"]').text()).toContain('Invalid chartV2 document')
+      expect(wrapper.find('[data-testid="allocation-capability-notice"]').exists()).toBe(false)
+      expect(transportCalls.filter((call) => call.url === '/dashboard/api/get-breakdown/')).toHaveLength(1)
+      await wrapper.get('[data-testid="allocation-assetType-retry"]').trigger('click')
+      await flushPromises()
+      expect(transportCalls.filter((call) => call.url === '/dashboard/api/get-breakdown/')).toHaveLength(2)
+      wrapper.unmount()
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 })

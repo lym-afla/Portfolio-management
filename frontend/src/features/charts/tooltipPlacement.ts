@@ -72,6 +72,10 @@ export function firstUnobscuredViewportY(container: Element, hidden: { style: CS
 
 type TooltipPoint = { x: number; y: number } | number[]
 
+/** The allocation pies (C4) reuse the same placement contract as the NAV
+    pilot: body-attached tooltip pinned inside the unobscured viewport band. */
+export const allocationTooltipPosition = navTooltipPosition
+
 /** The tooltip `position` callback: translate the unobscured viewport band
     into container coordinates and clamp the box into it. Falls back to the
     default below-cursor offset when the container is unreachable. */
