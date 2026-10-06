@@ -38,7 +38,7 @@ This repository of `.md` files is the canonical memory bank for the portfolio ma
 
 - Tasks/
   - [Frontend modernization implementation plan (2026-09-08)](../docs/superpowers/plans/2026-09-08-frontend-modernization.md) — implementation started on codex/frontend-modernization; master plan and reliability, charting, and UI workstreams track the remaining work.
-  - [Frontend modernization progress (updated 2026-10-05)](../docs/superpowers/plans/2026-09-30-frontend-modernization-progress.md) — durable 24-task status tracker; C1/PR #49, D3/PR #50, D4/PR #51, C2/PR #52 and C3/PR #53 integrated; D5/PR #56 integrated; D6/PR #57 integrated; D7 is next; 20 of 24 integrated, modernization not complete.
+  - [Frontend modernization progress (updated 2026-10-05)](../docs/superpowers/plans/2026-09-30-frontend-modernization-progress.md) — durable 24-task status tracker; C1/PR #49, D3/PR #50, D4/PR #51, C2/PR #52 and C3/PR #53 integrated; D5/PR #56 integrated; D6/PR #57 and D7/PR #58 integrated; C4 is next; 21 of 24 integrated, modernization not complete.
   - [D3 dashboard visual pilot handoff](../docs/superpowers/plans/2026-10-01-dashboard-visual-pilot-handoff.md) and [GLM executor prompt](../docs/superpowers/plans/2026-10-01-dashboard-visual-pilot-glm-prompt.md) — executed 1 October 2026; historical, do not re-execute.
   - [D4 grouped tables/actions handoff](../docs/superpowers/plans/2026-10-01-grouped-tables-actions-handoff.md) and [GLM executor prompt](../docs/superpowers/plans/2026-10-01-grouped-tables-actions-glm-prompt.md) — user-merged 2 October 2026 in PR #51; historical, do not re-execute.
   - [C2 typed chart adapters handoff](../docs/superpowers/plans/2026-10-02-chart-adapters-c2-handoff.md) and [GLM executor prompt](../docs/superpowers/plans/2026-10-02-chart-adapters-c2-glm-prompt.md) — historical, integrated in PR #52.
@@ -58,4 +58,6 @@ This repository of `.md` files is the canonical memory bank for the portfolio ma
 
 ---
 
-- [D7 broker/security handoff](../docs/superpowers/plans/2026-10-06-broker-security-d7-handoff.md) and [GLM prompt](../docs/superpowers/plans/2026-10-06-broker-security-d7-glm-prompt.md) — next bounded assignment after PR #57; provider and security-detail extraction, charts unchanged.
+- [D7 broker/security handoff](../docs/superpowers/plans/2026-10-06-broker-security-d7-handoff.md) and [GLM prompt](../docs/superpowers/plans/2026-10-06-broker-security-d7-glm-prompt.md) — historical, integrated in PR #58; provider and security-detail extraction, charts unchanged.
+
+- [C4 allocation/security chart handoff](../docs/superpowers/plans/2026-10-06-allocation-security-charts-c4-handoff.md) and [GLM prompt](../docs/superpowers/plans/2026-10-06-allocation-security-charts-c4-glm-prompt.md) — next bounded assignment after PR #58; three solid pies and security histories behind default-off gates.

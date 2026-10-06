@@ -17,7 +17,7 @@ Updated 6 October 2026. This is the durable, human-facing status tracker for the
 - The earlier `9b32d3d9` checkpoint was 34 commits ahead of main. That historical count is not a completion measure or the current branch count.
 - Financial fixes [#46](https://github.com/lym-afla/Portfolio-management/pull/46), [#47](https://github.com/lym-afla/Portfolio-management/pull/47) and [#48](https://github.com/lym-afla/Portfolio-management/pull/48) are merged into the implementation branch. Their source branches were deleted by the user.
 - Main has not received the modernization branch. No deployment performed.
-- 20 of 24 planned tasks are integrated. D7, C4, C5 and D8 remain; main/release completion remains outstanding.
+- 21 of 24 planned tasks are integrated. C4, C5 and D8 remain; main/release completion remains outstanding.
 - Last whole-foundation verification at `deea60df`: 262 frontend tests; 1261 backend tests / 10 skipped; both type checks, lint/build; 72 synthetic browser route profiles. These results predate the three merges. The combined `9b32d3d9` baseline has not been rerun in this planning turn.
 
 ## Task status
@@ -44,14 +44,16 @@ Updated 6 October 2026. This is the durable, human-facing status tracker for the
 | 18 | C3 | ECharts NAV pilot, both IRRs and accessible inspection | User-merged PR #53 at `2e77e5c7`, reviewed through `3cd33c06`; see [C3 record](#c3-implementation-record) |
 | 19 | D5 | Visual system across route families | User-merged PR #56 at `7248a020`, final head `b5fc13d0`; see [D5 record](#d5-implementation-record) |
 | 20 | D6 | Transaction import workflow extraction | User-merged PR #57 at `0167c409`, reviewed through `17a196c8`; see [D6 record](#d6-implementation-record) |
-| 21 | D7 | Broker/security workflow extraction | Implemented on `codex/broker-security-extraction-d7` through review round 2 (`a2fc1dc9`, `10e9040b`), draft PR awaiting review; see [D7 record](#d7-implementation-record) |
-| 22 | C4 | Three solid allocation pies and security histories | Not implemented; follows NAV acceptance and F3 |
+| 21 | D7 | Broker/security workflow extraction | User-merged PR #58 at `13a2129d`, reviewed through `531a56cf`; see D7 record |
+| 22 | C4 | Three solid allocation pies and security histories | Next; [handoff](2026-10-06-allocation-security-charts-c4-handoff.md) and [GLM prompt](2026-10-06-allocation-security-charts-c4-glm-prompt.md) prepared |
 | 23 | C5 | ECharts cutover and Chart.js removal | Not implemented; gate last, retain fallback until acceptance |
 | 24 | D8 | All-page visual/keyboard/responsive/behavior QA and documentation | Not implemented |
 
 ## Next execution and boundaries
 
-D7 is implemented on `codex/broker-security-extraction-d7` (base `49093a2d`, head `a2fc1dc9`) and stops for review as a draft PR into `codex/frontend-modernization`. After D7's review and merge, C4 owns the three solid allocation pies and security-history renderer migration; C5 owns cutover/removal; D8 owns final visual/keyboard/responsive/workflow acceptance. C3 stays default-off; no main merge or deployment is authorized.
+D7 is integrated in PR #58. Execute [C4 allocation pies/security histories](2026-10-06-allocation-security-charts-c4-handoff.md) using its [GLM prompt](2026-10-06-allocation-security-charts-c4-glm-prompt.md). Prior handoffs are historical. Preserve D7 broker lifecycle/credential fixes, mobile pagination and its single security request owner.
+
+C4 adds separate default-off renderer gates; NAV remains unchanged and default-off. C5 owns default-on release and Chart.js removal. C4 does not authorize backend/financial changes, main merge or deployment.
 
 The inherited D4 `requests`/`dates` selector issue was closed by C3 task 0 (`2620c2fa`); do not reuse the historical baseline waiver. Screen-reader testing is out of scope under the owner-approved amendment above. No application gates were rerun for this documentation-only handoff.
 
@@ -68,6 +70,8 @@ PR #54's header account-label fix is user-merged at `610dff992d76fe4f9459f059c68
 ## Detailed records
 
 ### D7 implementation record
+
+- Integration (6 October 2026): user merged PR #58 at `13a2129d`. Final proposal `531a56cf`; corrections `10e9040b`/`06b48ca4`. Root verified 86 focused tests plus a credential punctuation probe and inspected the corrected mobile footer. Final full gates remain executor-reported (857 frontend tests; backend 1386 passed/10 skipped). Historical draft/review-round entries below are superseded for status. No application gates rerun for this documentation-only C4 handoff; main not merged, no deployment.
 
 - Status: implemented on branch `codex/broker-security-extraction-d7` in the dedicated worktree `Portfolio-management-d7`, base `49093a2d` (latest `origin/codex/frontend-modernization`: PR #57/D6 merged at `0167c409` plus the D7 handoff documents). Draft PR into `codex/frontend-modernization`; not merged, no deployment.
 - Commits (task-sized, each preceded by RED runs): `400bf756` task 0 - source-linked contract inventory (`docs/design/frontend-brokers-security.md`) plus 18 rendered/handler characterization pins against the incumbent; baseline at the pristine base all exit 0 (unit 87 files/775, type-checks x3, api:types, lint 0 errors/13 warnings, build). `146bb2ca` task 1 - `frontend/src/features/brokers/{types.ts,useBrokerConnections.ts}` (typed `{provider,tokenId}` keys, allowlisted display models, provider draft union, per-command ownership) + `connections.spec.ts` 24 cases; raw response/error-body logging removed from the touched token adapters in `services/api.ts` with causes attached (two moved `preserve-caught-error` fingerprints legitimately fixed in the baseline). `2d74abb2` task 2 - `BrokerConnectionList.vue`/`BrokerConnectionForm.vue` with `BrokerTokenManager.vue` rewritten as the composing compatibility entrypoint (emits error/success/info kept) + `forms.spec.ts` 12 cases; the retained `BrokerTokenManager.spec.js` keeps every pin re-driven through the form child; three dead-code lint fingerprints of the rewritten file removed. `84136726` task 3 - `frontend/src/features/securities/{types.ts,useSecurityDetail.ts}` owning the five characterized resources with exact trigger/invalidation parity; `SecurityDetailPage.vue` rewired as the route/title entrypoint (template untouched) + `detail.spec.ts` 10 cases. `d2e02eb1` task 4 - `SecurityOverview/SecurityMetadata/SecurityActivity` prop-driven sections with `price-chart`/`position-chart` slots, string-preserving view builders (no Number conversion) + 7 section cases. `cb5131b1` task 5 - `--case brokers-security-d7` rendered acceptance + stateful backend-faithful fixtures + 11 captures. `b409d9eb` - unused flow helper removed for the lint baseline. `ca6d3a79` evidence/tracker. `d16b21dc` - commits the IB test-parity fix (no list refresh after a successful IB test; failure paths still refresh) and a spec cleanup that all runs since task 2 had already exercised, making the committed tree byte-identical to the tested tree; focused suites/lint/type-check re-verified at this head.
