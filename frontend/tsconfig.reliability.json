@@ -22,5 +22,13 @@
     "tests/unit/services/**/*.ts",
     "env.d.ts"
   ],
+  "exclude": [
+    // D6: the useWebSocket spec imports the auth store and services/api,
+    // dragging the whole (not strict-clean) app graph into this strict
+    // project. The spec is type-checked by the main tsconfig (explicit
+    // include there) and exercised by vitest; it is excluded here to keep
+    // this project scoped to the reliability platform files.
+    "tests/unit/composables/useWebSocket.spec.ts"
+  ],
   "references": []
 }

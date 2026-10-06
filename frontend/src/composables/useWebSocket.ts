@@ -2,6 +2,11 @@ import { ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import logger from '@/utils/logger'
 
+// Spec constant for WebSocket.readyState === OPEN. Referenced by value so
+// the guard also holds in the browser-test harness, whose WebSocket proxy
+// does not expose the constructor's static constants.
+const WEBSOCKET_OPEN = 1
+
 export function useWebSocket(baseUrl: string) {
   const authStore = useAuthStore()
   const socket = ref<WebSocket | null>(null)
@@ -9,6 +14,20 @@ export function useWebSocket(baseUrl: string) {
   const lastMessage = ref<MessageEvent | null>(null)
   const intentionalClose = ref(false)
   const connectionAttempted = ref(false)
+  // Monotonic connection identity: connect() and disconnect() both bump it,
+  // so every callback bound to a socket can tell whether that socket is
+  // still the current one. Superseded sockets — late opens, delayed closes,
+  // in-flight frames, stale error callbacks — may neither mutate shared
+  // state nor trigger reconnects.
+  let connectionId = 0
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+
+  const clearReconnectTimer = () => {
+    if (reconnectTimer !== null) {
+      clearTimeout(reconnectTimer)
+      reconnectTimer = null
+    }
+  }
 
   const getWebSocketUrl = (baseUrl: string): string => {
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
@@ -23,6 +42,7 @@ export function useWebSocket(baseUrl: string) {
   }
 
   const connect = () => {
+    clearReconnectTimer()
     return new Promise((resolve) => {
       // Set a timeout to prevent hanging if connection fails
       const connectionTimeout = setTimeout(() => {
@@ -30,7 +50,9 @@ export function useWebSocket(baseUrl: string) {
         resolve(false)
       }, 3000)
 
-      // Only attempt once if already attempted
+      // Only attempt once if already attempted. This must not allocate a
+      // new connection identity: the already-open connection keeps its
+      // callbacks and message ownership.
       if (connectionAttempted.value) {
         clearTimeout(connectionTimeout)
         resolve(isConnected.value)
@@ -57,26 +79,55 @@ export function useWebSocket(baseUrl: string) {
         return
       }
 
+      // A new identity is allocated only when a new connection is actually
+      // created; every handler below closes or reads ITS OWN captured
+      // socket, never the shared reference (which may already point at a
+      // replacement).
+      const id = ++connectionId
       try {
         const url = getWebSocketUrl(baseUrl)
         logger.log('Unknown', 'Attempting to connect to WebSocket:', url)
 
-        socket.value = new WebSocket(url)
+        const ws: WebSocket = new WebSocket(url)
+        socket.value = ws
 
-        socket.value.onopen = () => {
+        ws.onopen = () => {
+          if (id !== connectionId) {
+            // A superseded socket finished opening: discard IT (the local
+            // instance), never the current connection.
+            logger.log('Unknown', 'Discarding superseded WebSocket open')
+            try {
+              ws.close()
+            } catch {
+              // Already closing or closed.
+            }
+            return
+          }
           logger.log('Unknown', 'WebSocket connection opened')
           isConnected.value = true
           clearTimeout(connectionTimeout)
           resolve(true)
         }
 
-        socket.value.onclose = () => {
+        ws.onclose = () => {
+          if (id !== connectionId) {
+            // Delayed close of a superseded socket: the current connection
+            // is untouched.
+            logger.log('Unknown', 'Ignoring superseded WebSocket close')
+            return
+          }
           logger.log('Unknown', 'WebSocket connection closed')
           isConnected.value = false
           if (!intentionalClose.value) {
             // Only attempt reconnect if app is fully initialized
             if (authStore.isInitialized) {
-              setTimeout(() => {
+              clearReconnectTimer()
+              reconnectTimer = setTimeout(() => {
+                reconnectTimer = null
+                if (id !== connectionId) {
+                  // The reconnection belongs to a superseded connection.
+                  return
+                }
                 connectionAttempted.value = false // Reset the flag to allow reconnect
                 connect()
               }, 3000) // Reconnect after 3 seconds if not intentional
@@ -84,13 +135,15 @@ export function useWebSocket(baseUrl: string) {
           }
         }
 
-        socket.value.onerror = (error) => {
+        ws.onerror = (error) => {
+          if (id !== connectionId) return
           logger.error('Unknown', 'WebSocket error:', error)
           clearTimeout(connectionTimeout)
           resolve(false)
         }
 
-        socket.value.onmessage = (event) => {
+        ws.onmessage = (event) => {
+          if (id !== connectionId) return
           try {
             lastMessage.value = JSON.parse(event.data)
           } catch (e) {
@@ -106,10 +159,13 @@ export function useWebSocket(baseUrl: string) {
   }
 
   const disconnect = () => {
+    connectionId += 1
+    clearReconnectTimer()
     if (socket.value) {
       intentionalClose.value = true
       socket.value.close()
     }
+    isConnected.value = false
   }
 
   const reset = () => {
@@ -117,8 +173,8 @@ export function useWebSocket(baseUrl: string) {
     connectionAttempted.value = false
   }
 
-  const sendMessage = (message) => {
-    if (socket.value && socket.value.readyState === WebSocket.OPEN) {
+  const sendMessage = (message: unknown) => {
+    if (socket.value && socket.value.readyState === WEBSOCKET_OPEN) {
       logger.log('Unknown', 'Sending message:', message)
       socket.value.send(JSON.stringify(message))
       return true

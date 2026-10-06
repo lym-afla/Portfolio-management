@@ -2,6 +2,7 @@ import { createServer } from 'node:http'
 import { createHash } from 'node:crypto'
 
 import { resolveFixture } from './fixtures.mjs'
+import { createImportsWs } from './imports-ws.mjs'
 import {
   d4ClosedRows,
   d4ClosedTotals,
@@ -26,7 +27,8 @@ function close(server) {
   })
 }
 
-export async function startFixtureServer({ longAccount = false, contextFailures = false, dateFlow = false, requestFlow = false, recoveryFlow = false, d4Flow = false, chartsC2Flow = false, chartsC3Flow = false, settingsAccountFlow = false, d5States = false } = {}) {
+export async function startFixtureServer({ longAccount = false, contextFailures = false, dateFlow = false, requestFlow = false, recoveryFlow = false, d4Flow = false, chartsC2Flow = false, chartsC3Flow = false, settingsAccountFlow = false, d5States = false, importsD6Flow = false } = {}) {
+  const importsWs = importsD6Flow ? createImportsWs() : null
   let releaseMutation
   let pendingMutation = false
   let currentDate = '2026-09-08'
@@ -133,6 +135,50 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
         const chunks = []
         for await (const chunk of request) chunks.push(chunk)
         return chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {}
+      }
+
+      // ---- D6 imports flow: import-specific lookup payloads plus the
+      // analyze_file envelope; everything else falls through to fixtures. --
+      if (importsD6Flow && fixtureMethod === 'GET' && url.pathname === '/database/api/brokers/') {
+        response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+        response.end(JSON.stringify([
+          { id: 11, name: 'Tinkoff' },
+          { id: 12, name: 'Interactive Brokers' },
+        ]))
+        requests.push({ method: fixtureMethod, path: url.pathname })
+        return
+      }
+      if (importsD6Flow && fixtureMethod === 'GET' && url.pathname === '/database/api/accounts/') {
+        response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+        response.end(JSON.stringify([
+          { id: 3, name: 'Tinkoff Main', broker: { text: 'Tinkoff' } },
+          { id: 9, name: 'Secondary account' },
+        ]))
+        requests.push({ method: fixtureMethod, path: url.pathname })
+        return
+      }
+      if (importsD6Flow && fixtureMethod === 'GET' && url.pathname === '/database/api/get-securities/') {
+        response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+        response.end(JSON.stringify([
+          { id: 31, name: 'ACME Corp.' },
+          { id: 32, name: 'Globex Corp' },
+        ]))
+        requests.push({ method: fixtureMethod, path: url.pathname })
+        return
+      }
+      if (importsD6Flow && fixtureMethod === 'POST' && url.pathname === '/transactions/api/analyze_file/') {
+        // Multipart body: consumed but not parsed (shape asserted by the
+        // backend contract, not here).
+        for await (const chunk of request) void chunk
+        response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+        response.end(JSON.stringify({
+          status: 'account_identified',
+          message: 'Broker account was automatically identified.',
+          fileId: 'synthetic-file-1',
+          identifiedAccount: { id: 3, name: 'Tinkoff Main' },
+        }))
+        requests.push({ method: fixtureMethod, path: url.pathname })
+        return
       }
 
       // ---- C2/C3 charts flow: scenario-driven NAV envelopes with held reads.
@@ -531,6 +577,17 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
   server.on('upgrade', (request, socket) => {
     const url = new URL(request.url, 'http://127.0.0.1')
     try {
+      if (importsD6Flow && url.pathname === '/ws/transactions/') {
+        if (importsWs.state.rejectUpgrades) {
+          // Deliberate failed-connect scenario: not a fixture mismatch.
+          requests.push({ method: 'GET', path: url.pathname, rejected: true })
+          socket.end('HTTP/1.1 501 Not Implemented\r\nConnection: close\r\n\r\n')
+          return
+        }
+        importsWs.attach(request, socket)
+        requests.push({ method: 'GET', path: url.pathname })
+        return
+      }
       resolveFixture('GET', url.pathname, { longAccount })
       const key = request.headers['sec-websocket-key']
       if (!key) {
@@ -573,6 +630,7 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
     queueProfileRejection: () => { settingsAccount.rejectProfileSave = true },
     queueContextRejection: () => { settingsAccount.rejectContextMutation = true },
     resetSettingsAccount: () => { settingsAccount.selection = { type: 'account', id: 42 } },
+    importsWs,
     origin: `http://127.0.0.1:${address.port}`,
     requests,
     unmatchedRequests,
