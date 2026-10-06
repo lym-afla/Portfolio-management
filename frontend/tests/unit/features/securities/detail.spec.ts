@@ -7,13 +7,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { effectScope, ref } from 'vue'
 import type { Ref } from 'vue'
 import type { EffectScope } from 'vue'
-import { flushPromises } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia } from 'pinia'
 import { configureContextFixture } from '../../context-fixture'
 import { deferred } from '../../helpers/deferred'
 import { usePortfolioContextStore } from '@/stores/portfolioContext'
 import { useAppStore } from '@/stores/app'
 import { useSecurityDetail } from '@/features/securities/useSecurityDetail'
+import SecurityOverview from '@/features/securities/SecurityOverview.vue'
+import SecurityMetadata from '@/features/securities/SecurityMetadata.vue'
+import SecurityActivity from '@/features/securities/SecurityActivity.vue'
+import TransactionRow from '@/components/transactions/TransactionRow.vue'
 import {
   getAccountChoices,
   getSecurityDetail,
@@ -283,5 +287,169 @@ describe('useSecurityDetail — characterized triggers and request counts', () =
     const { detail } = await startOwner(1)
     await flushPromises()
     expect(detail.securityName.value).toBe('One')
+  })
+})
+
+describe('SecurityOverview — value parity through display views', () => {
+  it('keeps bond percentage prices and missing metadata as supplied', () => {
+    const wrapper = mount(SecurityOverview, {
+      props: {
+        view: {
+          securityId: 9,
+          name: 'Example Bond',
+          identifier: 'TEST-9',
+          instrumentType: 'Bond',
+          currency: 'USD',
+          fields: [
+            { label: 'Price (% of nominal)', value: '99.125000%' },
+            { label: 'Maturity', value: '–' },
+          ],
+        },
+      },
+    })
+    expect(wrapper.text()).toContain('99.125000%')
+    expect(wrapper.text()).toContain('Maturity')
+    expect(wrapper.text()).toContain('–')
+    wrapper.unmount()
+  })
+
+  it('renders comma-grouped and beyond-safe-integer display strings verbatim', () => {
+    const wrapper = mount(SecurityOverview, {
+      props: {
+        view: {
+          securityId: 1,
+          name: 'Mega Cap Inc',
+          identifier: 'US0000000001',
+          instrumentType: 'Stock',
+          currency: 'USD',
+          fields: [
+            { label: 'Current Position:', value: '9007199254740993.123456789' },
+            { label: 'Current Value:', value: '$12,345,678.90' },
+          ],
+        },
+      },
+    })
+    expect(wrapper.text()).toContain('9007199254740993.123456789')
+    expect(wrapper.text()).toContain('$12,345,678.90')
+    wrapper.unmount()
+  })
+
+  it('exposes the price and position chart slots for the entrypoint charts', () => {
+    const wrapper = mount(SecurityOverview, {
+      props: {
+        view: {
+          securityId: 1, name: 'One', identifier: 'ISIN-1',
+          instrumentType: 'Stock', currency: 'USD', fields: [],
+        },
+      },
+      slots: {
+        'price-chart': '<div class="price-chart-slot" />',
+        'position-chart': '<div class="position-chart-slot" />',
+      },
+      global: { stubs: { 'v-row': { template: '<div class="v-row"><slot /></div>' } } },
+    })
+    expect(wrapper.find('.price-chart-slot').exists()).toBe(true)
+    expect(wrapper.find('.position-chart-slot').exists()).toBe(true)
+    wrapper.unmount()
+  })
+})
+
+describe('SecurityMetadata — populated bond and crypto sections', () => {
+  it('renders both populated bond tables with amortizing labels and captions', () => {
+    const wrapper = mount(SecurityMetadata, {
+      props: {
+        bond: {
+          primary: [
+            { label: 'Current Nominal:', value: '2,000.00' },
+            { label: 'Initial Nominal:', value: '2,400.00' },
+            { label: 'Issue Date:', value: '2024-02-01' },
+            { label: 'Maturity Date:', value: '2031-02-01' },
+            { label: 'Bond Type:', value: 'Fixed', explanation: '(Amortizing)' },
+            { label: 'Credit Rating:', value: 'AA-' },
+          ],
+          coupon: [
+            { label: 'Coupon per Bond:', value: '43.75' },
+            { label: 'Coupon Rate:', value: '4.375000%' },
+            { label: 'Coupon Frequency:', value: '2x per year' },
+            { label: 'Next Coupon Payment:', value: '2027-02-01' },
+            { label: 'Current Accrued Interest:', value: '2.19' },
+            { label: 'Days Accrued:', value: '90 / 181 days' },
+          ],
+        },
+        crypto: null,
+      },
+    })
+    const text = wrapper.text()
+    expect(text).toContain('Bond Information')
+    expect(text).toContain('Current Nominal:')
+    expect(text).toContain('2,000.00')
+    expect(text).toContain('Initial Nominal:')
+    expect(text).toContain('(Amortizing)')
+    expect(text).toContain('Coupon Rate:')
+    expect(text).toContain('4.375000%')
+    expect(text).toContain('90 / 181 days')
+    expect(text).not.toContain('Crypto Rewards')
+    wrapper.unmount()
+  })
+
+  it('renders the crypto rewards section with exact quantities', () => {
+    const wrapper = mount(SecurityMetadata, {
+      props: {
+        bond: null,
+        crypto: { nativeQuantity: '9007199254740993.123456789', fiatValue: '500.00' },
+      },
+    })
+    const text = wrapper.text()
+    expect(text).toContain('Crypto Rewards')
+    expect(text).toContain('Native rewards')
+    expect(text).toContain('9007199254740993.123456789')
+    expect(text).toContain('Fiat reward value')
+    expect(text).toContain('500.00')
+    expect(text).not.toContain('Bond Information')
+    wrapper.unmount()
+  })
+})
+
+describe('SecurityActivity — transaction display and pagination intents', () => {
+  const activityView = () => ({
+    transactions: [
+      { id: 1, date: '01-Jan-26', broker_account: 'Main', description: 'Buy', type: 'Buy', cash_flow: '($100.00)' },
+      { id: 2, date: '02-Jan-26', broker_account: 'Main', description: 'Sell', type: 'Sell', cash_flow: '$250.00' },
+    ],
+    totalItems: 23,
+    page: 2,
+    itemsPerPage: 10,
+    pageCount: 3,
+  })
+
+  const mountActivity = (props: Record<string, unknown> = {}) =>
+    mount(SecurityActivity, {
+      props: { view: activityView(), itemsPerPageOptions: [10, 25, 50, 100], ...props },
+      global: {
+        stubs: {
+          'v-data-table': {
+            template:
+              '<div class="v-data-table"><slot /><slot name="item" :item="{ id: 1, type: \'Buy\' }" /><slot name="bottom" /></div>',
+          },
+          'v-select': { template: '<select class="v-select"><slot /></select>' },
+          'v-pagination': true,
+        },
+      },
+    })
+
+  it('renders rows through the shared transaction row and the exact range label', () => {
+    const wrapper = mountActivity()
+    expect(wrapper.findAllComponents(TransactionRow).length).toBeGreaterThan(0)
+    expect(wrapper.text()).toContain('Showing 11-20 of 23 entries')
+    wrapper.unmount()
+  })
+
+  it('emits explicit pagination intents without fetching', async () => {
+    const wrapper = mountActivity()
+    await (wrapper.vm as any).changePage(3)
+    expect(wrapper.emitted('update:page')).toEqual([[3]])
+    await (wrapper.vm as any).changeItemsPerPage(50)
+    expect(wrapper.emitted('update:itemsPerPage')).toEqual([[50]])
+    wrapper.unmount()
   })
 })

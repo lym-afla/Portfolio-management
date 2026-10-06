@@ -15,6 +15,7 @@ export interface SecurityOverviewView {
   identifier: string
   instrumentType: string
   currency: string
+  firstInvestment?: string
   fields: readonly DetailField[]
 }
 
