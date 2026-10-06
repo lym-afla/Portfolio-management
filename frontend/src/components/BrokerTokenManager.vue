@@ -113,13 +113,23 @@ const showAddTokenDialog = ref(false)
 // not blocked by the older generation's busy flag.
 const dialogGeneration = ref(0)
 const savingGenerations = ref(new Map())
-const isDeleting = ref(false)
 
 watch(showAddTokenDialog, (open) => {
   if (open) dialogGeneration.value += 1
 })
 
 const isSaving = computed(() => savingGenerations.value.get(dialogGeneration.value) === true)
+
+// Delete busy is confirmation-OWNED (mirroring the composable): the Delete
+// button for the CURRENTLY OPEN confirmation stays enabled while an older,
+// replaced confirmation's delete is still in flight.
+const deletingIdentity = ref(null)
+const isDeleting = computed(() => {
+  const candidate = deleteCandidate.value
+  const identity = deletingIdentity.value
+  if (!candidate || !identity) return false
+  return identity.provider === candidate.key.provider && identity.tokenId === candidate.key.tokenId
+})
 
 const showDeleteDialog = computed(() => deleteCandidate.value !== null)
 const deleteSubject = computed(() => deleteCandidate.value?.subject ?? '')
@@ -148,12 +158,29 @@ function confirmDeleteToken(provider, tokenId) {
 }
 
 async function deleteToken() {
-  if (isDeleting.value) return
-  isDeleting.value = true
+  const candidate = deleteCandidate.value
+  if (!candidate) return
+  const identity = { provider: candidate.key.provider, tokenId: candidate.key.tokenId }
+  // Only the SAME confirmation is blocked while its own delete is in
+  // flight; a replacement confirmation may proceed immediately.
+  if (
+    deletingIdentity.value &&
+    deletingIdentity.value.provider === identity.provider &&
+    deletingIdentity.value.tokenId === identity.tokenId
+  ) {
+    return
+  }
+  deletingIdentity.value = identity
   try {
     await owner.confirmDelete()
   } finally {
-    isDeleting.value = false
+    if (
+      deletingIdentity.value &&
+      deletingIdentity.value.provider === identity.provider &&
+      deletingIdentity.value.tokenId === identity.tokenId
+    ) {
+      deletingIdentity.value = null
+    }
   }
 }
 

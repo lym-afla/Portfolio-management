@@ -216,6 +216,16 @@ const selectedBrokerType = ref<BrokerProvider | null>(null)
 const unknownBrokerName = ref('')
 const brokerTypeDialogOpen = ref(false)
 
+// Form GENERATION: invalidated on close/reopen, provider change and unmount.
+// Validation is async — a save started on one generation must never submit a
+// different generation's draft when its validation lands late.
+const formGeneration = ref(0)
+const invalidateGeneration = (): void => {
+  formGeneration.value += 1
+}
+watch(() => props.open, invalidateGeneration)
+onUnmounted(invalidateGeneration)
+
 const tokenTypeOptions = [
   { title: 'Read Only', value: 'read_only' },
   { title: 'Full Access', value: 'full_access' },
@@ -259,6 +269,7 @@ async function handleBrokerSelection(brokerId: number | null): Promise<void> {
   if (brokerId === null) return
   const broker = props.brokerOptions.find((option) => option.id === brokerId)
   if (!broker) return
+  invalidateGeneration()
 
   const brokerName = broker.name.toLowerCase()
 
@@ -292,6 +303,7 @@ function confirmBrokerType(): void {
     emit('error', 'Please select a broker type')
     return
   }
+  invalidateGeneration()
   selectedProvider.value = selectedBrokerType.value
   brokerTypeDialogOpen.value = false
   selectedBrokerType.value = null
@@ -313,12 +325,17 @@ const isValidationPass = (result: ValidationResult): boolean => {
 async function saveToken(): Promise<void> {
   if (props.busy || !props.open) return
   if (!formRef.value) return
+  const generation = formGeneration.value
   // validate() is async in real Vuetify: AWAIT it — a truthiness check on
   // the promise would submit even when { valid: false } resolves.
   const validation = await Promise.resolve(formRef.value.validate() as ValidationResult)
+  // The await opens an ownership window across THREE invalidations: the
+  // dialog was closed/reopened, the provider changed, or the form unmounted.
+  // A late validation belongs to the stale generation and must never submit
+  // the CURRENT draft — reading open/busy alone is not sufficient, because
+  // a reopened dialog is open and idle again.
+  if (generation !== formGeneration.value) return
   if (!isValidationPass(validation)) return
-  // The await opens an ownership window: this dialog instance may have been
-  // closed (or superseded) while validation ran — it must not submit then.
   if (!props.open || props.busy) return
   const brokerId = selectedBrokerId.value
   const provider = selectedProvider.value

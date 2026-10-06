@@ -486,6 +486,55 @@ describe('useBrokerConnections — credential hygiene', () => {
     expect(vi.mocked(logger.log).mock.calls.flat().join(' ')).not.toContain(secret)
   })
 
+  it('redacts short credential values from echoed error text', async () => {
+    const shortPassphrase = 'ab1'
+    saveOKXToken.mockRejectedValueOnce({
+      response: { status: 400, data: { error: `Invalid passphrase ${shortPassphrase}` } },
+    })
+    const { owner, events } = startOwner()
+    await owner.refresh()
+    const outcome = await owner.saveConnection({
+      provider: 'okx', brokerId: 5, apiKey: 'k', apiSecret: 's',
+      passphrase: shortPassphrase, simulatedTrading: false,
+    })
+    expect(outcome).toBe('rejected')
+    expect(events.error).toEqual(['Invalid passphrase [redacted]'])
+    expect(events.error.join(' ')).not.toContain('ab1')
+  })
+
+  it('sanitizes tinkoff success and reactivation messages that echo the token', async () => {
+    const secret = 'synthetic-secret-SUCCESS-ECHO'
+    saveTinkoffToken.mockResolvedValueOnce({
+      message: `Token saved: ${secret}`,
+      id: 55,
+    })
+    testTinkoffConnection.mockResolvedValue({ valid: true })
+    const { owner, events } = startOwner()
+    await owner.refresh()
+    const outcome = await owner.saveConnection({
+      provider: 'tinkoff', brokerId: 1, token: secret,
+      tokenType: 'read_only', sandboxMode: false,
+    })
+    expect(outcome).toBe('saved')
+    // The post-save auto-test appends its own success message.
+    expect(events.success[0]).toBe('Token saved: [redacted]')
+    expect(events.success.join(' ')).not.toContain(secret)
+
+    saveTinkoffToken.mockResolvedValueOnce({
+      message: `Existing token has been reactivated: ${secret}`,
+      id: 12,
+    })
+    const reactivated = await owner.saveConnection({
+      provider: 'tinkoff', brokerId: 1, token: secret,
+      tokenType: 'read_only', sandboxMode: false,
+    })
+    expect(reactivated).toBe('reactivated')
+    expect(owner.messageDialog.value).toEqual({
+      title: 'Token Reactivated',
+      text: 'Existing token has been reactivated: [redacted]',
+    })
+  })
+
   it('sanitizes server error text that echoes the submitted secret', async () => {
     const secret = 'synthetic-secret-SANITIZE-ME'
     vi.mocked(saveTinkoffToken).mockRejectedValueOnce({

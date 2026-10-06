@@ -402,6 +402,40 @@ describe('broker connection characterization (incumbent surface)', () => {
     expect(form.vm.draft.token).toBe('')
   })
 
+  it('a replacement confirmation can delete while an older confirmation delete is in flight', async () => {
+    const staleDelete = deferred()
+    deleteToken.mockReturnValueOnce(staleDelete.promise)
+    await mountManager()
+    wrapper.vm.showInactiveTokens = true
+    await flush()
+    // Confirm delete A (tinkoff 12): in flight.
+    const inactiveTinkoffRow = wrapper.findAll('.v-expansion-panel')[0].findAll('.v-list-item')[1]
+    await rowButtons(inactiveTinkoffRow, 'mdi-delete')[0].trigger('click')
+    await flush()
+    expect(wrapper.vm.showDeleteDialog).toBe(true)
+    await clickDialogButton('Delete')
+    await flush()
+    expect(deleteToken).toHaveBeenCalledTimes(1)
+    // Cancel A's dialog and open B (okx 31) while A is in flight.
+    await clickDialogButton('Cancel')
+    const okxRow = wrapper.findAll('.v-expansion-panel')[3].findAll('.v-list-item')[0]
+    await rowButtons(okxRow, 'mdi-delete')[0].trigger('click')
+    await flush()
+    expect(wrapper.vm.showDeleteDialog).toBe(true)
+    deleteToken.mockResolvedValueOnce(undefined)
+    await clickDialogButton('Delete')
+    await flush()
+    // B must reach the endpoint despite A still pending.
+    expect(deleteToken).toHaveBeenCalledTimes(2)
+    expect(deleteToken).toHaveBeenLastCalledWith('okx', 31)
+    // B's success clears the dialog; the stale A completion afterwards
+    // touches nothing.
+    expect(wrapper.vm.showDeleteDialog).toBe(false)
+    staleDelete.resolve(undefined)
+    await flush()
+    expect(wrapper.vm.showDeleteDialog).toBe(false)
+  })
+
   it('a save started before cancel must not close or erase the newly reopened form', async () => {
     const pendingA = deferred()
     saveTinkoffToken.mockReturnValueOnce(pendingA.promise)

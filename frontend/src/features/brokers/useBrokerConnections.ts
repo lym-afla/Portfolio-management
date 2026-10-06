@@ -225,13 +225,26 @@ export function useBrokerConnections(options: { emit: BrokerOwnerEvents }) {
   const ownsSlot = (slot: string, token: number): boolean =>
     !disposed && liveBySlot.get(slot) === token
 
-  // Credential safety: server error text can ECHO the submitted secret
-  // ("Invalid token <secret>"); every occurrence of a submitted credential
-  // is redacted before the message reaches a notice, dialog or row.
+  // Credential safety: server-derived text can ECHO the submitted secret
+  // ("Invalid token <secret>") in errors AND success messages. Every
+  // occurrence of any submitted credential — regardless of length — is
+  // redacted before the text reaches a notice, dialog or row. Very short
+  // values are redacted as standalone tokens only, so a 1-2 character
+  // credential cannot shred unrelated words in the message.
+  const escapeRegExp = (value: string): string =>
+    value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
   const sanitizeMessage = (message: string, secrets: string[]): string => {
     let sanitized = message
     for (const secret of secrets) {
-      if (secret.length >= 6) {
+      if (secret.length === 0) continue
+      if (secret.length <= 2) {
+        const pattern = new RegExp(
+          `(^|[^A-Za-z0-9])${escapeRegExp(secret)}(?=[^A-Za-z0-9]|$)`,
+          'g',
+        )
+        sanitized = sanitized.replace(pattern, '$1[redacted]')
+      } else {
         sanitized = sanitized.split(secret).join('[redacted]')
       }
     }
@@ -437,6 +450,9 @@ export function useBrokerConnections(options: { emit: BrokerOwnerEvents }) {
     if (disposed) return 'rejected'
     const generation = ++saveGeneration
     const stale = (): boolean => disposed || generation !== saveGeneration
+    // Server-derived text (success messages included) is sanitized against
+    // THIS draft's credentials before it reaches a notice or dialog.
+    const secrets = credentialValues(draft)
     try {
       if (draft.provider === 'tinkoff') {
         const response = (await saveTinkoffToken({
@@ -449,12 +465,14 @@ export function useBrokerConnections(options: { emit: BrokerOwnerEvents }) {
         if (typeof response.message === 'string' && response.message.includes('reactivated')) {
           messageDialog.value = {
             title: 'Token Reactivated',
-            text: response.message,
+            text: sanitizeMessage(response.message, secrets),
           }
           await refresh()
           return 'reactivated'
         }
-        if (typeof response.message === 'string') emit.success(response.message)
+        if (typeof response.message === 'string') {
+          emit.success(sanitizeMessage(response.message, secrets))
+        }
         if (typeof response.id === 'number') await runTinkoffPostSaveTest(response.id)
         if (stale()) return 'rejected'
         await refresh()
@@ -495,7 +513,6 @@ export function useBrokerConnections(options: { emit: BrokerOwnerEvents }) {
       return 'saved'
     } catch (cause) {
       if (stale()) return 'rejected'
-      const secrets = credentialValues(draft)
       const alreadyActive = isAlreadyActive(cause)
       if (alreadyActive !== null) {
         messageDialog.value = {

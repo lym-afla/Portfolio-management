@@ -313,6 +313,104 @@ describe('BrokerConnectionForm — provider drafts and submission intents', () =
     document.body.innerHTML = ''
   })
 
+  it('invalidates in-flight validation on close, reopen and provider change', async () => {
+    // Validation is async: a save started on one form generation must never
+    // submit a DIFFERENT generation's draft when its validation lands late.
+    const release = { go: false }
+    const div = document.createElement('div')
+    div.id = 'app'
+    document.body.appendChild(div)
+    const form = mount(BrokerConnectionForm, {
+      attachTo: '#app',
+      props: { open: true, brokerOptions: brokerOptions(), busy: false },
+      global: {
+        stubs: {
+          ...renderedStubs(),
+          'v-form': {
+            template: '<form class="v-form"><slot /></form>',
+            methods: {
+              validate: () => new Promise((resolve) => {
+                const check = () => {
+                  if (release.go) resolve({ valid: true })
+                  else setTimeout(check, 5)
+                }
+                check()
+              }),
+              reset: () => {},
+            },
+          },
+        },
+      },
+    })
+    const vm = form.vm as any
+    await vm.handleBrokerSelection(4)
+    vm.draft.apiKey = 'stale-key'
+    vm.draft.apiSecret = 'stale-secret'
+    const staleSubmit = vm.saveToken()
+    // The old generation ends: close, reopen with ANOTHER provider and draft.
+    await form.setProps({ open: false })
+    await form.setProps({ open: true })
+    await vm.handleBrokerSelection(1)
+    vm.draft.token = 'synthetic-new-generation-draft'
+    release.go = true
+    await staleSubmit
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    // The late validation succeeded, but it belongs to the stale generation:
+    // the NEW draft must NOT be submitted without a fresh Save action.
+    expect(form.emitted('submit')).toBeUndefined()
+    form.unmount()
+    document.body.innerHTML = ''
+
+    // A provider change alone also invalidates in-flight validation.
+    const secondDiv = document.createElement('div')
+    secondDiv.id = 'app'
+    document.body.appendChild(secondDiv)
+    const release2 = { go: false }
+    const second = mount(BrokerConnectionForm, {
+      attachTo: '#app',
+      props: { open: true, brokerOptions: brokerOptions(), busy: false },
+      global: {
+        stubs: {
+          ...renderedStubs(),
+          'v-form': {
+            template: '<form class="v-form"><slot /></form>',
+            methods: {
+              validate: () => new Promise((resolve) => {
+                const check = () => {
+                  if (release2.go) resolve({ valid: true })
+                  else setTimeout(check, 5)
+                }
+                check()
+              }),
+              reset: () => {},
+            },
+          },
+        },
+      },
+    })
+    const secondVm = second.vm as any
+    await secondVm.handleBrokerSelection(4)
+    secondVm.draft.apiKey = 'k'
+    secondVm.draft.apiSecret = 's'
+    const secondSubmit = secondVm.saveToken()
+    await secondVm.handleBrokerSelection(1)
+    secondVm.draft.token = 'synthetic-provider-changed'
+    release2.go = true
+    await secondSubmit
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    expect(second.emitted('submit')).toBeUndefined()
+    // A fresh, current-generation save still works.
+    release2.go = false
+    ;(second.vm as any).formRef.validate = () => new Promise((resolve) => {
+      resolve({ valid: true })
+    })
+    await secondVm.saveToken()
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    expect(second.emitted('submit')).toHaveLength(1)
+    second.unmount()
+    document.body.innerHTML = ''
+  })
+
   it('erases the credential draft when the dialog closes and on unmount', async () => {
     const form = mountForm()
     const vm = form.vm as any
