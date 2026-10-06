@@ -1085,32 +1085,23 @@ export async function getPortfolioBreakdownSummary(year: number, requestOptions?
   }
 }
 
+// D7: the broker token adapters deliberately log nothing on this path —
+// request bodies carry credentials and error bodies can echo them.
 export const getBrokerTokens = async (): Promise<ApiRecord | ApiRecord[]> => {
-  logger.log('Unknown', 'getBrokerTokens called') // Debug log
   try {
-    logger.log('Unknown', 'Making request to /users/api/broker_tokens/') // Debug log
     const response = await axiosInstance.get('/users/api/broker_tokens/')
-    logger.log('Unknown', 'getBrokerTokens response:', response) // Debug log
     return response.data
   } catch (error) {
-    logger.error('Unknown', 'Error in getBrokerTokens:', error) // Debug log
     throw error.response ? error.response.data : error.message
   }
 }
 
 export const saveTinkoffToken = async (tokenData: ApiRecord): Promise<ApiRecord> => {
-  logger.log('Unknown', 'Attempting to save Tinkoff token...')
-  try {
-    const response = await axiosInstance.post(
-      '/users/api/tinkoff-tokens/save_read_only_token/',
-      tokenData
-    )
-    logger.log('Unknown', 'Save token response:', response)
-    return response.data
-  } catch (error) {
-    logger.error('Unknown', 'Error saving Tinkoff token:', error.response?.data)
-    throw error
-  }
+  const response = await axiosInstance.post(
+    '/users/api/tinkoff-tokens/save_read_only_token/',
+    tokenData
+  )
+  return response.data
 }
 
 export const testTinkoffConnection = async (tokenId: number): Promise<ApiRecord> => {
@@ -1120,11 +1111,10 @@ export const testTinkoffConnection = async (tokenId: number): Promise<ApiRecord>
     )
     return response.data
   } catch (error) {
-    logger.error('Unknown', 'Error testing Tinkoff connection:', error)
     if (error.response?.data?.error === 'PERMISSION_DENIED') {
-      throw new Error('Token has insufficient privileges.')
+      throw new Error('Token has insufficient privileges.', { cause: error })
     } else if (error.response?.data?.error === 'UNAUTHENTICATED') {
-      throw new Error('Token is invalid or expired.')
+      throw new Error('Token is invalid or expired.', { cause: error })
     }
     throw error.response ? error.response.data : error.message
   }
@@ -1138,7 +1128,6 @@ export const saveIBToken = async (tokenData: ApiRecord): Promise<ApiRecord> => {
     )
     return response.data
   } catch (error) {
-    logger.error('Unknown', 'Error saving IB token:', error)
     throw error.response ? error.response.data : error.message
   }
 }
@@ -1151,7 +1140,6 @@ export const saveBybitToken = async (tokenData: ApiRecord): Promise<ApiRecord> =
     )
     return response.data
   } catch (error) {
-    logger.error('Unknown', 'Error saving Bybit token:', error)
     throw error.response ? error.response.data : error.message
   }
 }
@@ -1164,7 +1152,6 @@ export const saveOKXToken = async (tokenData: ApiRecord): Promise<ApiRecord> => 
     )
     return response.data
   } catch (error) {
-    logger.error('Unknown', 'Error saving OKX token:', error)
     throw error.response ? error.response.data : error.message
   }
 }
@@ -1176,7 +1163,6 @@ export const testIBConnection = async (tokenId: number): Promise<ApiRecord> => {
     )
     return response.data
   } catch (error) {
-    logger.error('Unknown', 'Error testing IB connection:', error)
     throw error.response ? error.response.data : error.message
   }
 }
@@ -1189,7 +1175,6 @@ export const revokeToken = async (broker: string, tokenId: number): Promise<ApiR
     })
     return response.data
   } catch (error) {
-    logger.error('Unknown', 'Error revoking token:', error)
     throw error.response ? error.response.data : error.message
   }
 }

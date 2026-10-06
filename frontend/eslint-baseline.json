@@ -72,22 +72,6 @@
     "severity": 1
   },
   {
-    "file": "src/services/api.ts",
-    "line": 1125,
-    "column": 7,
-    "ruleId": "preserve-caught-error",
-    "message": "There is no `cause` attached to the symptom error being thrown.",
-    "severity": 1
-  },
-  {
-    "file": "src/services/api.ts",
-    "line": 1127,
-    "column": 7,
-    "ruleId": "preserve-caught-error",
-    "message": "There is no `cause` attached to the symptom error being thrown.",
-    "severity": 1
-  },
-  {
     "file": "src/utils/authDebug.js",
     "line": 269,
     "column": 16,
