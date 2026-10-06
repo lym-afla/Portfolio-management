@@ -240,8 +240,94 @@ All exit codes captured directly into per-gate logs (no pipes): `test:unit` 87 f
 `BrokerTokenManager.spec.js` + `SecurityDetailPage.crypto.spec.js` + `DetailRequests.spec.js`
 22 passed — 0. (The D6-recorded 773 was the review-round-3 head; the merged base carries 775.)
 
-## 4. D7 execution summary
+## 4. D7 execution record
 
-Filled after implementation: commits, RED→GREEN ledger, gate results, deviations,
-deferred acceptance. See the PR description and the progress tracker for the durable
-record.
+Branch `codex/broker-security-extraction-d7` (worktree `Portfolio-management-d7`), base
+`49093a2d`. Task-sized commits, each preceded by its RED runs:
+
+- `400bf756` task 0 — contract inventory (this document §1-§3) + 18 rendered/handler
+  characterization pins (broker `incumbent.spec.js` 10, security `incumbent.spec.js` 8),
+  green against the pristine incumbent; baseline gates §3.
+- `146bb2ca` task 1 — `features/brokers/{types.ts,useBrokerConnections.ts}` +
+  `connections.spec.ts` (24 cases, RED as an unresolved module; the ownership/release,
+  once-only, retained-subject and credential-hygiene cases fail against the incumbent
+  semantics by design). Removes raw response/error-body logging from the token adapters
+  (api.ts) and attaches causes to the two mapped test errors (two moved
+  preserve-caught-error baseline fingerprints legitimately fixed).
+- `2d74abb2` task 2 — `BrokerConnectionList.vue` + `BrokerConnectionForm.vue` +
+  `BrokerTokenManager.vue` rewritten as the composing compatibility entrypoint.
+  `forms.spec.ts` 12 cases RED (unresolved components). The retained
+  `BrokerTokenManager.spec.js` keeps every pin, re-driven through the form child.
+  Three dead-code lint fingerprints of the rewritten file removed from the baseline.
+  Deliberate, review-focus-driven corrections pinned RED-first against the incumbent:
+  the delete confirmation names the exact connection and states portfolio transactions
+  are not affected; the tinkoff reactivation and already-active close paths erase the
+  credential draft.
+- `84136726` task 3 — `features/securities/{types.ts,useSecurityDetail.ts}` owner over
+  the five characterized resources with exact trigger/invalidation parity;
+  `SecurityDetailPage.vue` rewired (template untouched). `detail.spec.ts` 10 cases RED
+  (unresolved module): per-trigger request counts, A/B and period overlap, session
+  invalidation, independent price recovery, pagination reset, disposed-owner silence.
+- `d2e02eb1` task 4 — `SecurityOverview.vue` / `SecurityMetadata.vue` /
+  `SecurityActivity.vue` prop-driven sections + `price-chart`/`position-chart` slots;
+  the page builds views through pure string-preserving mappings (no Number conversion);
+  charts stay at the entrypoint. 7 section cases RED (unresolved modules) including the
+  accepted `99.125000%` bond example and beyond-safe-integer strings.
+- Task 5 — `tests/browser/brokers-security-d7.mjs` + `--case brokers-security-d7` in
+  `run-smoke.mjs` + the `brokersSecurityD7Flow` fixture block (stateful token
+  inventory, recorded write bodies, queued save rejection, per-id security resources
+  with failure switch, populated account choices); gates below.
+
+Recorded deviations (all behavioral corrections required by the handoff's review
+focuses, each regression-pinned; incumbent parity otherwise byte-for-byte):
+(1) delete confirmation names the subject; (2) delete subject survives a rejection so a
+retry retargets the same token (the incumbent dropped the snapshot in its `finally`);
+(3) credential drafts are erased on every accepted close path incl. reactivation and
+already-active (the incumbent leaked them); (4) superseded/disposed broker requests no
+longer emit, refresh or release other requests' busy tokens; (5) `confirmDelete` is
+once-only per snapshot; (6) raw broker response/error-body logging removed from the
+touched token path. Wire discrepancies preserved and documented in §1: IB rows are
+`{id}`-only (hidden by default), the tinkoff post-test response branch was dead code
+(the refresh drives the row update) and is dropped with the refresh semantics pinned,
+and the per-provider save endpoints/payloads are unchanged.
+
+Known flow limitations: the d7 browser case expands the Vuetify expansion panels
+(rows are not in the accessibility tree while collapsed) and resets the synthetic token
+inventory at the start of each pass so both desktop routes exercise identical state.
+Captures under `docs/design/assets/brokers-security/` (broker list desktop/mobile,
+masked form error, delete confirmation, bond/crypto desktop, bond tablet/mobile,
+200% zoom bond) are taken from synthetic fixtures; no real credentials anywhere.
+
+## 5. Final gate matrix (actual exit codes)
+
+Frontend, from `frontend/` with the declared Node v24.20.0 (portable) and lockfile,
+run sequentially at committed head `cb5131b1`:
+
+| Gate | Result |
+|---|---|
+| `npm run test:unit` | 0 — 92 files / 846 passed |
+| `npm run type-check` | 0 |
+| `npm run type-check:reliability` | 0 |
+| `npm run type-check:charts` | 0 |
+| `npm run api:types:check` | 0 |
+| `npm run lint` | **1** — one new diagnostic (unused `lacksText` helper in the new flow file) |
+| `npm run build` | 0 |
+| `npm run test:browser -- --case brokers-security-d7` | 0 — desktop/tablet/mobile × 2 routes, zero fixture mismatches |
+| `npm run test:delivery` | 0 |
+| focused `imports-d6`, `layout`, `context`, `dates`, `requests`, `recovery`, `dialogs`, `dialog-recovery`, `d4`, `d5`, `settings-account`, `charts-c2`, `charts-c3` | all 0 (charts-c3 runs both renderer-flag states internally) |
+| `npm run test:browser` (full) | 0 — 18 routes × 4 viewports, zero fixture mismatches |
+
+Fix head `b409d9eb` (dead helper removed; no other file touched): `npm run lint` — 0
+(0 errors / 8 baseline warnings, baseline unchanged from 49093a2d minus the three
+legitimately-fixed fingerprints documented above) and
+`--case brokers-security-d7` re-run — 0, zero mismatches. Backend at `b409d9eb`:
+`DJANGO_SETTINGS_MODULE=portfolio_management.test_settings uv run python -m pytest`
+— exit 0, 1386 passed / 10 skipped, coverage 83.25% (identical to the D6 baseline; D7
+touches no backend file).
+
+Type coverage of the new tests: `tests/unit/features/brokers/connections.spec.ts`,
+`forms.spec.ts` and `tests/unit/features/securities/detail.spec.ts` are explicitly
+listed in the main tsconfig `include` (the D6 socket-spec precedent); verified with
+`vue-tsc --noEmit --listFilesOnly` (all three resolved, plus the feature modules
+through `src/**/*`). Vitest transpilation was never represented as type-checking.
+
