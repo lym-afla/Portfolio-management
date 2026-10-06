@@ -26,7 +26,8 @@
     "env.d.ts",
     "tests/unit/composables/useWebSocket.spec.ts",
     "tests/unit/features/brokers/connections.spec.ts",
-    "tests/unit/features/brokers/forms.spec.ts"
+    "tests/unit/features/brokers/forms.spec.ts",
+    "tests/unit/features/securities/detail.spec.ts"
   ],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

@@ -451,23 +451,14 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { usePortfolioContextStore } from '@/stores/portfolioContext'
-import { usePortfolioRequest } from '@/composables/usePortfolioRequest'
-import { snapshotContext } from '@/types/query'
 import { useAppStore } from '@/stores/app'
-import {
-  getSecurityDetail,
-  getSecurityPriceHistory,
-  getSecurityPositionHistory,
-  getSecurityTransactions,
-  getAccountChoices,
-} from '@/services/api'
-import { formatAccountChoices } from '@/utils/accountUtils'
+import { useSecurityDetail } from '@/features/securities/useSecurityDetail'
 import LineChart from '@/components/charts/LineChart.vue'
 import TimelineSelector from '@/components/TimelineSelector.vue'
-import { getChartOptions, colorPalette } from '@/config/chartConfig'
+import { colorPalette } from '@/config/chartConfig'
 import 'chartjs-adapter-date-fns'
 import {
   Chart,
@@ -512,52 +503,39 @@ Chart.defaults.locale = 'en-US'
 const route = useRoute()
 const appStore = useAppStore()
 const context = usePortfolioContextStore()
-const snapshotDetail = (params) => Object.freeze({
-  ...params, context: snapshotContext(params.context),
-  ...(params.pagination ? { pagination: Object.freeze({ ...params.pagination }) } : {}),
-})
-const detailQuery = usePortfolioRequest(async (params, options) => {
-  const security = await getSecurityDetail(params.id, params.account, options)
-  const chartOptions = await getChartOptions(security.currency)
-  return { security, chartOptions }
-}, snapshotDetail)
-const priceQuery = usePortfolioRequest((params, options) => getSecurityPriceHistory(params.id, params.period, options), snapshotDetail)
-const positionQuery = usePortfolioRequest((params, options) => getSecurityPositionHistory(params.id, params.period, params.account, options), snapshotDetail)
-const transactionsQuery = usePortfolioRequest((params, options) => getSecurityTransactions(params.id, params.pagination, params.period, params.account, options), snapshotDetail)
-const accountsQuery = usePortfolioRequest((_params, options) => getAccountChoices(options), snapshotContext)
-const security = computed(() => detailQuery.data.value?.security ?? null)
-const priceHistory = computed(() => priceQuery.data.value ?? [])
-const positionHistory = computed(() => positionQuery.data.value ?? [])
-const transactions = computed(() => transactionsQuery.data.value?.transactions ?? [])
-const chartOptions = computed(() => detailQuery.data.value?.chartOptions ?? null)
-const chartOptionsLoaded = computed(() => chartOptions.value !== null)
-const loading = computed(() => !context.canRead || detailQuery.loading.value)
-const loadingPriceChart = priceQuery.loading
-const loadingPositionChart = positionQuery.loading
-const loadingTransactions = transactionsQuery.loading
-const totalTransactions = computed(() => transactionsQuery.data.value?.total_items ?? 0)
-const loadError = computed(() => detailQuery.error.value || priceQuery.error.value || positionQuery.error.value || transactionsQuery.error.value || accountsQuery.error.value)
-watch(security, (value) => { emit('update-page-title', value?.name ?? '') }, { flush: 'sync' })
-// Account filtering
-const selectedAccount = ref(null)
-const accountOptions = computed(() => formatAccountChoices(accountsQuery.data.value?.options ?? []))
 
-const selectedAccountId = computed(() => {
-  if (!selectedAccount.value || selectedAccount.value.type === 'all')
-    return null
-  return selectedAccount.value.id
+// D7: the five resources, their triggers and their invalidation live in the
+// security feature owner; this entrypoint keeps the route/title surface and
+// the chart presentation unchanged.
+const {
+  selectedAccount,
+  selectedPeriod,
+  transactionOptions,
+  itemsPerPageOptions,
+  security,
+  priceHistory,
+  positionHistory,
+  transactions,
+  chartOptions,
+  chartOptionsLoaded,
+  accountOptions,
+  loading,
+  loadingPriceChart,
+  loadingPositionChart,
+  loadingTransactions,
+  totalTransactions,
+  pageCount,
+  loadError,
+} = useSecurityDetail({
+  securityId: () => Number(route.params.id),
+  canRead: () => context.canRead,
+  refreshTrigger: () => appStore.dataRefreshTrigger,
+  committed: () => context.committed,
 })
+
+watch(security, (value) => { emit('update-page-title', value?.name ?? '') }, { flush: 'sync' })
 
 const effectiveCurrentDate = computed(() => appStore.effectiveCurrentDate)
-
-const selectedPeriod = ref('1Y')
-
-const transactionOptions = ref({
-  page: 1,
-  itemsPerPage: 10,
-})
-
-const itemsPerPageOptions = [10, 25, 50, 100]
 
 const transactionHeaders = [
   { title: 'Date', key: 'date', align: 'start' },
@@ -566,10 +544,6 @@ const transactionHeaders = [
   { title: 'Type', key: 'type', align: 'center' },
   { title: 'Cash Flow', key: 'cash_flow', align: 'center' },
 ]
-
-const pageCount = computed(() =>
-  Math.ceil(totalTransactions.value / transactionOptions.value.itemsPerPage)
-)
 
 const getStartDate = (period) => {
   const currentDate = new Date(effectiveCurrentDate.value)
@@ -613,33 +587,6 @@ const filteredPositionHistory = computed(() => {
   )
 })
 
-const detailParams = () => ({
-  context: context.committed, id: Number(route.params.id),
-  account: selectedAccountId.value, period: selectedPeriod.value,
-})
-watch([() => route.params.id, selectedAccount, selectedPeriod], () => {
-  transactionOptions.value = { ...transactionOptions.value, page: 1 }
-}, { flush: 'sync' })
-watch(() => route.params.id, () => {
-  detailQuery.invalidate()
-  priceQuery.invalidate()
-  positionQuery.invalidate()
-  transactionsQuery.invalidate()
-}, { flush: 'sync' })
-watch([() => context.canRead, () => appStore.dataRefreshTrigger, () => route.params.id, selectedAccountId], () => {
-  if (context.canRead) detailQuery.run(detailParams())
-}, { immediate: true })
-watch([() => context.canRead, () => appStore.dataRefreshTrigger, () => route.params.id, selectedAccountId, selectedPeriod], () => {
-  if (!context.canRead) return
-  priceQuery.run(detailParams())
-  positionQuery.run(detailParams())
-}, { immediate: true })
-watch([() => context.canRead, () => appStore.dataRefreshTrigger, () => route.params.id, selectedAccountId, selectedPeriod, transactionOptions], () => {
-  if (context.canRead) transactionsQuery.run({ ...detailParams(), pagination: transactionOptions.value })
-}, { immediate: true, deep: true })
-watch([() => context.canRead, () => appStore.dataRefreshTrigger], () => {
-  if (context.canRead) accountsQuery.run(context.committed)
-}, { immediate: true })
 const getLastAvailableDataPoint = (data, targetDate) => {
   const sortedData = [...data].sort(
     (a, b) => new Date(b.date) - new Date(a.date)
