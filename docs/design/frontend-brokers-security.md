@@ -317,10 +317,14 @@ run sequentially at committed head `cb5131b1`:
 | focused `imports-d6`, `layout`, `context`, `dates`, `requests`, `recovery`, `dialogs`, `dialog-recovery`, `d4`, `d5`, `settings-account`, `charts-c2`, `charts-c3` | all 0 (charts-c3 runs both renderer-flag states internally) |
 | `npm run test:browser` (full) | 0 — 18 routes × 4 viewports, zero fixture mismatches |
 
-Fix head `b409d9eb` (dead helper removed; no other file touched): `npm run lint` — 0
-(0 errors / 8 baseline warnings, baseline unchanged from 49093a2d minus the three
-legitimately-fixed fingerprints documented above) and
-`--case brokers-security-d7` re-run — 0, zero mismatches. Backend at `b409d9eb`:
+Fix head `b409d9eb` (dead helper removed): `npm run lint` — 0 (0 errors / 8 baseline
+warnings, baseline unchanged from 49093a2d minus the three legitimately-fixed
+fingerprints documented above) and `--case brokers-security-d7` re-run — 0, zero
+mismatches. Final head `d16b21dc` commits the IB test-parity fix and a spec cleanup
+that every test run since task 2 had already exercised in the working tree — the
+committed tree is byte-identical to the tree the full matrix above ran — and at
+`d16b21dc` the focused broker/security suites (83 tests), `npm run lint` and
+`npm run type-check` were re-verified, all exit 0. Backend at `b409d9eb`:
 `DJANGO_SETTINGS_MODULE=portfolio_management.test_settings uv run python -m pytest`
 — exit 0, 1386 passed / 10 skipped, coverage 83.25% (identical to the D6 baseline; D7
 touches no backend file).
