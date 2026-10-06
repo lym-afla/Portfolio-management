@@ -23,8 +23,6 @@ const waitFor = (run, fn, timeout = 15000) =>
 
 const hasText = (text) =>
   `document.body.innerText.includes(${JSON.stringify(text)})`
-const lacksText = (text) =>
-  `!document.body.innerText.includes(${JSON.stringify(text)})`
 
 const capture = async (run, name) => {
   await mkdir(capturesDir, { recursive: true })
