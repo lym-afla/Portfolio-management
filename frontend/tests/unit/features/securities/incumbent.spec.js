@@ -144,12 +144,10 @@ const transactionsPage = (total, page = 1) => ({
   page,
 })
 
-let app
-
 async function mountPage() {
   const pinia = createPinia()
   await usePortfolioContextStore(pinia).reconcileContext()
-  app = useAppStore(pinia)
+  useAppStore(pinia)
   const wrapper = mount(SecurityDetailPage, {
     shallow: false,
     global: { plugins: [pinia], stubs: securityPageStubs() },

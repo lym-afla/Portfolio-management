@@ -285,7 +285,12 @@ export function useBrokerConnections(options: { emit: BrokerOwnerEvents }) {
       if (key.provider === 'tinkoff') {
         await testTinkoffConnection(key.tokenId)
       } else {
+        // Incumbent parity: only the Tinkoff branch refreshes after a
+        // successful test; all failure paths refresh.
         await testIBConnection(key.tokenId)
+        if (!ownsSlot(slot, token)) return { status: 'discarded' }
+        emit.success('Connection test successful')
+        return { status: 'accepted' }
       }
       if (!ownsSlot(slot, token)) return { status: 'discarded' }
       emit.success('Connection test successful')
