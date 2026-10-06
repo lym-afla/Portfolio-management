@@ -488,7 +488,7 @@ describe('useBrokerConnections — credential hygiene', () => {
 
   it('redacts short credential values from echoed error text', async () => {
     const shortPassphrase = 'ab1'
-    saveOKXToken.mockRejectedValueOnce({
+    vi.mocked(saveOKXToken).mockRejectedValueOnce({
       response: { status: 400, data: { error: `Invalid passphrase ${shortPassphrase}` } },
     })
     const { owner, events } = startOwner()
@@ -504,11 +504,11 @@ describe('useBrokerConnections — credential hygiene', () => {
 
   it('sanitizes tinkoff success and reactivation messages that echo the token', async () => {
     const secret = 'synthetic-secret-SUCCESS-ECHO'
-    saveTinkoffToken.mockResolvedValueOnce({
+    vi.mocked(saveTinkoffToken).mockResolvedValueOnce({
       message: `Token saved: ${secret}`,
       id: 55,
     })
-    testTinkoffConnection.mockResolvedValue({ valid: true })
+    vi.mocked(testTinkoffConnection).mockResolvedValue({ valid: true })
     const { owner, events } = startOwner()
     await owner.refresh()
     const outcome = await owner.saveConnection({
@@ -520,7 +520,7 @@ describe('useBrokerConnections — credential hygiene', () => {
     expect(events.success[0]).toBe('Token saved: [redacted]')
     expect(events.success.join(' ')).not.toContain(secret)
 
-    saveTinkoffToken.mockResolvedValueOnce({
+    vi.mocked(saveTinkoffToken).mockResolvedValueOnce({
       message: `Existing token has been reactivated: ${secret}`,
       id: 12,
     })
