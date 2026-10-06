@@ -229,6 +229,90 @@ describe('BrokerConnectionForm — provider drafts and submission intents', () =
     document.body.innerHTML = ''
   })
 
+  it('awaits async Vuetify validation and rechecks form ownership before submitting', async () => {
+    // Vuetify 3's v-form validate() resolves { valid: boolean } — a sync
+    // truthiness check treats the PROMISE as truthy and submits anyway.
+    const validation = {
+      result: { valid: false },
+    }
+    const div = document.createElement('div')
+    div.id = 'app'
+    document.body.appendChild(div)
+    const form = mount(BrokerConnectionForm, {
+      attachTo: '#app',
+      props: { open: true, brokerOptions: brokerOptions(), busy: false },
+      global: {
+        stubs: {
+          ...renderedStubs(),
+          'v-form': {
+            template: '<form class="v-form"><slot /></form>',
+            methods: {
+              validate: () => new Promise((resolve) => {
+                setTimeout(() => resolve(validation.result), 10)
+              }),
+              reset: () => {},
+            },
+          },
+        },
+      },
+    })
+    const vm = form.vm as any
+    await vm.handleBrokerSelection(1)
+    vm.draft.token = ''
+    await vm.saveToken()
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    // { valid: false } must refuse the submit even though the promise
+    // object itself is truthy.
+    expect(form.emitted('submit')).toBeUndefined()
+
+    validation.result = { valid: true }
+    await vm.saveToken()
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    expect(form.emitted('submit')).toHaveLength(1)
+    form.unmount()
+    document.body.innerHTML = ''
+
+    // The await opens an ownership window: a dialog closed while
+    // validation was in flight must not submit.
+    const secondDiv = document.createElement('div')
+    secondDiv.id = 'app'
+    document.body.appendChild(secondDiv)
+    const release = { go: false }
+    const second = mount(BrokerConnectionForm, {
+      attachTo: '#app',
+      props: { open: true, brokerOptions: brokerOptions(), busy: false },
+      global: {
+        stubs: {
+          ...renderedStubs(),
+          'v-form': {
+            template: '<form class="v-form"><slot /></form>',
+            methods: {
+              validate: () => new Promise((resolve) => {
+                const check = () => {
+                  if (release.go) resolve({ valid: true })
+                  else setTimeout(check, 5)
+                }
+                check()
+              }),
+              reset: () => {},
+            },
+          },
+        },
+      },
+    })
+    const secondVm = second.vm as any
+    await secondVm.handleBrokerSelection(1)
+    secondVm.draft.token = 'synthetic-closed-mid-validation'
+    const submitPromise = secondVm.saveToken()
+    await second.setProps({ open: false })
+    release.go = true
+    await submitPromise
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    expect(second.emitted('submit')).toBeUndefined()
+    second.unmount()
+    document.body.innerHTML = ''
+  })
+
   it('erases the credential draft when the dialog closes and on unmount', async () => {
     const form = mountForm()
     const vm = form.vm as any

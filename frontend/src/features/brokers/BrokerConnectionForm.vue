@@ -191,7 +191,7 @@ const emit = defineEmits<{
   error: [message: string]
 }>()
 
-const formRef = ref<{ validate: () => boolean; reset: () => void } | null>(null)
+const formRef = ref<{ validate: () => boolean | { valid: boolean }; reset: () => void } | null>(null)
 const isFormValid = ref(false)
 
 // The provider-specific credential draft lives ONLY here, for the open
@@ -297,9 +297,29 @@ function confirmBrokerType(): void {
   selectedBrokerType.value = null
 }
 
+// Vuetify 3's v-form validate() resolves to { valid: boolean, ... }; test
+// stubs may return a plain boolean. Both shapes normalize here.
+type ValidationResult = boolean | { valid: boolean } | void
+
+const isValidationPass = (result: ValidationResult): boolean => {
+  if (result === null || result === undefined) return true
+  if (typeof result === 'boolean') return result
+  if (typeof result === 'object' && 'valid' in result) {
+    return result.valid === true
+  }
+  return true
+}
+
 async function saveToken(): Promise<void> {
-  if (props.busy) return
-  if (!formRef.value || !formRef.value.validate()) return
+  if (props.busy || !props.open) return
+  if (!formRef.value) return
+  // validate() is async in real Vuetify: AWAIT it — a truthiness check on
+  // the promise would submit even when { valid: false } resolves.
+  const validation = await Promise.resolve(formRef.value.validate() as ValidationResult)
+  if (!isValidationPass(validation)) return
+  // The await opens an ownership window: this dialog instance may have been
+  // closed (or superseded) while validation ran — it must not submit then.
+  if (!props.open || props.busy) return
   const brokerId = selectedBrokerId.value
   const provider = selectedProvider.value
   if (brokerId === null || provider === null) {

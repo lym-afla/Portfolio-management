@@ -183,7 +183,6 @@ export function useBrokerConnections(options: { emit: BrokerOwnerEvents }) {
   const liveBySlot = new Map<string, number>()
   let listGeneration = 0
   let saveGeneration = 0
-  let deleteBusy = false
 
   const stop = onScopeDispose(() => {
     disposed = true
@@ -226,8 +225,38 @@ export function useBrokerConnections(options: { emit: BrokerOwnerEvents }) {
   const ownsSlot = (slot: string, token: number): boolean =>
     !disposed && liveBySlot.get(slot) === token
 
-  const handleError = (key: BrokerConnectionKey | null, cause: unknown): void => {
-    const message = mapBrokerError(cause)
+  // Credential safety: server error text can ECHO the submitted secret
+  // ("Invalid token <secret>"); every occurrence of a submitted credential
+  // is redacted before the message reaches a notice, dialog or row.
+  const sanitizeMessage = (message: string, secrets: string[]): string => {
+    let sanitized = message
+    for (const secret of secrets) {
+      if (secret.length >= 6) {
+        sanitized = sanitized.split(secret).join('[redacted]')
+      }
+    }
+    return sanitized
+  }
+
+  const credentialValues = (draft: BrokerCredentialDraft): string[] => {
+    switch (draft.provider) {
+      case 'tinkoff':
+        return [draft.token]
+      case 'ib':
+        return [draft.token]
+      case 'bybit':
+        return [draft.apiKey, draft.apiSecret]
+      case 'okx':
+        return [draft.apiKey, draft.apiSecret, draft.passphrase]
+    }
+  }
+
+  const handleError = (
+    key: BrokerConnectionKey | null,
+    cause: unknown,
+    secrets: string[] = [],
+  ): void => {
+    const message = sanitizeMessage(mapBrokerError(cause), secrets)
     if (key) rowErrors.set(brokerKey(key), message)
     emit.error(message)
   }
@@ -347,23 +376,42 @@ export function useBrokerConnections(options: { emit: BrokerOwnerEvents }) {
     deleteCandidate.value = null
   }
 
+  // Deletion busy state belongs to the confirmation that started it: a
+  // different confirmation (opened after cancelling the old dialog) may
+  // delete while the older request is still in flight.
+  let deleteBusyCandidate: BrokerConnectionKey | null = null
+
   async function confirmDelete(): Promise<void> {
     const candidate = deleteCandidate.value
-    if (!candidate || deleteBusy || disposed) return
-    deleteBusy = true
+    if (!candidate || disposed) return
+    const busyKey = deleteBusyCandidate
+    if (
+      busyKey &&
+      busyKey.provider === candidate.key.provider &&
+      busyKey.tokenId === candidate.key.tokenId
+    ) {
+      // This exact confirmation already has a delete in flight.
+      return
+    }
+    deleteBusyCandidate = candidate.key
     rowErrors.delete(brokerKey(candidate.key))
     try {
       await deleteTokenApi(candidate.key.provider, candidate.key.tokenId)
       if (disposed) return
-      emit.success('Token deleted successfully')
-      deleteCandidate.value = null
+      // Completion is guarded by the CAPTURED confirmation identity: if the
+      // user cancelled this dialog and opened a newer confirmation, the
+      // stale success must not clear or dismiss the newer one.
+      if (deleteCandidate.value === candidate) {
+        emit.success('Token deleted successfully')
+        deleteCandidate.value = null
+      }
       await refresh()
     } catch (cause) {
       if (disposed) return
       // The snapshot stays so a retry targets the same connection.
       handleError(candidate.key, cause)
     } finally {
-      deleteBusy = false
+      if (deleteBusyCandidate === candidate.key) deleteBusyCandidate = null
     }
   }
 
@@ -447,12 +495,16 @@ export function useBrokerConnections(options: { emit: BrokerOwnerEvents }) {
       return 'saved'
     } catch (cause) {
       if (stale()) return 'rejected'
+      const secrets = credentialValues(draft)
       const alreadyActive = isAlreadyActive(cause)
       if (alreadyActive !== null) {
-        messageDialog.value = { title: 'Token Already Exists', text: alreadyActive }
+        messageDialog.value = {
+          title: 'Token Already Exists',
+          text: sanitizeMessage(alreadyActive, secrets),
+        }
         return 'already-active'
       }
-      handleError(null, cause)
+      handleError(null, cause, secrets)
       return 'rejected'
     }
   }

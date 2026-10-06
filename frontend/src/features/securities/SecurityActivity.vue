@@ -24,7 +24,7 @@
             </template>
 
             <template #bottom>
-              <div class="d-flex align-center justify-space-between pa-2">
+              <div class="activity-footer d-flex align-center justify-space-between pa-2">
                 <v-select
                   :model-value="view.itemsPerPage"
                   :items="itemsPerPageOptions"
@@ -33,11 +33,10 @@
                   variant="outlined"
                   hide-details
                   class="rows-per-page-select mr-4"
-                  style="max-width: 150px"
                   bg-color="white"
                   @update:model-value="emit('update:itemsPerPage', Number($event))"
                 />
-                <span class="text-caption">
+                <span class="text-caption activity-range">
                   Showing
                   {{ (view.page - 1) * view.itemsPerPage + 1 }}-{{
                     Math.min(
@@ -52,6 +51,7 @@
                   :length="view.pageCount"
                   :total-visible="7"
                   rounded="circle"
+                  class="activity-pagination"
                   @update:model-value="emit('update:page', Number($event))"
                 />
               </div>
@@ -92,3 +92,28 @@ defineExpose({
   changeItemsPerPage: (itemsPerPage: number) => emit('update:itemsPerPage', itemsPerPage),
 })
 </script>
+
+<style scoped>
+/* The footer is one flex row on wide screens; below the desktop breakpoint
+   the rows-per-page control keeps a usable 150px box while the range label
+   and the pagination each take their own full-width line. */
+.activity-footer {
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+.activity-footer .rows-per-page-select {
+  flex: 0 0 150px;
+  min-width: 150px;
+}
+@media (max-width: 960px) {
+  .activity-footer .activity-range {
+    flex: 1 1 100%;
+    order: 3;
+  }
+  .activity-footer .activity-pagination {
+    flex: 1 1 100%;
+    order: 4;
+    justify-content: flex-start;
+  }
+}
+</style>

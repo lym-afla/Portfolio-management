@@ -78,7 +78,7 @@
 // success / info, "Broker API Tokens" surface), but list, form and request
 // ownership now live in features/brokers. This file composes them and owns
 // only the dialog wiring.
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import BrokerConnectionList from '@/features/brokers/BrokerConnectionList.vue'
 import BrokerConnectionForm from '@/features/brokers/BrokerConnectionForm.vue'
 import { useBrokerConnections } from '@/features/brokers/useBrokerConnections'
@@ -107,8 +107,19 @@ const {
 } = owner
 
 const showAddTokenDialog = ref(false)
-const isSaving = ref(false)
+// Save completion and busy state belong to the form GENERATION that started
+// them: cancelling and reopening bumps the generation, so a stale save can
+// no longer close the new form or erase its draft, and the fresh form is
+// not blocked by the older generation's busy flag.
+const dialogGeneration = ref(0)
+const savingGenerations = ref(new Map())
 const isDeleting = ref(false)
+
+watch(showAddTokenDialog, (open) => {
+  if (open) dialogGeneration.value += 1
+})
+
+const isSaving = computed(() => savingGenerations.value.get(dialogGeneration.value) === true)
 
 const showDeleteDialog = computed(() => deleteCandidate.value !== null)
 const deleteSubject = computed(() => deleteCandidate.value?.subject ?? '')
@@ -147,15 +158,23 @@ async function deleteToken() {
 }
 
 async function saveConnection(draft) {
-  if (isSaving.value) return
-  isSaving.value = true
+  const generation = dialogGeneration.value
+  if (savingGenerations.value.get(generation)) return
+  const next = new Map(savingGenerations.value)
+  next.set(generation, true)
+  savingGenerations.value = next
   try {
     const outcome = await owner.saveConnection(draft)
+    // A save whose form generation was closed and replaced is stale: it
+    // must not close the newly reopened form (its draft is the new one's).
+    if (generation !== dialogGeneration.value) return
     // Rejected saves keep the dialog (and entered values) for a retry;
     // every accepted close path lets the form erase the credential draft.
     if (outcome !== 'rejected') showAddTokenDialog.value = false
   } finally {
-    isSaving.value = false
+    const cleanup = new Map(savingGenerations.value)
+    cleanup.delete(generation)
+    savingGenerations.value = cleanup
   }
 }
 

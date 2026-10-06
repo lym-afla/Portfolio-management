@@ -711,13 +711,34 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
             send(200, { transactions: [], total_items: 0 })
             return
           }
-          send(200, {
-            transactions: [
-              { id: 1, date: '01-Jan-26', broker_account: 'Main synthetic account', description: 'Buy Fixture Bond', type: 'Buy', cash_flow: '($1,982.50)' },
-              { id: 2, date: '15-Jan-26', broker_account: 'Main synthetic account', description: 'Coupon', type: 'Coupon', cash_flow: '$43.75' },
-            ],
-            total_items: 23,
-          })
+          // Distinct rows per page so the flow can assert the RENDERED rows
+          // actually change with the requested page (server-owned pagination).
+          const transactionsPage = Number(url.searchParams.get('page') ?? '1')
+          const transactionRows = transactionsPage === 2
+            ? [
+                {
+                  id: 11, date: '05-Feb-26', broker_account: 'Main synthetic account',
+                  type: 'Sell', security: { id: 2, name: 'Page Two Instrument' },
+                  quantity: '2.000000000', price: '99.875000', cash_flow: '$982.50',
+                },
+                {
+                  id: 12, date: '18-Feb-26', broker_account: 'Main synthetic account',
+                  type: 'Broker commission', cash_flow: '($2.50)',
+                },
+              ]
+            : [
+                {
+                  id: 1, date: '01-Jan-26', broker_account: 'Main synthetic account',
+                  type: 'Buy', security: { id: 2, name: 'Page One Instrument' },
+                  quantity: '2.000000000', price: '99.125000', cash_flow: '($1,982.50)',
+                },
+                {
+                  id: 2, date: '15-Jan-26', broker_account: 'Main synthetic account',
+                  type: 'Coupon', security: { id: 2, name: 'Page One Instrument' },
+                  cash_flow: '$43.75',
+                },
+              ]
+          send(200, { transactions: transactionRows, total_items: 23 })
           return
         }
         if (url.pathname === '/database/api/securities/99/') {

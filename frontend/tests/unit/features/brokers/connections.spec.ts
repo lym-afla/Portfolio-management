@@ -486,6 +486,44 @@ describe('useBrokerConnections — credential hygiene', () => {
     expect(vi.mocked(logger.log).mock.calls.flat().join(' ')).not.toContain(secret)
   })
 
+  it('sanitizes server error text that echoes the submitted secret', async () => {
+    const secret = 'synthetic-secret-SANITIZE-ME'
+    vi.mocked(saveTinkoffToken).mockRejectedValueOnce({
+      response: { status: 400, data: { error: `Invalid token ${secret}` } },
+    })
+    const { owner, events } = startOwner()
+    await owner.refresh()
+    const outcome = await owner.saveConnection({
+      provider: 'tinkoff', brokerId: 1, token: secret,
+      tokenType: 'read_only', sandboxMode: false,
+    })
+    expect(outcome).toBe('rejected')
+    // The notice is the user-visible surface for save failures; row-scoped
+    // errors belong to the row commands (test/revoke/delete), not saves.
+    expect(events.error).toEqual(['Invalid token [redacted]'])
+    expect(events.error.join(' ')).not.toContain(secret)
+  })
+
+  it('sanitizes every submitted credential field in echoed error text', async () => {
+    const apiKey = 'synthetic-key-ECHOED'
+    const apiSecret = 'synthetic-secret-ECHOED'
+    vi.mocked(saveBybitToken).mockRejectedValueOnce({
+      response: {
+        status: 400,
+        data: { error: `key ${apiKey} / secret ${apiSecret} rejected` },
+      },
+    })
+    const { owner, events } = startOwner()
+    await owner.refresh()
+    const outcome = await owner.saveConnection({
+      provider: 'bybit', brokerId: 4, apiKey, apiSecret, testnet: false,
+    })
+    expect(outcome).toBe('rejected')
+    expect(events.error).toEqual(['key [redacted] / secret [redacted] rejected'])
+    expect(events.error.join(' ')).not.toContain(apiKey)
+    expect(events.error.join(' ')).not.toContain(apiSecret)
+  })
+
   it('keeps server error text that names no field values and stops body logging', async () => {
     vi.mocked(saveTinkoffToken).mockRejectedValueOnce({
       response: { status: 400, data: { error: 'Token verification failed' } },
@@ -532,5 +570,62 @@ describe('useBrokerConnections — error mapping (incumbent parity)', () => {
     expect(owner.rowError({ provider: 'tinkoff', tokenId: 11 })).toBe(
       'Token has insufficient privileges.',
     )
+  })
+})
+
+describe('useBrokerConnections — confirmation ownership', () => {
+  it('a stale successful delete must not clear a newer confirmation', async () => {
+    const stale = deferred()
+    vi.mocked(deleteToken)
+      .mockReturnValueOnce(stale.promise)
+      .mockResolvedValueOnce(undefined)
+    const { owner, events } = startOwner()
+    await owner.refresh()
+    await flush()
+    // Confirm delete A; while it is in flight, cancel and open B.
+    owner.requestDelete({ provider: 'tinkoff', tokenId: 11 })
+    const staleConfirm = owner.confirmDelete()
+    await flush()
+    owner.cancelDelete()
+    owner.requestDelete({ provider: 'tinkoff', tokenId: 12 })
+    expect(owner.deleteCandidate.value?.key).toEqual({ provider: 'tinkoff', tokenId: 12 })
+    // Stale A succeeds now: B's confirmation must survive untouched.
+    stale.resolve(undefined)
+    await staleConfirm
+    await flush()
+    expect(events.success).toEqual([])
+    expect(owner.deleteCandidate.value?.key).toEqual({ provider: 'tinkoff', tokenId: 12 })
+    // B still deletes exactly the snapshotted token and then clears.
+    await owner.confirmDelete()
+    await flush()
+    expect(deleteToken).toHaveBeenLastCalledWith('tinkoff', 12)
+    expect(events.success).toEqual(['Token deleted successfully'])
+    expect(owner.deleteCandidate.value).toBeNull()
+  })
+
+  it('a newer confirmation may delete while an older delete is still in flight', async () => {
+    const stale = deferred()
+    vi.mocked(deleteToken)
+      .mockReturnValueOnce(stale.promise)
+      .mockResolvedValueOnce(undefined)
+    const { owner, events } = startOwner()
+    await owner.refresh()
+    await flush()
+    owner.requestDelete({ provider: 'bybit', tokenId: 21 })
+    void owner.confirmDelete()
+    await flush()
+    // Cancel A's dialog and open B while A is in flight.
+    owner.cancelDelete()
+    owner.requestDelete({ provider: 'okx', tokenId: 31 })
+    await owner.confirmDelete()
+    await flush()
+    expect(deleteToken).toHaveBeenCalledTimes(2)
+    expect(deleteToken).toHaveBeenLastCalledWith('okx', 31)
+    stale.resolve(undefined)
+    await flush()
+    // B's success cleared the candidate; the stale A completion afterwards
+    // emits and clears nothing.
+    expect(events.success).toEqual(['Token deleted successfully'])
+    expect(owner.deleteCandidate.value).toBeNull()
   })
 })

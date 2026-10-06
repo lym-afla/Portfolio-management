@@ -324,6 +324,9 @@ describe('broker connection characterization (incumbent surface)', () => {
     ])
 
     saveIBToken.mockResolvedValue({ message: 'Token saved successfully', id: 1 })
+    const reopenForIb = wrapper.findAll('button.v-btn').find((b) => b.text().trim() === 'Add Token')
+    await reopenForIb.trigger('click')
+    await flush()
     form = formComponent()
     await form.vm.handleBrokerSelection(2)
     form.vm.draft.token = 'synthetic-ib'
@@ -334,6 +337,9 @@ describe('broker connection characterization (incumbent surface)', () => {
     expect(wrapper.emitted('success').at(-1)).toEqual(['Token saved successfully'])
 
     saveBybitToken.mockResolvedValue({})
+    const reopenForBybit = wrapper.findAll('button.v-btn').find((b) => b.text().trim() === 'Add Token')
+    await reopenForBybit.trigger('click')
+    await flush()
     form = formComponent()
     await form.vm.handleBrokerSelection(4)
     form.vm.draft.apiKey = 'k-synth'
@@ -345,6 +351,9 @@ describe('broker connection characterization (incumbent surface)', () => {
     expect(wrapper.emitted('success').at(-1)).toEqual(['Bybit token saved successfully'])
 
     saveOKXToken.mockResolvedValue({})
+    const reopenForOkx = wrapper.findAll('button.v-btn').find((b) => b.text().trim() === 'Add Token')
+    await reopenForOkx.trigger('click')
+    await flush()
     form = formComponent()
     await form.vm.handleBrokerSelection(5)
     form.vm.draft.apiKey = 'k-synth'
@@ -391,5 +400,68 @@ describe('broker connection characterization (incumbent surface)', () => {
     // must erase the draft when the dialog closes (review focus 3).
     expect(form.props('open')).toBe(false)
     expect(form.vm.draft.token).toBe('')
+  })
+
+  it('a save started before cancel must not close or erase the newly reopened form', async () => {
+    const pendingA = deferred()
+    saveTinkoffToken.mockReturnValueOnce(pendingA.promise)
+    await mountManager()
+    let form = formComponent()
+    await form.vm.handleBrokerSelection(1)
+    form.vm.draft.token = 'synthetic-stale-a'
+    await form.vm.saveToken()
+    await flush()
+    expect(saveTinkoffToken).toHaveBeenCalledTimes(1)
+    // Cancel the dialog while save A is still in flight.
+    await clickDialogButton('Cancel')
+    expect(form.props('open')).toBe(false)
+    // Reopen: a fresh form generation with an empty draft.
+    const reopened = wrapper.findAll('button.v-btn').find((b) => b.text().trim() === 'Add Token')
+    await reopened.trigger('click')
+    await flush()
+    form = formComponent()
+    expect(form.props('open')).toBe(true)
+    await form.vm.handleBrokerSelection(1)
+    // Stale A succeeds now: the NEW form must stay open with its draft.
+    pendingA.resolve({ message: 'Token saved successfully', id: 88 })
+    await flush()
+    expect(form.props('open')).toBe(true)
+    expect(form.vm.draft.token).toBe('')
+    // And the fresh generation must still be submittable.
+    saveTinkoffToken.mockResolvedValueOnce({ message: 'Token saved successfully', id: 89 })
+    form.vm.draft.token = 'synthetic-b'
+    await form.vm.saveToken()
+    await flush()
+    expect(saveTinkoffToken).toHaveBeenLastCalledWith(expect.objectContaining({ token: 'synthetic-b' }))
+    expect(form.props('open')).toBe(false)
+  })
+
+  it('a fresh form generation can save while an older generation save is in flight', async () => {
+    const pendingA = deferred()
+    saveTinkoffToken.mockReturnValueOnce(pendingA.promise)
+    await mountManager()
+    let form = formComponent()
+    await form.vm.handleBrokerSelection(1)
+    form.vm.draft.token = 'synthetic-stale-a'
+    await form.vm.saveToken()
+    await flush()
+    expect(saveTinkoffToken).toHaveBeenCalledTimes(1)
+    await clickDialogButton('Cancel')
+    const reopened = wrapper.findAll('button.v-btn').find((b) => b.text().trim() === 'Add Token')
+    await reopened.trigger('click')
+    await flush()
+    form = formComponent()
+    await form.vm.handleBrokerSelection(1)
+    form.vm.draft.token = 'synthetic-b'
+    // B must not be blocked by the older generation's busy state.
+    saveTinkoffToken.mockResolvedValueOnce({ message: 'Token saved successfully', id: 89 })
+    await form.vm.saveToken()
+    await flush()
+    expect(saveTinkoffToken).toHaveBeenCalledTimes(2)
+    expect(form.props('open')).toBe(false)
+    // The stale A settles afterwards without touching the (now closed) form.
+    pendingA.resolve({ message: 'Token saved successfully', id: 88 })
+    await flush()
+    expect(form.props('open')).toBe(false)
   })
 })

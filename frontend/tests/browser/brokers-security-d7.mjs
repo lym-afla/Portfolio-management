@@ -329,7 +329,8 @@ export async function assertBrokersSecurityD7Flow({ appOrigin, context, initScri
       })()`
     )
     assert.equal(clickedPage2, true, `${context}: pagination page 2 clickable`)
-    await run(['wait', '600'])
+    await waitFor(run, hasText('Page Two Instrument'))
+    await run(['wait', '300'])
     assert.equal(
       d7.securityRequests.filter((r) => r.path.includes('/transactions')).length,
       transactionsBeforePage + 1,
@@ -340,6 +341,38 @@ export async function assertBrokersSecurityD7Flow({ appOrigin, context, initScri
       '2',
       `${context}: transactions query carried page 2`,
     )
+    // The RENDERED rows must have changed to page 2's server payload — not
+    // just the outgoing request.
+    const rowsChanged = await evalProbe(
+      run,
+      `(() => {
+        const text = document.body.innerText
+        return {
+          page2: text.includes('Page Two Instrument'),
+          page1Gone: !text.includes('Page One Instrument'),
+        }
+      })()`
+    )
+    assert.deepEqual(
+      rowsChanged,
+      { page2: true, page1Gone: true },
+      `${context}: rendered transaction rows switched to page 2`,
+    )
+    // Back to page 1 for the account-change step's page-reset assertion.
+    const clickedPage1 = await evalProbe(
+      run,
+      `(() => {
+        const btn = [...document.querySelectorAll('.v-pagination button')]
+          .find((b) => b.textContent.trim() === '1' && !b.disabled)
+        if (!btn) return false
+        btn.scrollIntoView({ block: 'center' })
+        btn.click()
+        return true
+      })()`
+    )
+    assert.equal(clickedPage1, true, `${context}: pagination page 1 clickable`)
+    await waitFor(run, hasText('Page One Instrument'))
+    await run(['wait', '200'])
 
     // Account change: detail+price+position+transactions refetch with
     // account_id=7; the account-choices resource is NOT refetched.
@@ -467,6 +500,62 @@ export async function assertBrokersSecurityD7Flow({ appOrigin, context, initScri
       run,
       ['[data-testid="workspace-page-heading"]', 'section.workspace-section', 'canvas', '.v-data-table'],
       `${context} bond mobile`,
+    )
+    // The pagination footer's controls are probed INDIVIDUALLY once the
+    // transactions resource has rendered: the rows-per-page select keeps a
+    // usable box (no compressed sliver), and the range label and pagination
+    // are each visible and hittable below the fixed header.
+    await waitFor(run, `document.querySelector('.activity-footer') !== null`)
+    await waitFor(run, hasText('Showing'))
+    await run(['wait', '300'])
+    const footerProbe = await evalProbe(
+      run,
+      `(() => {
+        const headerBottom = Math.max(0, ...[...document.querySelectorAll('.v-toolbar, .v-app-bar')]
+          .filter((el) => { const s = getComputedStyle(el); return (s.position === 'fixed' || s.position === 'sticky') })
+          .map((el) => el.getBoundingClientRect().bottom))
+        const within = (el) => { const b = el.getBoundingClientRect(); return b.left >= -1 && b.right <= innerWidth + 1 }
+        const hit = (el) => {
+          const b = el.getBoundingClientRect()
+          const h = document.elementFromPoint(b.left + b.width / 2, Math.min(Math.max(b.top + b.height / 2, headerBottom + 1), innerHeight - 1))
+          return !!h && (el.contains(h) || h === el)
+        }
+        const measure = (selector) => {
+          const el = document.querySelector(selector)
+          if (!el) return null
+          el.scrollIntoView({ block: 'center' })
+          const b = el.getBoundingClientRect()
+          return { width: Math.round(b.width), height: Math.round(b.height), within: within(el), hit: hit(el) }
+        }
+        const paginationNav = document.querySelector('.activity-footer .activity-pagination')
+        let paginationButtons = []
+        if (paginationNav) {
+          // One scroll positions the whole row; per-button scrolling would
+          // shove the first buttons under the fixed header.
+          paginationNav.scrollIntoView({ block: 'center' })
+          paginationButtons = [...paginationNav.querySelectorAll('button')]
+            .filter((b) => !b.disabled)
+            .map((b) => {
+              const r = b.getBoundingClientRect()
+              return { hit: hit(b), width: Math.round(r.width) }
+            })
+        }
+        return {
+          select: measure('.activity-footer .rows-per-page-select'),
+          range: measure('.activity-footer .activity-range'),
+          paginationButtons,
+        }
+      })()`
+    )
+    assert.ok(footerProbe.select, `${context}: rows-per-page select rendered`)
+    assert.ok(footerProbe.select.width >= 140, `${context}: rows-per-page keeps a usable box (${footerProbe.select.width}px)`)
+    assert.equal(footerProbe.select.within, true, `${context}: rows-per-page within viewport`)
+    assert.equal(footerProbe.select.hit, true, `${context}: rows-per-page hittable`)
+    assert.ok(footerProbe.range, `${context}: range label rendered`)
+    assert.equal(footerProbe.range.hit, true, `${context}: range label hittable`)
+    assert.ok(
+      footerProbe.paginationButtons.length >= 3 && footerProbe.paginationButtons.every(Boolean),
+      `${context}: pagination buttons hittable (${JSON.stringify(footerProbe.paginationButtons)})`,
     )
     await capture(run, `bond-${viewport.name}`)
     console.log(`PASS ${context} brokers-security-d7 mobile probe`)
