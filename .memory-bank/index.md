@@ -38,13 +38,13 @@ This repository of `.md` files is the canonical memory bank for the portfolio ma
 
 - Tasks/
   - [Frontend modernization implementation plan (2026-09-08)](../docs/superpowers/plans/2026-09-08-frontend-modernization.md) — implementation started on codex/frontend-modernization; master plan and reliability, charting, and UI workstreams track the remaining work.
-  - [Frontend modernization progress (updated 2026-10-05)](../docs/superpowers/plans/2026-09-30-frontend-modernization-progress.md) — durable 24-task status tracker; C1/PR #49, D3/PR #50, D4/PR #51, C2/PR #52 and C3/PR #53 integrated; D5/PR #56 integrated; D6 is next; 19 of 24 integrated, modernization not complete.
+  - [Frontend modernization progress (updated 2026-10-05)](../docs/superpowers/plans/2026-09-30-frontend-modernization-progress.md) — durable 24-task status tracker; C1/PR #49, D3/PR #50, D4/PR #51, C2/PR #52 and C3/PR #53 integrated; D5/PR #56 integrated; D6/PR #57 integrated; D7 is next; 20 of 24 integrated, modernization not complete.
   - [D3 dashboard visual pilot handoff](../docs/superpowers/plans/2026-10-01-dashboard-visual-pilot-handoff.md) and [GLM executor prompt](../docs/superpowers/plans/2026-10-01-dashboard-visual-pilot-glm-prompt.md) — executed 1 October 2026; historical, do not re-execute.
   - [D4 grouped tables/actions handoff](../docs/superpowers/plans/2026-10-01-grouped-tables-actions-handoff.md) and [GLM executor prompt](../docs/superpowers/plans/2026-10-01-grouped-tables-actions-glm-prompt.md) — user-merged 2 October 2026 in PR #51; historical, do not re-execute.
   - [C2 typed chart adapters handoff](../docs/superpowers/plans/2026-10-02-chart-adapters-c2-handoff.md) and [GLM executor prompt](../docs/superpowers/plans/2026-10-02-chart-adapters-c2-glm-prompt.md) — historical, integrated in PR #52.
   - [C3 gated NAV ECharts pilot handoff](../docs/superpowers/plans/2026-10-02-nav-echarts-pilot-c3-handoff.md) and [GLM executor prompt](../docs/superpowers/plans/2026-10-02-nav-echarts-pilot-c3-glm-prompt.md) — historical, integrated in PR #53; ECharts remains default-off.
   - [D5 route rollout handoff](../docs/superpowers/plans/2026-10-03-frontend-route-rollout-d5-handoff.md) and [GLM executor prompt](../docs/superpowers/plans/2026-10-03-frontend-route-rollout-d5-glm-prompt.md) — historical, integrated in PR #56; supplementary PRs #54/#55 also integrated.
-  - [D6 transaction-import handoff](../docs/superpowers/plans/2026-10-05-transaction-import-d6-handoff.md) and [GLM prompt](../docs/superpowers/plans/2026-10-05-transaction-import-d6-glm-prompt.md) — next bounded assignment; typed extraction with exact legacy-protocol parity.
+  - [D6 transaction-import handoff](../docs/superpowers/plans/2026-10-05-transaction-import-d6-handoff.md) and [GLM prompt](../docs/superpowers/plans/2026-10-05-transaction-import-d6-glm-prompt.md) — historical, integrated in PR #57; typed extraction with exact legacy-protocol parity.
   - [Settings account-preservation handoff](../docs/superpowers/plans/2026-10-03-settings-account-fallback-handoff.md) and [GLM prompt](../docs/superpowers/plans/2026-10-03-settings-account-fallback-glm-prompt.md) — bounded supplementary fix after PR #54; stop silent All accounts replacement, separate from D5 presentation.
   - [Grouped table and allocation pie review (2026-09-08)](../docs/audits/2026-09-08-grouped-tables-and-allocation-pies.md) — proposed compact/grouped table views; explicit three-pie dashboard requirement supersedes the earlier bar decision.
   - `backlog.md` — initial backlog items derived from the interview.
@@ -57,3 +57,5 @@ This repository of `.md` files is the canonical memory bank for the portfolio ma
 - For AI agents: always include `Rules for AI Coding Agent.md` in the prompt context; include canonical calculation files when the task relates to NAV/FX.
 
 ---
+
+- [D7 broker/security handoff](../docs/superpowers/plans/2026-10-06-broker-security-d7-handoff.md) and [GLM prompt](../docs/superpowers/plans/2026-10-06-broker-security-d7-glm-prompt.md) — next bounded assignment after PR #57; provider and security-detail extraction, charts unchanged.

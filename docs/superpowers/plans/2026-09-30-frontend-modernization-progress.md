@@ -7,17 +7,17 @@ The owner has removed dedicated screen-reader support work and real assistive-te
 Retain keyboard navigation, focus entry/return, readable labels, contrast, responsive layouts, native 200% zoom, visible/hittable controls, semantic HTML and exact-value chart tables. Preserve existing ARIA/semantic markup and tests; this scope change does not request application-code removal. D8 still verifies visual quality, keyboard usability, responsive behavior and workflow correctness. General accessibility references in these plans apply to those retained checks, not a screen-reader certification or dedicated compatibility project.
 
 
-Updated 5 October 2026. This is the durable, human-facing status tracker for the accepted [master plan](2026-09-08-frontend-modernization.md). The original task numbering is retained. Update this file after each independently verified task; commit evidence and distinguish implementation, review, merge and release.
+Updated 6 October 2026. This is the durable, human-facing status tracker for the accepted [master plan](2026-09-08-frontend-modernization.md). The original task numbering is retained. Update this file after each independently verified task; commit evidence and distinguish implementation, review, merge and release.
 
 ## Current checkpoint
 
 - Implementation branch: `codex/frontend-modernization`.
-- Verified remote and synchronized local code checkpoint: `7248a02006a8618cca31918a25a9a23f81c4c5bf`, user-merged PR #56/D5; this subsequent D6 handoff is documentation only.
-- D5 is integrated through final proposal head `b5fc13d0`; D6 transaction-import extraction is next. C3 remains default-off.
+- Verified remote and synchronized local code checkpoint: `0167c409`, user-merged PR #57/D6; this subsequent D7 handoff is documentation only.
+- D6 is integrated through final proposal head `17a196c8` (implementation `67b02326`); D7 broker/security extraction is next. C3 remains default-off.
 - The earlier `9b32d3d9` checkpoint was 34 commits ahead of main. That historical count is not a completion measure or the current branch count.
 - Financial fixes [#46](https://github.com/lym-afla/Portfolio-management/pull/46), [#47](https://github.com/lym-afla/Portfolio-management/pull/47) and [#48](https://github.com/lym-afla/Portfolio-management/pull/48) are merged into the implementation branch. Their source branches were deleted by the user.
 - Main has not received the modernization branch. No deployment performed.
-- 19 of 24 planned tasks are integrated (D5 implemented, pending review on its draft PR); five remain after review/merge. Main/release completion remains outstanding.
+- 20 of 24 planned tasks are integrated. D7, C4, C5 and D8 remain; main/release completion remains outstanding.
 - Last whole-foundation verification at `deea60df`: 262 frontend tests; 1261 backend tests / 10 skipped; both type checks, lint/build; 72 synthetic browser route profiles. These results predate the three merges. The combined `9b32d3d9` baseline has not been rerun in this planning turn.
 
 ## Task status
@@ -43,17 +43,17 @@ Updated 5 October 2026. This is the durable, human-facing status tracker for the
 | 17 | C2 | Typed chart adapters and lifecycle | User-merged PR #52 at `2424edbf`, reviewed through `5d4c5a87`; see [C2 record](#c2-implementation-record) |
 | 18 | C3 | ECharts NAV pilot, both IRRs and accessible inspection | User-merged PR #53 at `2e77e5c7`, reviewed through `3cd33c06`; see [C3 record](#c3-implementation-record) |
 | 19 | D5 | Visual system across route families | User-merged PR #56 at `7248a020`, final head `b5fc13d0`; see [D5 record](#d5-implementation-record) |
-| 20 | D6 | Transaction import workflow extraction | Implemented on `codex/transaction-import-d6`, draft PR into `codex/frontend-modernization`; see [D6 record](#d6-implementation-record) |
-| 21 | D7 | Broker/security workflow extraction | Not implemented |
+| 20 | D6 | Transaction import workflow extraction | User-merged PR #57 at `0167c409`, reviewed through `17a196c8`; see [D6 record](#d6-implementation-record) |
+| 21 | D7 | Broker/security workflow extraction | Next; [handoff](2026-10-06-broker-security-d7-handoff.md) and [GLM prompt](2026-10-06-broker-security-d7-glm-prompt.md) prepared |
 | 22 | C4 | Three solid allocation pies and security histories | Not implemented; follows NAV acceptance and F3 |
 | 23 | C5 | ECharts cutover and Chart.js removal | Not implemented; gate last, retain fallback until acceptance |
 | 24 | D8 | All-page visual/keyboard/responsive/behavior QA and documentation | Not implemented |
 
 ## Next execution and boundaries
 
-D6 is implemented on `codex/transaction-import-d6` and stops for review on its draft PR; D7 (broker/security workflow extraction) is next after D6 integrates. Prior handoffs are historical. Preserve integrated PR #54 header labels, PR #55 settings guards and D5 layout/focus corrections.
+D6 is integrated in PR #57. Execute [D7 broker/security extraction](2026-10-06-broker-security-d7-handoff.md) next using its [GLM prompt](2026-10-06-broker-security-d7-glm-prompt.md). Prior handoffs are historical. Preserve integrated PR #54 header labels, PR #55 settings guards, D5 layout/focus and D6 socket/import ownership corrections.
 
-D6 extracts the transaction-import workflow while preserving the existing protocol and financial semantics. D7, C4's three solid allocation pies/security histories and C5 cutover remain separate. C3 stays default-off; no main merge or deployment is authorized.
+D7 extracts broker connections and security detail while preserving their capabilities. C4's three solid allocation pies/security histories and C5 cutover remain separate. C3 stays default-off; no main merge or deployment is authorized.
 
 The inherited D4 `requests`/`dates` selector issue was closed by C3 task 0 (`2620c2fa`); do not reuse the historical baseline waiver. Screen-reader testing is out of scope under the owner-approved amendment above. No application gates were rerun for this documentation-only handoff.
 
@@ -70,6 +70,8 @@ PR #54's header account-label fix is user-merged at `610dff992d76fe4f9459f059c68
 ## Detailed records
 
 ### D6 implementation record
+
+- Integration (6 October 2026): user merged PR #57 at `0167c409`. Final proposal `17a196c8`, implementation `67b02326`. Root verified all three final corrections with 140 focused tests passing and resolved main TypeScript inclusion of the socket spec. Final full gates remain executor-reported: 773 frontend tests, type checks, lint/build/API, delivery/browser matrix and backend 1386 passed/10 skipped. Historical draft/review-round entries below are superseded for status. No application gates rerun for this documentation-only D7 handoff; main not merged and no deployment.
 
 - Status: implemented on branch `codex/transaction-import-d6` in the dedicated worktree `Portfolio-management-d6`, base `57f251d3` (latest `origin/codex/frontend-modernization` including the handoff; PR #56/D5 merged at `7248a020`). Draft PR into `codex/frontend-modernization`; not merged, no deployment. Note: the executor's original instruction said "create the branch from main" because PR #56 was merged — verified against the remote that `origin/main` is still at `197b8df7` (PR #45) and contains none of the modernization work, so the branch was created from `origin/codex/frontend-modernization` at `57f251d3`, which IS the post-PR-#56 integration state the instruction intended.
 - Commits (task-sized): task 0 characterization (fixtures + 51-test incumbent suite + [protocol inventory](../../design/frontend-import-workflow.md)); task 1 typed boundary (`types.ts`, `legacyImportProtocol.ts`, 27 protocol tests, decode→apply seam in the dialog); task 2 state owner + orchestrator (`useImportState` discriminated union in place, `useTransactionImport` with generation ownership; dialog becomes projections + intent adapters; 26 workflow tests); task 3 step components (`ImportMethodStep`/`ImportSourceStep`/`ImportReviewStep`/`ImportResult` + 13 step tests, entrypoint composes them); task 4 rendered acceptance (`imports-d6` browser case, `imports-ws.mjs` frame codec + conversation driver, 7 captures).
