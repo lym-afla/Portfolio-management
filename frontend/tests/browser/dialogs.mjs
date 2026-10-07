@@ -18,11 +18,25 @@ export const dialogRoutes = Object.keys(flows)
 
 export async function assertDialogChunkRecovery({ context, initScript, log, session }) {
   const run = args => runAgentBrowser({ args, context, initScript, log, session })
+  // C4 recorded a race where a click landed while a Vuetify overlay scrim was
+  // still in its leave transition and covered the click point. The bounded
+  // synchronization retries a refused covered click (the same accepted
+  // pattern as the dialogs flow below); a missing control still fails the
+  // case, and every assertion stays.
   async function click(name) {
-    const snapshot = await run(['snapshot', '-i'])
-    const ref = Object.entries(snapshot.refs).find(([, item]) => item.role === 'button' && item.name.toLowerCase() === name.toLowerCase())?.[0]
-    assert.ok(ref, `Missing ${name}`)
-    await run(['click', `@${ref}`])
+    let lastError = null
+    for (let attempt = 0; attempt < 12; attempt++) {
+      const snapshot = await run(['snapshot', '-i'])
+      const ref = Object.entries(snapshot.refs).find(([, item]) => item.role === 'button' && item.name.toLowerCase() === name.toLowerCase())?.[0]
+      if (ref) {
+        try { await run(['click', `@${ref}`]); return }
+        catch (error) { if (!error.message.includes('is covered by')) throw error; lastError = error }
+      } else {
+        lastError = new Error(`Missing ${name}`)
+      }
+      await run(['wait', '100'])
+    }
+    throw lastError ?? new Error(`Missing ${name}`)
   }
   await click('Import Transactions')
   await run(['wait', '--fn', `document.querySelector('[data-testid="route-load-error"]') !== null`])
