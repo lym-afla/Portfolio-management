@@ -496,6 +496,23 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
           // Valid contract, unplotably large plotValue: the renderer boundary
           // must fail recoverably (RangeError), never silently truncate.
           body.chartV2.series[0].points[0].plotValue = '9'.repeat(400)
+        } else if (charts.scenario === 'altkeys') {
+          // Valid contract, DIFFERENT period keys (every key shifted a day):
+          // the incompatible-refresh case — the previous viewport's keys
+          // cannot map onto this document, so the controlled interaction
+          // model must reset the whole window. Series identity, point count
+          // and the document context stay unchanged.
+          const shifted = (iso) => {
+            const date = new Date(`${iso}T00:00:00Z`)
+            date.setUTCDate(date.getUTCDate() - 1)
+            return date.toISOString().slice(0, 10)
+          }
+          body.chartV2.periods = body.chartV2.periods.map((period) => ({
+            ...period,
+            key: `nav:${shifted(period.endDate)}`,
+            endDate: shifted(period.endDate),
+            interval: { ...period.interval, endDate: shifted(period.endDate) },
+          }))
         } else if (charts.scenario === 'hold') {
           await new Promise((resolve) => { heldReads.set(url.pathname, resolve) })
           heldReads.delete(url.pathname)

@@ -60,7 +60,12 @@ const breakdownRequestCount = (fixtureServer) =>
 async function buildC5Artifact(frontendRoot, artifactsDir, name, flags) {
   const dir = resolve(artifactsDir, name)
   const previous = { ...process.env }
-  for (const [key, value] of Object.entries(flags)) process.env[key] = value
+  for (const [key, value] of Object.entries(flags)) {
+    // A null value means the key must be genuinely ABSENT for this build —
+    // the no-flags release candidate — not inherited from the environment.
+    if (value === null) delete process.env[key]
+    else process.env[key] = value
+  }
   try {
     await build({ mode: 'browser-test', root: frontendRoot, build: { emptyOutDir: true, outDir: dir } })
   } finally {
@@ -146,7 +151,7 @@ async function phaseALaziness({ candidateServer, fixtureServer, run }) {
 }
 
 // Phase B: rendered independence across the release-flag artifacts.
-async function phaseBPolicyMatrix({ appOrigin, candidateServer, navOnlyServer, run }) {
+async function phaseBPolicyMatrix({ appOrigin, candidateServer, noFlagsServer, navOnlyServer, run }) {
   // NAV-only release stage: NAV modern; allocations and security incumbent.
   await openDashboardNavOnly(run, navOnlyServer.origin)
   let state = await evalProbe(run, DASHBOARD_MODERN_STATE)
@@ -161,18 +166,19 @@ async function phaseBPolicyMatrix({ appOrigin, candidateServer, navOnlyServer, r
   assert.equal(ECHARTS_RUNTIME.test(graph), false, 'NAV-only artifact: security page loads no ECharts runtime')
   assert.equal(CHARTJS_RUNTIME.test(graph), true, 'NAV-only artifact: security incumbent charts are the lazily loaded Chart.js leaves')
 
-  // Explicit all-on candidate (same behavior as the reviewed default).
+  // Explicit all-on candidate: the same behavior under explicit flags.
   await openDashboardModern(run, candidateServer.origin)
   state = await evalProbe(run, DASHBOARD_MODERN_STATE)
   assert.equal(state.navPilot && state.legends === 3 && state.allocationCanvases === 3, true, 'all-on candidate: three pies plus the NAV pilot')
   await openSecurityModern(run, candidateServer.origin)
 
-  // The no-flags build IS the release candidate: identical rendering without
-  // any flag supplied.
-  await openDashboardModern(run, candidateServer.origin)
+  // The no-flags build IS the release candidate: built with every VITE_*
+  // flag genuinely ABSENT, it must render identically to the explicit
+  // all-on artifact.
+  await openDashboardModern(run, noFlagsServer.origin)
   state = await evalProbe(run, DASHBOARD_MODERN_STATE)
   assert.equal(state.navPilot && state.legends === 3 && state.allocationCanvases === 3, true, 'no-flags candidate: three pies plus the NAV pilot')
-  await openSecurityModern(run, candidateServer.origin)
+  await openSecurityModern(run, noFlagsServer.origin)
 
   // Explicit all-off rollback (the run-smoke base artifact configuration).
   await openDashboardLegacyAllocation(run, appOrigin)
@@ -221,12 +227,24 @@ async function phaseCCombinedAcceptance({ candidateServer, fixtureServer, run, c
   const inspection = await evalProbe(run, `document.querySelector('.chart-inspection')?.innerText ?? ''`)
   assert.match(String(inspection), /[A-Z][a-z]{2}-\d{2}/, 'keyboard row inspection shows the selected period')
 
-  // View-only zoom through the native selects, then a real compatible
-  // refresh: the refresh issues exactly one request; the zoom window survives
-  // because the period keys survive.
+  // View-only zoom through the native selects, then TWO distinct refreshes.
+  // Review round: a frequency click alone is an INCOMPATIBLE refresh (the
+  // fixture answers different period keys) and only proved that controls and
+  // a canvas survived. The compatible case is now a REAL re-issued query
+  // answered with the same document identity — the date-range From field
+  // changes while dateTo (and therefore the C2 document context and every
+  // period key) stays — and BOTH zoom bounds are compared afterwards; the
+  // incompatible case separately asserts that BOTH bounds reset to the new
+  // document's full range.
   const zoomState = () => evalProbe(run, `(() => {
     const selects = [...document.querySelectorAll('.chart-inspection select')]
-    return { count: selects.length, start: selects[0]?.value ?? null, end: selects[1]?.value ?? null }
+    return {
+      count: selects.length,
+      start: selects[0]?.value ?? null,
+      end: selects[1]?.value ?? null,
+      firstKey: selects[0]?.options[0]?.value ?? null,
+      lastKey: selects[1]?.options[selects[1].options.length - 1]?.value ?? null,
+    }
   })()`)
   const beforeZoom = await zoomState()
   assert.equal(beforeZoom.count, 2, 'native start/end zoom selects present')
@@ -239,24 +257,64 @@ async function phaseCCombinedAcceptance({ candidateServer, fixtureServer, run, c
   await run(['wait', '200'])
   const zoomed = await zoomState()
   assert.notEqual(zoomed.start, beforeZoom.start, 'zoom start moved through the native control')
-  const zoomedBeforeRefresh = navRequestCount(fixtureServer)
-  fixtureServer.charts.scenario = 'v2'
-  // A frequency button carries no aria-pressed (Vuetify toggle); the refresh
-  // is verified by the re-rendered pilot plus exactly one new request.
+
+  // COMPATIBLE refresh: the date-range From change re-issues the query; the
+  // fixture answers the SAME document (dateTo and every period key stay), so
+  // the zoom window must survive with both bounds intact.
+  const compatibleBefore = navRequestCount(fixtureServer)
   await run(['eval', `(() => {
-    const buttons = [...document.querySelectorAll('[data-testid="nav-chart"] button')]
-    const month = buttons.find((button) => button.textContent.trim() === 'Day')
-    month.click()
+    // The date-range activator is the only svg-iconed button in the NAV
+    // card (the app renders @mdi/js SVG icons, not mdi-* font classes);
+    // the frequency buttons are text-only.
+    const activator = [...document.querySelectorAll('[data-testid="nav-chart"] button')].find((button) => button.querySelector('svg'))
+    if (!activator) throw new Error('date-range activator missing')
+    activator.click()
+    return true
+  })()`])
+  await waitFor(run, `document.querySelector('.v-overlay--active input[type="date"]') !== null`)
+  await run(['eval', `(() => {
+    const input = document.querySelector('.v-overlay--active input[type="date"]')
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set
+    setter.call(input, '2026-02-01')
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    input.dispatchEvent(new Event('change', { bubbles: true }))
+    return input.value
+  })()`])
+  await run(['eval', `(() => {
+    const apply = [...document.querySelectorAll('.v-overlay--active button')].find((button) => button.textContent.trim() === 'Apply')
+    apply.click()
     return true
   })()`])
   await waitFor(run, `!!document.querySelector('[data-testid="nav-echarts-pilot"] canvas') && document.querySelector('[data-testid="nav-error"]') === null`)
   await run(['wait', '600'])
-  assert.equal(navRequestCount(fixtureServer) - zoomedBeforeRefresh, 1, 'the frequency refresh is one request')
-  // The Day document has different period keys: the incompatible zoom resets
-  // (never leaks), the chart re-renders, no crash.
-  const afterRefresh = await zoomState()
-  assert.equal(afterRefresh.count, 2, 'zoom controls survive the refresh')
+  assert.equal(navRequestCount(fixtureServer) - compatibleBefore, 1, 'the compatible date re-query is one request')
+  const afterCompatible = await zoomState()
+  assert.equal(afterCompatible.start, zoomed.start, 'compatible refresh retains the zoom START bound')
+  assert.equal(afterCompatible.end, zoomed.end, 'compatible refresh retains the zoom END bound')
+
+  // INCOMPATIBLE refresh: the fixture switches to a same-shaped document
+  // whose period keys all differ (`altkeys`), so nothing from the previous
+  // viewport can map — BOTH bounds must reset to the new document's full
+  // range (never leak), with exactly one request and no error. A frequency
+  // button carries no aria-pressed (Vuetify toggle); the refresh is verified
+  // by the re-rendered pilot plus the request count.
+  const incompatibleBefore = navRequestCount(fixtureServer)
+  fixtureServer.charts.scenario = 'altkeys'
+  await run(['eval', `(() => {
+    const buttons = [...document.querySelectorAll('[data-testid="nav-chart"] button')]
+    const day = buttons.find((button) => button.textContent.trim() === 'Day')
+    day.click()
+    return true
+  })()`])
+  await waitFor(run, `!!document.querySelector('[data-testid="nav-echarts-pilot"] canvas') && document.querySelector('[data-testid="nav-error"]') === null`)
+  await run(['wait', '600'])
+  assert.equal(navRequestCount(fixtureServer) - incompatibleBefore, 1, 'the incompatible re-query is one request')
+  const afterIncompatible = await zoomState()
+  assert.equal(afterIncompatible.count, 2, 'zoom controls survive the incompatible refresh')
+  assert.equal(afterIncompatible.start, afterIncompatible.firstKey, 'incompatible refresh resets the zoom START bound to the full range')
+  assert.equal(afterIncompatible.end, afterIncompatible.lastKey, 'incompatible refresh resets the zoom END bound to the full range')
   assert.equal(await evalProbe(run, `!!document.querySelector('[data-testid="nav-echarts-pilot"] canvas')`), true, 'pilot re-renders after the refresh')
+  fixtureServer.charts.scenario = 'v2'
 
   // Parked responses: a period change held at the fixture leaves the previous
   // chart visibly loading, never looking current with new labels.
@@ -593,7 +651,17 @@ export async function runChartsC5Flow({
     VITE_ALLOCATION_ECHARTS_ENABLED: 'false',
     VITE_SECURITY_ECHARTS_ENABLED: 'false',
   })
+  // The no-flags artifact is the ACTUAL release candidate: built with every
+  // VITE_* flag genuinely absent so the reviewed default-on policy applies.
+  // Review round: this used to reuse the explicit all-on artifact, which
+  // never exercised the missing-flag behavior.
+  const noFlagsDir = await buildC5Artifact(frontendRoot, artifactsDir, 'app-c5-noflags', {
+    VITE_NAV_ECHARTS_ENABLED: null,
+    VITE_ALLOCATION_ECHARTS_ENABLED: null,
+    VITE_SECURITY_ECHARTS_ENABLED: null,
+  })
   const candidateServer = await startBuiltAppServer(candidateDir)
+  const noFlagsServer = await startBuiltAppServer(noFlagsDir)
   const navOnlyServer = await startBuiltAppServer(navOnlyDir)
   const session = `c5-candidate-${process.pid}`
   registerSession(session)
@@ -602,18 +670,20 @@ export async function runChartsC5Flow({
 
   try {
     await phaseALaziness({ candidateServer, fixtureServer, run })
-    await phaseBPolicyMatrix({ appOrigin, candidateServer, navOnlyServer, run })
+    await phaseBPolicyMatrix({ appOrigin, candidateServer, noFlagsServer, navOnlyServer, run })
 
-    // Phases C and D run on the candidate session; the CDP url drives the
-    // native-zoom and tooltip capture scripts.
+    // Phases C and D run against the NO-FLAGS candidate (the shipped
+    // default); the CDP url drives the native-zoom and tooltip capture
+    // scripts.
     const cdpInfo = await runAgentBrowser({ args: ['get', 'cdp-url'], context: 'charts c5 cdp', initScript, log, session })
     const cdpUrl = cdpInfo.cdpUrl ?? (cdpInfo.result && cdpInfo.result.cdpUrl)
     await mkdir(DESIGN_ASSETS, { recursive: true })
-    await phaseCCombinedAcceptance({ candidateServer, fixtureServer, run, cdpUrl, initScript, log, session })
-    await phaseDDelivery({ appOrigin, flagOffRoot, candidateServer, candidateDir, navOnlyServer, navOnlyDir, fixtureServer, run })
+    await phaseCCombinedAcceptance({ candidateServer: noFlagsServer, fixtureServer, run, cdpUrl, initScript, log, session })
+    await phaseDDelivery({ appOrigin, flagOffRoot, candidateServer: noFlagsServer, candidateDir: noFlagsDir, navOnlyServer, navOnlyDir, fixtureServer, run })
     await registerCaptures()
   } finally {
     await candidateServer.close().catch(() => undefined)
+    await noFlagsServer.close().catch(() => undefined)
     await navOnlyServer.close().catch(() => undefined)
   }
 }

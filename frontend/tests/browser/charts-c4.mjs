@@ -197,10 +197,12 @@ export async function runChartsC4PilotFlow({
   artifactsDir,
 }) {
   const pilotDir = resolve(artifactsDir, 'app-c4-pilot')
+  // The saved keys ARE the real VITE_* names — restoring shorthand keys would
+  // leak the pilot's flag values into every later artifact build in the run.
   const previous = {
-    allocation: process.env.VITE_ALLOCATION_ECHARTS_ENABLED,
-    security: process.env.VITE_SECURITY_ECHARTS_ENABLED,
-    nav: process.env.VITE_NAV_ECHARTS_ENABLED,
+    VITE_ALLOCATION_ECHARTS_ENABLED: process.env.VITE_ALLOCATION_ECHARTS_ENABLED,
+    VITE_SECURITY_ECHARTS_ENABLED: process.env.VITE_SECURITY_ECHARTS_ENABLED,
+    VITE_NAV_ECHARTS_ENABLED: process.env.VITE_NAV_ECHARTS_ENABLED,
   }
   process.env.VITE_ALLOCATION_ECHARTS_ENABLED = 'true'
   process.env.VITE_SECURITY_ECHARTS_ENABLED = 'true'

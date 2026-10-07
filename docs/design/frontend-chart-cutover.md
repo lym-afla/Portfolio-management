@@ -274,16 +274,19 @@ builds its own artifacts and drives, in order:
 - Phase A — fallback laziness (see task 1).
 - Phase B — flag matrix: NAV-only / all-on / no-flags / all-off rendered
   independence with per-artifact module-graph assertions.
-- Phase C — combined acceptance on the no-flags candidate: all six views
-  together (three solid pies + NAV pilot + stock price/position
-  histories); both independent IRR controls with their distinct names;
-  legend toggles issue zero requests and hide independently; keyboard
-  table row focus drives the shared inspection; native zoom selects move
-  and the real frequency refresh afterwards is exactly one request with
-  the zoom controls surviving (an incompatible Day document resets the
-  window — no leak); a response parked at the fixture server leaves the
-  previous chart rendering (never looking current, never an error) until
-  the replacement query lands (two requests total); the signed allocation
+- Phase C — combined acceptance on the NO-FLAGS candidate (see the review
+  round below): all six views together (three solid pies + NAV pilot +
+  stock price/position histories); both independent IRR controls with
+  their distinct names; legend toggles issue zero requests and hide
+  independently; keyboard table row focus drives the shared inspection;
+  zoom + both refresh kinds — a COMPATIBLE re-issued query (the date-range
+  From change keeps dateTo and every period key) must retain BOTH zoom
+  bounds, and an INCOMPATIBLE document (the `altkeys` fixture: same shape,
+  every period key shifted a day) must reset BOTH bounds to the new full
+  range — each exactly one request; a response parked at the fixture
+  server leaves the previous chart rendering (never looking current,
+  never an error) until the replacement query lands (two requests
+  total); the signed allocation
   state shows the certified negative-exposure reason with the complete
   signed table (`($25.00)`, `-25.0%`, unchanged denominator); malformed
   breakdown v2 is a section error with exactly one request and no retry;
@@ -416,6 +419,61 @@ directly. A commit alone is NOT a deployed or tagged rollback release; no
 deployment or release tag was created in this assignment, and only the
 owner can perform an actual deployment rollback.
 
+## 6b. Review round (draft PR #60)
+
+All three reviewer findings corrected; the fallback regression was
+reproduced RED first on the committed pre-fix sources and is GREEN after.
+
+1. **Allocation fallback choice lost after a failed legacy download.** The
+   legacy download-failure alert used to REPLACE the chart branches
+   (`v-if`/`v-else-if`), unmounting `AllocationChart` and destroying its
+   `fallbackActive` state — after clicking "Use previous chart", a failing
+   legacy-chunk download and then Retry, a FRESH AllocationChart mounted
+   the modern chart instead of the chosen legacy one. The alert now renders
+   ABOVE the branches (plain `v-if` sibling), so the chosen fallback
+   survives the download failure and its retry. Regression:
+   `src/features/charts/__tests__/legacyFallbackPersistence.spec.ts` mounts
+   the real `BreakdownChart` with gated modern-renderer and legacy-chunk
+   failures and asserts the incumbent bars — not a working modern chart —
+   render after the retry; observed RED on the pre-fix template (stashed
+   fix) at the `.bar-stub` assertion, GREEN after. The NAV and security
+   shells were audited for the same shape and are structurally safe (their
+   error UIs never unmount the component owning the fallback choice).
+2. **The "no-flags" candidate was not actually unflagged, and the env
+   restore leaked.** `run-smoke`'s base build saved/restored SHORTHAND keys
+   (`nav`/`allocation`/`security`), leaving the real `VITE_*` variables set
+   to `'false'` for the rest of the run; charts-c5 built its "no-flags"
+   candidate with all three flags explicitly `'true'`. Fixed: run-smoke
+   saves/restores the actual `VITE_*` names (the same shorthand bug in
+   `charts-c4`'s pilot restore is fixed too; `charts-c3`'s single-flag
+   restore was already correct), and charts-c5 builds a genuinely unflagged
+   `app-c5-noflags` artifact (every `VITE_*` key deleted for the build) —
+   phase B asserts it renders identically to the explicit all-on artifact,
+   and phases C and D (full acceptance and the modern-default delivery
+   measurement) now run against IT.
+3. **The zoom-refresh check was insufficient.** The old check clicked a
+   frequency and only asserted that controls and a canvas existed. Now: a
+   COMPATIBLE refresh re-issues the query through the date-range control
+   (From changes, dateTo and therefore the C2 document context and every
+   period key stay) and BOTH zoom bounds are compared afterwards and must
+   be retained; the INCOMPATIBLE case is separate and real — the fixture
+   gains an `altkeys` scenario (same document shape, every period key
+   shifted a day) so nothing from the previous viewport can map, and BOTH
+   bounds must reset to the new document's full range. Each refresh is
+   exactly one request.
+
+Review-round gates (all on the corrected tree, actual exit codes):
+`npm run lint` 0 (0 errors / 8 baseline warnings after removing one unused
+import from the new spec); `type-check`/`type-check:charts` 0;
+`test:unit` 99 files / 1003 passed (the new regression included) 0;
+`--case charts-c5` 0 (all phases, including the unflagged artifact and the
+new zoom assertions); `--case charts-c4` 0; `test:delivery` 0; FULL
+`test:browser` 18 routes x 4 viewports — 725 fixture requests, zero
+mismatches, zero route failures — 0; backend pytest 1386 passed / 10
+skipped, coverage 83.25% (0; no backend file touched). Measured delivery on
+the genuinely unflagged candidate: dashboard modern 483,948 gzip — still
+within the saved ~535 kB cutover target (run-to-run deltas are content-hash
+noise).
 ## 7. Deviations and limitations
 
 - The inherited `recovery`/`dialog-recovery` covered-click races did not

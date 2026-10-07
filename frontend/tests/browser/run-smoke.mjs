@@ -157,11 +157,13 @@ async function main() {
     // pre-existing case that exercises the incumbent/rollback behavior builds
     // its base artifact with an EXPLICIT all-false rollback configuration.
     // Flag-off assertions keep their strength; the unflagged candidate is
-    // built separately by the charts-c5 case.
+    // built separately by the charts-c5 case. The saved keys ARE the real
+    // VITE_* names — restoring shorthand keys here would leak 'false' into
+    // every later artifact build in the same run.
     const baseFlagState = {
-      nav: process.env.VITE_NAV_ECHARTS_ENABLED,
-      allocation: process.env.VITE_ALLOCATION_ECHARTS_ENABLED,
-      security: process.env.VITE_SECURITY_ECHARTS_ENABLED,
+      VITE_NAV_ECHARTS_ENABLED: process.env.VITE_NAV_ECHARTS_ENABLED,
+      VITE_ALLOCATION_ECHARTS_ENABLED: process.env.VITE_ALLOCATION_ECHARTS_ENABLED,
+      VITE_SECURITY_ECHARTS_ENABLED: process.env.VITE_SECURITY_ECHARTS_ENABLED,
     }
     process.env.VITE_NAV_ECHARTS_ENABLED = 'false'
     process.env.VITE_ALLOCATION_ECHARTS_ENABLED = 'false'

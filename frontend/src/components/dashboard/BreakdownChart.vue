@@ -13,15 +13,17 @@
                document, the chart tab is the gated modern composition (solid
                pie, or the certified reason when ineligible); the fallback
                slot keeps the incumbent bars one click away. C5a: the legacy
-               leaf (and its Chart.js runtime) loads only when it renders. -->
-          <template v-if="legacyLoadError">
-            <div class="chart-leaf-error" data-testid="allocation-legacy-load-error" role="alert">
-              <p>The chart could not be loaded: {{ legacyLoadError.message }}</p>
-              <button type="button" data-testid="allocation-legacy-load-retry" @click="retryLegacyLoad">Retry chart</button>
-            </div>
-          </template>
+               leaf (and its Chart.js runtime) loads only when it renders.
+               Review round: the download-failure alert renders ABOVE the
+               branches — replacing them would unmount AllocationChart and
+               destroy the user's fallback choice, so a retry would remount
+               the modern chart instead of the chosen legacy one. -->
+          <div v-if="legacyLoadError" class="chart-leaf-error" data-testid="allocation-legacy-load-error" role="alert">
+            <p>The chart could not be loaded: {{ legacyLoadError.message }}</p>
+            <button type="button" data-testid="allocation-legacy-load-retry" @click="retryLegacyLoad">Retry chart</button>
+          </div>
           <AllocationChart
-            v-else-if="chartDocument"
+            v-if="chartDocument"
             :document="chartDocument"
             :interaction="allocationInteraction"
             :requested="true"
