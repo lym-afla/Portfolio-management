@@ -2,7 +2,7 @@
 // app with each family flag false individually, then all three false, and
 // record each artifact's identity (file list + combined SHA-256) locally.
 import { createHash } from 'node:crypto'
-import { mkdir, readdir, readFile, writeFile, rm } from 'node:fs/promises'
+import { readdir, readFile, writeFile, rm } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { build } from 'vite'
 

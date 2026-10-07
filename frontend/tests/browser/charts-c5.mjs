@@ -146,7 +146,7 @@ async function phaseALaziness({ candidateServer, fixtureServer, run }) {
 }
 
 // Phase B: rendered independence across the release-flag artifacts.
-async function phaseBPolicyMatrix({ appOrigin, candidateServer, navOnlyServer, fixtureServer, run }) {
+async function phaseBPolicyMatrix({ appOrigin, candidateServer, navOnlyServer, run }) {
   // NAV-only release stage: NAV modern; allocations and security incumbent.
   await openDashboardNavOnly(run, navOnlyServer.origin)
   let state = await evalProbe(run, DASHBOARD_MODERN_STATE)
@@ -602,7 +602,7 @@ export async function runChartsC5Flow({
 
   try {
     await phaseALaziness({ candidateServer, fixtureServer, run })
-    await phaseBPolicyMatrix({ appOrigin, candidateServer, navOnlyServer, fixtureServer, run })
+    await phaseBPolicyMatrix({ appOrigin, candidateServer, navOnlyServer, run })
 
     // Phases C and D run on the candidate session; the CDP url drives the
     // native-zoom and tooltip capture scripts.
