@@ -5,6 +5,7 @@
        entry and are emitted as server period keys without event loops. -->
   <div ref="host" class="echarts-security">
     <VChart
+      ref="chart"
       class="echarts-security__chart"
       :option="option"
       :update-options="{ notMerge: true }"
@@ -15,7 +16,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { use } from 'echarts/core'
 import { LineChart } from 'echarts/charts'
 import {
@@ -54,10 +55,25 @@ const emit = defineEmits<{
 }>()
 
 const host = ref<HTMLElement | null>(null)
+// The wrapper exposes the ECharts instance; zoom normalization is the only
+// event we translate, and a disposed instance is never touched.
+const chart = ref<{ dispatchAction: (payload: Record<string, unknown>) => void } | null>(null)
 let disposed = false
 
 onUnmounted(() => {
   disposed = true
+})
+
+onMounted(() => {
+  // Browser-acceptance hook: the rendered-acceptance case drives showTip
+  // through the real instance so the tooltip containment probe exercises the
+  // production formatter and placement callback (headless pointer sweeps do
+  // not reliably trigger the canvas hit-test).
+  if (host.value) {
+    (host.value as unknown as Record<string, unknown>).__c4DispatchAction = (payload: Record<string, unknown>) => {
+      chart.value?.dispatchAction(payload)
+    }
+  }
 })
 
 const option = computed<EChartsOption>(() => {

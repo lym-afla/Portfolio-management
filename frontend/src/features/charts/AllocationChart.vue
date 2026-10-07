@@ -101,7 +101,6 @@ function forward(interaction: AllocationInteraction): void {
 <style scoped>
 .allocation-chart {
   position: relative;
-  min-height: 280px;
   min-width: 0;
   display: flex;
   flex-direction: column;

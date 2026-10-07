@@ -15,7 +15,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { use } from 'echarts/core'
 import { PieChart } from 'echarts/charts'
 import { AriaComponent, TooltipComponent } from 'echarts/components'
@@ -44,9 +44,21 @@ const emit = defineEmits<{
 }>()
 
 const host = ref<HTMLElement | null>(null)
-// The wrapper exposes the ECharts instance; highlight/downplay are the only
-// actions we dispatch, and a disposed instance is never touched.
+// The wrapper exposes the ECharts instance; highlight/downplay/showTip are
+// the only actions we dispatch, and a disposed instance is never touched.
 const chart = ref<{ dispatchAction: (payload: Record<string, unknown>) => void } | null>(null)
+
+onMounted(() => {
+  // Browser-acceptance hook: the rendered-acceptance case drives showTip
+  // through the real instance so the tooltip containment probe exercises the
+  // production formatter and placement callback (headless pointer sweeps do
+  // not reliably trigger the canvas hit-test).
+  if (host.value) {
+    (host.value as unknown as Record<string, unknown>).__c4DispatchAction = (payload: Record<string, unknown>) => {
+      chart.value?.dispatchAction(payload)
+    }
+  }
+})
 
 const option = computed<EChartsOption>(() => {
   try {
@@ -86,8 +98,9 @@ defineExpose({
 .echarts-allocation {
   position: relative;
   width: 100%;
-  height: 100%;
-  min-height: 280px;
+  /* A definite height: percentage heights collapse under min-height-only
+     parents inside the card's tab panel (the canvas would render 0px tall). */
+  height: 280px;
   min-width: 0;
   max-width: 100%;
   overflow: hidden;

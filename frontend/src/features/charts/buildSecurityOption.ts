@@ -140,7 +140,16 @@ export function buildSecurityOption(
     xAxis: {
       type: 'category',
       data: axisKeys,
-      axisLabel: { formatter: (value: string) => labelsByKey.get(value) ?? value },
+      axisLabel: {
+        formatter: (value: string) => {
+          const label = labelsByKey.get(value)
+          if (label) return label
+          if (value.startsWith('carry-forward:')) {
+            return `${value.slice('carry-forward:'.length)} · carried forward`
+          }
+          return value
+        },
+      },
     },
     yAxis: {
       type: 'value',

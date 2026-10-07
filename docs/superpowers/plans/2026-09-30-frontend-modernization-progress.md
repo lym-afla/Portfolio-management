@@ -12,12 +12,12 @@ Updated 6 October 2026. This is the durable, human-facing status tracker for the
 ## Current checkpoint
 
 - Implementation branch: `codex/frontend-modernization`.
-- Verified remote and synchronized local code checkpoint: `0167c409`, user-merged PR #57/D6. D7 is implemented on `codex/broker-security-extraction-d7` (base `49093a2d`) through `a2fc1dc9` (review round included) and awaits review as a draft PR.
-- D6 is integrated through final proposal head `17a196c8` (implementation `67b02326`). C3 remains default-off.
+- Verified remote and synchronized local code checkpoint: `8f1b0aba`, the PR #58/D7 integration plus the C4 handoff documents. C4 is implemented on `codex/allocation-security-charts-c4` (base `8f1b0aba`) as a draft PR awaiting review.
+- D6 is integrated through final proposal head `17a196c8` (implementation `67b02326`). C3 and the new C4 gates remain default-off.
 - The earlier `9b32d3d9` checkpoint was 34 commits ahead of main. That historical count is not a completion measure or the current branch count.
 - Financial fixes [#46](https://github.com/lym-afla/Portfolio-management/pull/46), [#47](https://github.com/lym-afla/Portfolio-management/pull/47) and [#48](https://github.com/lym-afla/Portfolio-management/pull/48) are merged into the implementation branch. Their source branches were deleted by the user.
 - Main has not received the modernization branch. No deployment performed.
-- 21 of 24 planned tasks are integrated. C4, C5 and D8 remain; main/release completion remains outstanding.
+- 21 of 24 planned tasks are integrated; C4 is implemented and awaiting review as a draft PR. C5 and D8 remain; main/release completion remains outstanding.
 - Last whole-foundation verification at `deea60df`: 262 frontend tests; 1261 backend tests / 10 skipped; both type checks, lint/build; 72 synthetic browser route profiles. These results predate the three merges. The combined `9b32d3d9` baseline has not been rerun in this planning turn.
 
 ## Task status
@@ -45,13 +45,13 @@ Updated 6 October 2026. This is the durable, human-facing status tracker for the
 | 19 | D5 | Visual system across route families | User-merged PR #56 at `7248a020`, final head `b5fc13d0`; see [D5 record](#d5-implementation-record) |
 | 20 | D6 | Transaction import workflow extraction | User-merged PR #57 at `0167c409`, reviewed through `17a196c8`; see [D6 record](#d6-implementation-record) |
 | 21 | D7 | Broker/security workflow extraction | User-merged PR #58 at `13a2129d`, reviewed through `531a56cf`; see D7 record |
-| 22 | C4 | Three solid allocation pies and security histories | Next; [handoff](2026-10-06-allocation-security-charts-c4-handoff.md) and [GLM prompt](2026-10-06-allocation-security-charts-c4-glm-prompt.md) prepared |
+| 22 | C4 | Three solid allocation pies and security histories | Implemented, awaiting review as a draft PR into `codex/frontend-modernization`; see [C4 record](#c4-implementation-record) |
 | 23 | C5 | ECharts cutover and Chart.js removal | Not implemented; gate last, retain fallback until acceptance |
 | 24 | D8 | All-page visual/keyboard/responsive/behavior QA and documentation | Not implemented |
 
 ## Next execution and boundaries
 
-D7 is integrated in PR #58. Execute [C4 allocation pies/security histories](2026-10-06-allocation-security-charts-c4-handoff.md) using its [GLM prompt](2026-10-06-allocation-security-charts-c4-glm-prompt.md). Prior handoffs are historical. Preserve D7 broker lifecycle/credential fixes, mobile pagination and its single security request owner.
+C4 is implemented on `codex/allocation-security-charts-c4` (base `8f1b0aba`) and stops for review as a draft PR into `codex/frontend-modernization`; review findings are corrected on that branch when they arrive. Preserve D7 broker lifecycle/credential fixes, mobile pagination and its single security request owner. After C4 integrates, C5 (default-on rollout and Chart.js removal) is next.
 
 C4 adds separate default-off renderer gates; NAV remains unchanged and default-off. C5 owns default-on release and Chart.js removal. C4 does not authorize backend/financial changes, main merge or deployment.
 
