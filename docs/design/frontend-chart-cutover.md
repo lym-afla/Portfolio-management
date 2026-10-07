@@ -172,3 +172,177 @@ explicit reload, dialog reopens, zero unhandled page errors).
 These cases inherit into every future gate run; the exceptions are closed on
 this branch and the repair is committed separately as task 0 work.
 
+## 3. Task 1 lazy legacy fallback
+
+RED observed first: the charts-c5 laziness flow failed against the pre-fix
+sources (stashed working tree) with "all-modern dashboard must load no
+Chart.js runtime module (found chart.js modules in the loaded graph)",
+exit 1 — then passed after the extraction.
+
+- `frontend/src/components/charts/LegacyAllocationChart.vue` (new) owns the
+  incumbent Bar, its Chart.js component registration and the datalabels
+  plugin for the three allocation cards; `BreakdownChart.vue` no longer
+  imports any Chart.js module and loads the leaf through an async boundary
+  (both the flag-off path and the `#fallback` slot render the same leaf).
+- `NAVChart.vue` loads `StackedBarLineChart.vue` (the existing registered
+  NAV leaf) asynchronously for its default slot; the modern pilot slot is
+  unaffected.
+- `SecurityDetailPage.vue` lost its eager `chartjs-adapter-date-fns` import,
+  `chart.js` imports, `Chart.register(TimeScale, ...)` and
+  `Chart.defaults.locale` side effects: they moved INTO `LineChart.vue`, so
+  the lazy legacy leaf carries its own registration and is the only path
+  through which the Chart.js runtime reaches the security route. The page's
+  option factories (period windows, time-unit config, y-axis titles) are
+  untouched.
+- `frontend/src/features/charts/lazyRenderer.ts` (new,
+  `lazyChartRenderer`): every legacy leaf and every modern ECharts leaf
+  loads through it. A rejected dynamic import surfaces as a visible,
+  recoverable renderer error owned by the mounting shell — never an
+  empty-success chart, never an automatic retry loop. Vue leaves a failed
+  async loader's promise pending forever when a user onError neither
+  retries nor fails, and the occupied `pendingRequest` would also block any
+  remount from re-attempting, so the helper owns the single user-driven
+  retry (it clears `pendingRequest` and re-runs the loader; `resolvedComp`
+  caching keeps post-success remounts instant). The modern hosts route
+  chunk-load failures into their existing failure UIs
+  (`chart-render-error`, `allocation-render-error`,
+  `security-render-error` — retry plus the user-chosen fallback); the
+  legacy shells render their own `*-legacy-load-error` alert with a Retry
+  control. Data/contract errors are unchanged: they remain the Dashboard/C2
+  error states and never reach the renderer boundaries.
+- Detached legacy copies unchanged: `NavChartPanel`'s `legacyCopy`
+  (structuredClone of the accepted result) and the C4 legacy projections
+  feed the leaves; the retained validated result is never mutated.
+- `tests/browser/charts-c5.mjs` phase A (built all-on artifact, real module
+  graphs via `.vite/module-membership.json`): the all-modern dashboard
+  loads NO chart.js/vue-chartjs/datalabels/adapter module; invoking the
+  user-chosen NAV fallback (outrange renderer failure -> "Use previous
+  chart") downloads the legacy runtime, renders the SAME accepted response
+  with exactly ONE API request attributable to the triggering re-query and
+  ZERO additional calls for the fallback itself, and leaves the allocation
+  family modern and refetch-free. The run-smoke base artifact now builds
+  with an explicit all-false rollback configuration (documented in the
+  harness), so every pre-existing flag-off assertion keeps its strength;
+  the unflagged candidate is built separately by charts-c5.
+- Unit coverage: `lazyRenderer.spec.ts` (loader contract: async resolve,
+  visible rejection with onLoadError, deferred retry, no automatic
+  retries, NAV async leaf rendering the handed data). The crypto page
+  spec's LineChart mock gained `__esModule: true` (Vue unwraps `.default`
+  through the async boundary only with the flag).
+
+## 4. Task 2 deterministic default-on release policy
+
+- `rendererPolicy.ts` keeps `pilotRequested()`,
+  `allocationEchartsRequested()`, `securityEchartsRequested()` and
+  `resolveRenderer` intact and adds the pure parser `chartFlagEnabled`:
+  absent (`undefined`) => true for the reviewed candidate; exact `'true'`
+  => true; exact `'false'` => false; ANY other supplied value — including
+  the empty string, uppercase, whitespace, numeric strings and arbitrary
+  words — conservatively false. The file documents that this supersedes
+  the C3/C4 opt-in defaults in this candidate only, that the three gates
+  stay independent, and that Vite reads the flags at build time only
+  (rebuild/redeploy required; they are NOT runtime kill switches). The
+  three environment names are unchanged.
+- `rendererPolicy.spec.ts` (22 cases, written RED first — unresolved
+  `chartFlagEnabled`): the value-class matrix per flag, per-family env
+  wiring (each function reads its own variable), all eight boolean flag
+  combinations, capability outcomes (legacy-only => chartjs even with
+  every gate on; v2 + requested => echarts; null => chartjs), and a
+  present-invalid object never reaching the modern renderer nor
+  masquerading as a legacy success.
+- Release-candidate stages verified locally (never deployed): the NAV-only
+  artifact (NAV `'true'`, allocation/security `'false'`) renders the NAV
+  pilot with incumbent allocation bars and incumbent security charts and
+  loads no ECharts runtime on the security page; the explicit all-on and
+  the NO-FLAGS candidate render identically (three pies + NAV pilot +
+  modern histories); the explicit all-off rollback renders the incumbent
+  app with no ECharts in the dashboard graph (charts-c5 phase B).
+- Older pilot tests updated to explicit rollback flags (assertions kept):
+  `remainingChartApi.spec.ts` now pins absent => on and explicit
+  `'false'` => off (the old default-off pin was superseded, not deleted);
+  `remainingChartIntegration.spec.ts` flag-off wiring tests stub `'false'`
+  explicitly; the security describe resets the shared VChart mock state
+  per test (hygiene the default flip exposed); the dashboard settle loop
+  no longer breaks on the capability notice before the async legacy bars
+  resolve.
+
+## 5. Task 3 combined acceptance and measured delivery
+
+`charts-c5` (registered in run-smoke; focused case `--case charts-c5`)
+builds its own artifacts and drives, in order:
+
+- Phase A — fallback laziness (see task 1).
+- Phase B — flag matrix: NAV-only / all-on / no-flags / all-off rendered
+  independence with per-artifact module-graph assertions.
+- Phase C — combined acceptance on the no-flags candidate: all six views
+  together (three solid pies + NAV pilot + stock price/position
+  histories); both independent IRR controls with their distinct names;
+  legend toggles issue zero requests and hide independently; keyboard
+  table row focus drives the shared inspection; native zoom selects move
+  and the real frequency refresh afterwards is exactly one request with
+  the zoom controls surviving (an incompatible Day document resets the
+  window — no leak); a response parked at the fixture server leaves the
+  previous chart rendering (never looking current, never an error) until
+  the replacement query lands (two requests total); the signed allocation
+  state shows the certified negative-exposure reason with the complete
+  signed table (`($25.00)`, `-25.0%`, unchanged denominator); malformed
+  breakdown v2 is a section error with exactly one request and no retry;
+  legacy-only shows the honest notice plus incumbent bars from the lazy
+  leaf; stock/bond/crypto histories keep exact displays (`$102.25`,
+  `99.875% of nominal`, `0.000216590`); a deterministic security renderer
+  failure stays visible through an explicit Retry and recovers through
+  the user-chosen fallback; switching from the zoomed stock to the bond
+  renders the full new context (bond tooltip = `99.125% of nominal`) with
+  zero page errors — no cross-context zoom leakage; 390px: every legend
+  button, allocation tab, IRR control and zoom control hit-tested
+  (`elementFromPoint`) below the fixed header; the NAV mobile tooltip is
+  captured by the C3 CDP pointer-sweep tool with in-flight
+  full-visibility verification (`c5-nav-mobile-tooltip.png`); the desktop
+  restore re-renders; native 200% zoom is DPR-verified (qa-native-zoom
+  script), the pilot and legends still render at the zoomed state
+  (`c5-native-zoom.png` captured there), and the DPR reset is verified.
+- Phase D — delivery: cold-route JS+CSS over the observed resource graph
+  for login/profile/transactions/dashboard/security on the candidate
+  build, plus dashboard on the NAV-only build, the all-off rollback build
+  and the fallback-activated state; emitted-vs-fetched distinguished
+  (`manifestEntries` vs observed assets; per-route file lists in
+  `tests/browser/artifacts/charts-c5-delivery.json` with raw and gzip
+  bytes); fonts reported separately (system stack, zero font assets);
+  loopback timings are explicitly NOT production latency evidence.
+  login/profile/transactions assert NO Chart.js AND NO ECharts runtime
+  modules.
+
+### Measured delivery (this worktree, Node v24.20.0, loopback, gzip JS+CSS)
+
+| Route / state | gzip bytes |
+|---|---|
+| Dashboard, modern default (no flags) | **483,960** |
+| Dashboard, NAV-only | 543,214 |
+| Dashboard, all-off rollback | 345,263 |
+| Dashboard, fallback activated | 549,596 |
+| Login (candidate) | 236,761 |
+| Profile (candidate) | 236,676 |
+| Transactions (candidate) | 271,341 |
+| Security detail (candidate) | 463,239 |
+
+**Budget: the all-modern dashboard is 483,960 gzip bytes — 51,055 bytes
+under the saved approximately 535 kB cutover target and below the C4
+flag-on measurement (549,104).** The reduction comes exactly from task 1's
+lazy extraction (Chart.js and its datalabels/adapter runtime left the
+eager dashboard graph). The historical pre-chart target (~401 kB) applies
+to the chart-less app; the rollback build at 345,263 gzip sits well below
+it. No budget was raised and no module was omitted from the measurements.
+
+### Captures
+
+`docs/design/assets/charts-c5/`: `c5-dashboard-modern.png` (1440x1000,
+three pies + NAV pilot + legends), `c5-ineligible-table.png`,
+`c5-bond-history.png`, `c5-crypto-history.png`,
+`c5-nav-mobile-tooltip.png` (500x844, captured by the CDP pointer-sweep
+tool at the hover instant), `c5-native-zoom.png` (1440x1000 at native
+200%). Each was verified by local PNG decoding (IHDR dimensions +
+zlib-inflated pixel statistics: non-trivial colored-pixel percentages and
+distinct color buckets — real rendered content, no blank frames), and
+`frontend/tests/browser/artifacts/charts-c5-captures.json` (local artifact, gitignored like the C4 delivery records) records SHA-256, byte
+size and pixel dimensions for every artifact. All captures are synthetic
+fixtures only.

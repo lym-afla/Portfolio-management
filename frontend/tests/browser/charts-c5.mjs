@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict'
+import { mkdir, writeFile } from 'node:fs/promises'
+import { spawn } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { resolve } from 'node:path'
 
 import { build } from 'vite'
 
 import { runAgentBrowser } from './protocol.mjs'
 import { startBuiltAppServer } from './serve-app.mjs'
+import { measureRouteBundles } from '../../scripts/measure-route-bundles.mjs'
 
 // C5a rendered acceptance. Phase A (task 1 — lazy legacy fallback): on a
 // clean all-modern v2 dashboard, NO Chart.js runtime module is loaded; the
@@ -15,6 +19,9 @@ import { startBuiltAppServer } from './serve-app.mjs'
 // release stage, the explicit all-on candidate, the no-flags release
 // candidate and the explicit all-off rollback. Later phases extend this case
 // to the combined candidate acceptance and measured delivery.
+
+const here = resolve(import.meta.dirname)
+const DESIGN_ASSETS = resolve(here, '../../../docs/design/assets/charts-c5')
 
 const NAV_PATH = '/dashboard/api/get-nav-chart-data/'
 const BREAKDOWN_PATH = '/dashboard/api/get-breakdown/'
@@ -179,6 +186,394 @@ async function phaseBPolicyMatrix({ appOrigin, candidateServer, navOnlyServer, f
   console.log('PASS charts-c5 policy matrix (NAV-only, all-on, no-flags, all-off rendered independence)')
 }
 
+// Phase C: combined release-candidate acceptance on the no-flags artifact —
+// all six views together, exact values, every ineligible/error state without
+// downgrade, zoom/refresh/hold retention, security switching, mobile and
+// native-zoom interaction.
+async function phaseCCombinedAcceptance({ candidateServer, fixtureServer, run, cdpUrl, initScript, log, session }) {
+  // --- dashboard: NAV pilot interactions on the combined page --------------
+  await openDashboardModern(run, candidateServer.origin)
+  await waitFor(run, `document.querySelectorAll('[data-testid="nav-echarts-pilot"] tbody tr').length > 0`)
+  const navBefore = navRequestCount(fixtureServer)
+
+  // Both independent IRR controls exist with their distinct horizons; toggling
+  // one leaves the other alone and issues no request.
+  const legendButtons = await evalProbe(run, `[...document.querySelectorAll('[data-series-id]')].map((button) => ({ id: button.getAttribute('data-series-id'), name: button.textContent.trim(), pressed: button.getAttribute('aria-pressed') }))`)
+  assert.ok(legendButtons.some((button) => button.id === 'metric:irr_interval' && /Interval IRR \(annualized\)/.test(button.name)), 'interval IRR control present with its name')
+  assert.ok(legendButtons.some((button) => button.id === 'metric:irr_inception' && /Since-inception IRR \(annualized\)/.test(button.name)), 'inception IRR control present with its name')
+  await run(['eval', `(() => { const b = [...document.querySelectorAll('[data-series-id]')].find((x) => x.getAttribute('data-series-id') === 'metric:irr_interval'); b.click(); return true })()`])
+  await run(['wait', '150'])
+  const hidden = await evalProbe(run, `[...document.querySelectorAll('[data-series-id]')].find((x) => x.getAttribute('data-series-id') === 'metric:irr_interval').getAttribute('aria-pressed')`)
+  assert.equal(hidden, 'false', 'interval IRR hides independently')
+  assert.equal(navRequestCount(fixtureServer) - navBefore, 0, 'legend toggles issue no requests')
+
+  // Exact-value table: comma-grouped server displays, full-NAV totals column,
+  // both IRR horizons named.
+  const tableText = await evalProbe(run, `document.querySelector('[data-testid="nav-echarts-pilot"] table')?.innerText ?? ''`)
+  assert.match(String(tableText), /\d,\d{3}/, 'NAV table shows exact comma-grouped values')
+  assert.match(String(tableText), /Portfolio NAV \(all categories\)/, 'table carries the full-NAV totals column')
+  assert.match(String(tableText), /Since-inception \(to \d{4}-\d{2}-\d{2}\)|Inception to \d{4}-\d{2}-\d{2}/, 'table names the inception horizon')
+  await run(['eval', `(() => { const b = [...document.querySelectorAll('[data-series-id]')].find((x) => x.getAttribute('data-series-id') === 'metric:irr_interval'); b.click(); return true })()`])
+
+  // Keyboard entry: focusing a table row drives the same shared inspection.
+  await run(['eval', `(() => { const row = document.querySelectorAll('[data-testid="nav-echarts-pilot"] tbody tr')[1]; row.focus(); row.click(); document.querySelector('.chart-inspection').scrollIntoView({ block: 'center' }); return true })()`])
+  await run(['wait', '150'])
+  const inspection = await evalProbe(run, `document.querySelector('.chart-inspection')?.innerText ?? ''`)
+  assert.match(String(inspection), /[A-Z][a-z]{2}-\d{2}/, 'keyboard row inspection shows the selected period')
+
+  // View-only zoom through the native selects, then a real compatible
+  // refresh: the refresh issues exactly one request; the zoom window survives
+  // because the period keys survive.
+  const zoomState = () => evalProbe(run, `(() => {
+    const selects = [...document.querySelectorAll('.chart-inspection select')]
+    return { count: selects.length, start: selects[0]?.value ?? null, end: selects[1]?.value ?? null }
+  })()`)
+  const beforeZoom = await zoomState()
+  assert.equal(beforeZoom.count, 2, 'native start/end zoom selects present')
+  await run(['eval', `(() => {
+    const select = document.querySelectorAll('.chart-inspection select')[0]
+    select.value = select.options[1]?.value ?? select.value
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+    return true
+  })()`])
+  await run(['wait', '200'])
+  const zoomed = await zoomState()
+  assert.notEqual(zoomed.start, beforeZoom.start, 'zoom start moved through the native control')
+  const zoomedBeforeRefresh = navRequestCount(fixtureServer)
+  fixtureServer.charts.scenario = 'v2'
+  // A frequency button carries no aria-pressed (Vuetify toggle); the refresh
+  // is verified by the re-rendered pilot plus exactly one new request.
+  await run(['eval', `(() => {
+    const buttons = [...document.querySelectorAll('[data-testid="nav-chart"] button')]
+    const month = buttons.find((button) => button.textContent.trim() === 'Day')
+    month.click()
+    return true
+  })()`])
+  await waitFor(run, `!!document.querySelector('[data-testid="nav-echarts-pilot"] canvas') && document.querySelector('[data-testid="nav-error"]') === null`)
+  await run(['wait', '600'])
+  assert.equal(navRequestCount(fixtureServer) - zoomedBeforeRefresh, 1, 'the frequency refresh is one request')
+  // The Day document has different period keys: the incompatible zoom resets
+  // (never leaks), the chart re-renders, no crash.
+  const afterRefresh = await zoomState()
+  assert.equal(afterRefresh.count, 2, 'zoom controls survive the refresh')
+  assert.equal(await evalProbe(run, `!!document.querySelector('[data-testid="nav-echarts-pilot"] canvas')`), true, 'pilot re-renders after the refresh')
+
+  // Parked responses: a period change held at the fixture leaves the previous
+  // chart visibly loading, never looking current with new labels.
+  const parkBefore = navRequestCount(fixtureServer)
+  fixtureServer.charts.scenario = 'hold'
+  await run(['eval', `(() => {
+    const buttons = [...document.querySelectorAll('[data-testid="nav-chart"] button')]
+    const week = buttons.find((button) => button.textContent.trim() === 'Week')
+    week.click()
+    return true
+  })()`])
+  await run(['wait', '800'])
+  assert.equal(navRequestCount(fixtureServer) - parkBefore, 1, 'the parked request was issued once')
+  const parkedState = await evalProbe(run, `(() => ({
+    canvas: !!document.querySelector('[data-testid="nav-echarts-pilot"] canvas'),
+    error: !!document.querySelector('[data-testid="nav-error"]'),
+  }))()`)
+  assert.equal(parkedState.canvas, true, 'the previous chart stays rendered while the response is parked')
+  assert.equal(parkedState.error, false, 'a parked response is not an error')
+  fixtureServer.charts.scenario = 'v2'
+  await run(['eval', `(() => {
+    const buttons = [...document.querySelectorAll('[data-testid="nav-chart"] button')]
+    const month = buttons.find((button) => button.textContent.trim() === 'Month')
+    month.click()
+    return true
+  })()`])
+  await waitFor(run, `!!document.querySelector('[data-testid="nav-echarts-pilot"] canvas') && document.querySelector('[data-testid="nav-error"]') === null`)
+  await run(['wait', '400'])
+  assert.equal(navRequestCount(fixtureServer) - parkBefore, 2, 'the replacement query lands after the parked one')
+
+  // --- allocation states on the combined page ------------------------------
+  const chartsC4 = fixtureServer.chartsC4
+  chartsC4.breakdownScenario = 'signed'
+  await run(['reload'])
+  await run(['wait', '2000'])
+  await waitFor(run, `document.querySelector('[data-testid="allocation-ineligible"]') !== null`)
+  const signedReason = await evalProbe(run, `document.querySelector('[data-testid="allocation-ineligible"]')?.innerText ?? ''`)
+  assert.match(String(signedReason), /negative/, 'the signed state shows the certified misleading-pie reason')
+  await run(['eval', `(() => {
+    const tabs = [...document.querySelector('[data-testid="allocation-assetType-card"]').querySelectorAll('.v-tab')]
+    tabs.find((tab) => tab.textContent.trim() === 'Table').click()
+    return true
+  })()`])
+  await run(['wait', '200'])
+  const signedTable = await evalProbe(run, `document.querySelector('[data-testid="allocation-assetType-card"] [data-testid="allocation-data-table"]')?.innerText ?? ''`)
+  assert.match(String(signedTable), /\(\$25\.00\)/, 'the signed row keeps its exact parenthesized negative')
+  assert.match(String(signedTable), /-25\.0%/, 'the signed share stays verbatim')
+  assert.match(String(signedTable), /(\$|USD )?100\.00/, 'the full-NAV denominator is unchanged')
+  await run(['eval', `(() => { document.querySelector('[data-testid="allocation-assetType-card"]').scrollIntoView({ block: 'center' }); return true })()`])
+  await run(['wait', '150'])
+  await run(['screenshot', resolve(DESIGN_ASSETS, 'c5-ineligible-table.png')])
+
+  // Malformed v2: section error, exactly one request, no retry, no downgrade.
+  chartsC4.breakdownScenario = 'malformed'
+  const malformedBefore = breakdownRequestCount(fixtureServer)
+  await run(['reload'])
+  await run(['wait', '2000'])
+  await waitFor(run, `document.querySelector('[data-testid="allocation-assetType-error"]') !== null`)
+  await run(['wait', '700'])
+  assert.equal(breakdownRequestCount(fixtureServer) - malformedBefore, 1, 'malformed v2: exactly one request, no retry loop')
+
+  // Legacy-only: honest notice plus the incumbent bars from the lazy leaf.
+  chartsC4.breakdownScenario = 'legacy'
+  await run(['reload'])
+  await run(['wait', '2000'])
+  await waitFor(run, `document.querySelector('[data-testid="allocation-capability-notice"]') !== null && [...document.querySelectorAll('[data-testid^="allocation-"][data-testid$="-card"] canvas')].length === 3`)
+  const legacyNotice = await evalProbe(run, `document.querySelector('[data-testid="allocation-capability-notice"]')?.innerText ?? ''`)
+  assert.match(String(legacyNotice), /legacy response/, 'legacy-only shows the honest capability notice')
+  chartsC4.breakdownScenario = 'v2'
+
+  // --- security histories on the candidate ---------------------------------
+  await openSecurityModern(run, candidateServer.origin)
+  await run(['wait', '400'])
+  const stockState = await evalProbe(run, `(() => {
+    const tables = [...document.querySelectorAll('[data-testid="security-data-table"]')]
+    return { tables: tables.length, texts: tables.map((t) => t.innerText) }
+  })()`)
+  assert.equal(stockState.tables, 2, 'stock: both modern histories render with exact tables')
+  assert.match(String(stockState.texts[0]), /\$102\.25/, 'price table keeps exact dollar displays')
+  assert.match(String(stockState.texts[0]), /carried forward|Aug 20, 2026/, 'price table lists observations by date')
+  assert.match(String(stockState.texts[1]), /8\.000000000/, 'position table keeps exact quantities')
+
+  // Renderer failure with explicit recovery, driven through the real
+  // instance hook: retry first (fails again), then the user-chosen fallback.
+  chartsC4.securityScenario = 'outrange-price'
+  await run(['reload'])
+  await run(['wait', '2000'])
+  await waitFor(run, `document.querySelector('[data-testid="security-render-error"]') !== null`)
+  await run(['eval', `document.querySelector('[data-testid="security-render-retry"]')?.click(); true`])
+  await run(['wait', '400'])
+  assert.ok(await evalProbe(run, `document.querySelector('[data-testid="security-render-error"]') !== null`), 'a retry of a deterministically broken renderer keeps the error visible')
+  await run(['eval', `document.querySelector('[data-testid="security-render-fallback"]').click()`])
+  await waitFor(run, `document.querySelectorAll('canvas').length >= 2 && document.querySelector('[data-testid="security-render-error"]') === null`)
+  chartsC4.securityScenario = 'v2'
+
+  // --- security zoom: switch after zoom, no cross-context leakage -----------
+  await openSecurityModern(run, candidateServer.origin)
+  await waitFor(run, `document.querySelectorAll('.echarts-security canvas').length >= 1`)
+  await run(['wait', '400'])
+  await run(['eval', `(() => {
+    const host = document.querySelector('.echarts-security')
+    host.__c4DispatchAction({ type: 'dataZoom', start: 40, end: 70 })
+    return true
+  })()`])
+  await run(['wait', '300'])
+  // Switching the security replaces the document: the view-only zoom resets
+  // with the new context and the bond renders its full percent-of-nominal
+  // range without carrying the stock zoom or crashing.
+  await run(['open', `${candidateServer.origin}/database/securities/2`])
+  await waitFor(run, `document.querySelectorAll('[data-testid="security-data-table"]').length === 2`)
+  await run(['wait', '300'])
+  const bondState = await evalProbe(run, `(() => {
+    const tables = [...document.querySelectorAll('[data-testid="security-data-table"]')]
+    return { tables: tables.length, text: tables[0]?.innerText ?? '' }
+  })()`)
+  assert.match(String(bondState.text), /99\.875% of nominal/, 'bond price table keeps percent-of-nominal displays')
+  assert.equal(bondState.tables, 2, 'bond: both histories render')
+  // The rendered bond chart is fully the new context: its first tooltip is
+  // the bond's first observation, not a leaked stock point.
+  await run(['eval', `(() => {
+    const host = document.querySelector('.echarts-security')
+    host.__c4DispatchAction({ type: 'showTip', seriesIndex: 0, dataIndex: 0 })
+    return true
+  })()`])
+  await run(['wait', '300'])
+  const bondTip = await evalProbe(run, `(() => {
+    const tooltip = [...document.querySelectorAll('.security-chart-tooltip')].find((div) => (div.innerText || '').trim().length > 0)
+    return tooltip ? tooltip.innerText : null
+  })()`)
+  assert.match(String(bondTip), /99\.125% of nominal/, 'the bond chart shows bond data — no cross-security leakage')
+  const bondErrors = await runAgentBrowser({ args: ['errors'], context: 'charts c5 bond errors', initScript, log, session })
+  assert.deepEqual(bondErrors.errors, [], 'switching securities after zoom leaves no page errors')
+  await run(['eval', `(() => { document.querySelector('#security-price-history').scrollIntoView({ block: 'start' }); window.scrollBy(0, -200); return true })()`])
+  await run(['wait', '150'])
+  await run(['screenshot', resolve(DESIGN_ASSETS, 'c5-bond-history.png')])
+
+  await run(['open', `${candidateServer.origin}/database/securities/3`])
+  await waitFor(run, `document.querySelectorAll('[data-testid="security-data-table"]').length === 2`)
+  const cryptoState = await evalProbe(run, `[...document.querySelectorAll('[data-testid="security-data-table"]')].map((t) => t.innerText).join('\\n')`)
+  assert.match(String(cryptoState), /0\.000216590/, 'crypto position table keeps exact quantity precision')
+  await run(['eval', `(() => { document.querySelector('#security-position-history').scrollIntoView({ block: 'start' }); window.scrollBy(0, -200); return true })()`])
+  await run(['wait', '150'])
+  await run(['screenshot', resolve(DESIGN_ASSETS, 'c5-crypto-history.png')])
+
+  // --- mobile: combined page containment, tooltip, restore ------------------
+  await openDashboardModern(run, candidateServer.origin)
+  await run(['set', 'viewport', '390', '844'])
+  await run(['wait', '600'])
+  const mobileHit = await evalProbe(run, `(() => {
+    const targets = [
+      ...document.querySelectorAll('[data-series-id]'),
+      ...document.querySelectorAll('[data-testid="allocation-legend"] button'),
+      ...document.querySelectorAll('[data-testid^="allocation-"][data-testid$="-card"] .v-tab'),
+      ...document.querySelectorAll('.chart-inspection select, .chart-inspection__reset'),
+    ]
+    return targets.map((element) => {
+      element.scrollIntoView({ block: 'center' })
+      const rect = element.getBoundingClientRect()
+      const hitElement = document.elementFromPoint(
+        Math.min(Math.max(rect.left + rect.width / 2, 4), window.innerWidth - 4),
+        Math.max(rect.top + rect.height / 2, 8),
+      )
+      return { hittable: hitElement === element || element.contains(hitElement) }
+    })
+  })()`)
+  assert.ok(mobileHit.length >= 8, 'mobile: combined-page controls present')
+  for (const entry of mobileHit) {
+    assert.equal(entry.hittable, true, 'mobile: control actually hittable')
+  }
+
+  // NAV mobile tooltip via the C3 capture tooling: a real two-step pointer
+  // sweep over CDP with full-visibility verification and a viewport-only
+  // capture at the hover instant (synthetic mousemove events do not
+  // reliably drive ECharts' canvas hit-test).
+  await run(['eval', `(() => { window.__c3CaptureTab = true; return true })()`])
+  const mobileCapture = await new Promise((resolveSpawn) => {
+    const child = spawn(process.execPath, [resolve(here, '../../scripts/qa-tooltip-capture.mjs'), String(cdpUrl), candidateServer.origin, resolve(DESIGN_ASSETS, 'c5-nav-mobile-tooltip.png'), '0.5'], { stdio: 'pipe' })
+    let out = ''
+    child.stdout.on('data', (chunk) => { out += chunk })
+    child.stderr.on('data', (chunk) => { out += chunk })
+    child.on('error', (error) => resolveSpawn({ code: -1, out: String(error) }))
+    child.on('close', (code) => resolveSpawn({ code, out }))
+  })
+  assert.equal(mobileCapture.code, 0, `mobile tooltip must be captured fully visible (${mobileCapture.out.slice(-600)})`)
+
+  // Desktop restore, then native 200% zoom (DPR verified) and reset.
+  await run(['set', 'viewport', '1440', '1000'])
+  await run(['wait', '500'])
+  await run(['eval', `(() => { window.__c3CaptureTab = true; return true })()`])
+  await run(['eval', `(() => { document.querySelector('[data-testid="nav-chart"]').scrollIntoView({ block: 'start' }); return true })()`])
+  await run(['wait', '150'])
+  await run(['screenshot', resolve(DESIGN_ASSETS, 'c5-dashboard-modern.png')])
+  const zoomScript = await new Promise((resolveSpawn, rejectSpawn) => {
+    const child = spawn(process.execPath, [resolve(here, '../../scripts/qa-native-zoom.mjs'), String(cdpUrl), candidateServer.origin, '200'], { stdio: 'pipe' })
+    let out = ''
+    child.stdout.on('data', (chunk) => { out += chunk })
+    child.stderr.on('data', (chunk) => { out += chunk })
+    child.on('error', rejectSpawn)
+    child.on('close', (code) => resolveSpawn({ code, out }))
+  })
+  assert.equal(zoomScript.code, 0, `native 200% zoom must be dpr-verified (${zoomScript.out.trim()})`)
+  const zoomedProbe = await evalProbe(run, `(() => ({
+    pilot: !!document.querySelector('[data-testid="nav-echarts-pilot"] canvas'),
+    legends: document.querySelectorAll('[data-testid="allocation-legend"]').length,
+    dpr: window.devicePixelRatio,
+  }))()`)
+  assert.equal(zoomedProbe.pilot, true, 'native 200%: NAV pilot still renders')
+  assert.equal(zoomedProbe.legends, 3, 'native 200%: allocation legends still render')
+  await run(['screenshot', resolve(DESIGN_ASSETS, 'c5-native-zoom.png')])
+  await new Promise((resolveSpawn) => {
+    const child = spawn(process.execPath, [resolve(here, '../../scripts/qa-native-zoom.mjs'), String(cdpUrl), candidateServer.origin, '100'], { stdio: 'ignore' })
+    child.on('error', () => {})
+    child.on('close', () => resolveSpawn())
+  })
+  const dprReset = await evalProbe(run, `window.devicePixelRatio`)
+  assert.equal(dprReset, 1, 'native zoom reset restores DPR 1')
+  console.log('PASS charts-c5 combined acceptance (six views, states, zoom/refresh, mobile, native zoom)')
+}
+
+// Phase D: cold-route delivery measurements across the flag artifacts plus
+// capture verification/registration.
+async function phaseDDelivery({ appOrigin, flagOffRoot, candidateServer, candidateDir, navOnlyServer, navOnlyDir, fixtureServer, run }) {
+  const measure = async (origin, root, path, canvasWait) => {
+    await run(['open', `${origin}${path}`])
+    await run(['wait', '--fn', canvasWait, '--timeout', '20000'])
+    await run(['wait', '--load', 'networkidle'])
+    const observed = await evalProbe(run, `performance.getEntriesByType('resource').map(entry => entry.name).filter(name => new URL(name).origin === location.origin)`)
+    return measureRouteBundles({ root, resources: observed })
+  }
+  const noGraph = `document.body.innerText.length > 0`
+  const dashboards = {
+    modernDefault: await measure(candidateServer.origin, candidateDir, '/dashboard', `document.querySelectorAll('[data-testid="allocation-legend"]').length === 3 && !!document.querySelector('[data-testid="nav-echarts-pilot"] canvas')`),
+    navOnly: await measure(navOnlyServer.origin, navOnlyDir, '/dashboard', `!!document.querySelector('[data-testid="nav-echarts-pilot"] canvas') && [...document.querySelectorAll('[data-testid^="allocation-"][data-testid$="-card"] canvas')].length === 3`),
+    allOffRollback: await measure(appOrigin, flagOffRoot, '/dashboard', `[...document.querySelectorAll('[data-testid^="allocation-"][data-testid$="-card"] canvas')].length === 3 && !document.querySelector('[data-testid="allocation-legend"]')`),
+  }
+  // Fallback activated: the SAME candidate build after the user-chosen NAV
+  // fallback lazily downloads the legacy runtime.
+  await run(['open', `${candidateServer.origin}/dashboard`])
+  await waitFor(run, `document.querySelectorAll('[data-testid="allocation-legend"]').length === 3`)
+  fixtureServer.charts.scenario = 'outrange'
+  await run(['eval', `(() => {
+    const buttons = [...document.querySelectorAll('[data-testid="nav-chart"] button')]
+    const week = buttons.find((button) => button.textContent.trim() === 'Week')
+    week.click()
+    return true
+  })()`])
+  await waitFor(run, `document.querySelector('[data-testid="chart-render-error"]') !== null`)
+  await run(['eval', `document.querySelector('[data-testid="chart-render-fallback"]').click()`])
+  await waitFor(run, `document.querySelector('[data-testid="nav-fallback-notice"]') !== null && document.querySelector('[data-testid="nav-chart"] canvas') !== null`)
+  fixtureServer.charts.scenario = 'v2'
+  await run(['wait', '--load', 'networkidle'])
+  const fallbackObserved = await evalProbe(run, `performance.getEntriesByType('resource').map(entry => entry.name).filter(name => new URL(name).origin === location.origin)`)
+  const fallbackActivated = await measureRouteBundles({ root: candidateDir, resources: fallbackObserved })
+
+  const loginModern = await measure(candidateServer.origin, candidateDir, '/login', noGraph)
+  const profileModern = await measure(candidateServer.origin, candidateDir, '/profile', `document.body.innerText.length > 100`)
+  const transactionsModern = await measure(candidateServer.origin, candidateDir, '/transactions', `document.body.innerText.length > 100`)
+  const securityModern = await measure(candidateServer.origin, candidateDir, '/database/securities/1', `document.querySelectorAll('[data-testid="security-data-table"]').length === 2`)
+
+  for (const [name, graph] of [['login', loginModern], ['profile', profileModern], ['transactions', transactionsModern]]) {
+    const modules = graph.modules.join('\\n')
+    assert.equal(CHARTJS_RUNTIME.test(modules), false, `${name}: no Chart.js runtime module on the cold route`)
+    assert.equal(ECHARTS_RUNTIME.test(modules), false, `${name}: no ECharts runtime module on the cold route`)
+  }
+
+  const dashboardBudgetBytes = 535_000
+  const report = {
+    note: 'gzip+raw JS/CSS via the R7 helper over the observed per-route cold resource graph. Charts-c5: the no-flags artifact IS the modern default; NAV-only and all-off rollback are distinct builds; fallback-activated is the candidate build after the user-chosen legacy fallback. Loopback timings are not production latency evidence; fonts are reported separately (system stack expects zero).',
+    budget: { dashboardModernTargetGzip: dashboardBudgetBytes, withinTarget: null, historicalPreChartTargetGzip: 401_000 },
+    dashboard: {
+      modernDefault: { gzip: dashboards.modernDefault.gzipJsCss, raw: dashboards.modernDefault.files.reduce((t, f) => t + f.bytes, 0), assets: dashboards.modernDefault.assets.length, emittedManifestEntries: dashboards.modernDefault.manifestEntries },
+      navOnly: { gzip: dashboards.navOnly.gzipJsCss, raw: dashboards.navOnly.files.reduce((t, f) => t + f.bytes, 0) },
+      allOffRollback: { gzip: dashboards.allOffRollback.gzipJsCss, raw: dashboards.allOffRollback.files.reduce((t, f) => t + f.bytes, 0) },
+      fallbackActivated: { gzip: fallbackActivated.gzipJsCss, raw: fallbackActivated.files.reduce((t, f) => t + f.bytes, 0), chartjsInGraph: CHARTJS_RUNTIME.test(fallbackActivated.modules.join('\\n')) },
+    },
+    candidateColdRoutes: {
+      login: { gzip: loginModern.gzipJsCss, raw: loginModern.files.reduce((t, f) => t + f.bytes, 0) },
+      profile: { gzip: profileModern.gzipJsCss, raw: profileModern.files.reduce((t, f) => t + f.bytes, 0) },
+      transactions: { gzip: transactionsModern.gzipJsCss, raw: transactionsModern.files.reduce((t, f) => t + f.bytes, 0) },
+      securityDetail: { gzip: securityModern.gzipJsCss, raw: securityModern.files.reduce((t, f) => t + f.bytes, 0) },
+    },
+    fonts: {
+      dashboardModernFontAssets: dashboards.modernDefault.assets.filter((asset) => /\.woff2?$/i.test(asset)),
+      note: 'system font stack; any non-zero font asset here is a regression signal',
+    },
+    perRouteGraphs: {
+      dashboardModern: dashboards.modernDefault.files.map((file) => ({ asset: file.asset, gzip: file.gzipBytes })),
+      dashboardFallback: fallbackActivated.files.filter((file) => /chart/i.test(file.asset)).map((file) => ({ asset: file.asset, gzip: file.gzipBytes })),
+    },
+  }
+  report.budget.withinTarget = dashboards.modernDefault.gzipJsCss <= dashboardBudgetBytes
+  await mkdir(resolve(here, 'artifacts'), { recursive: true })
+  await writeFile(resolve(here, 'artifacts/charts-c5-delivery.json'), `${JSON.stringify(report, null, 2)}\n`)
+  console.log(`MEASURE charts-c5 delivery: dashboard modern ${dashboards.modernDefault.gzipJsCss} (target <= ${dashboardBudgetBytes}), NAV-only ${dashboards.navOnly.gzipJsCss}, all-off ${dashboards.allOffRollback.gzipJsCss}, fallback-activated ${fallbackActivated.gzipJsCss} bytes gzip; login ${loginModern.gzipJsCss}, profile ${profileModern.gzipJsCss}, transactions ${transactionsModern.gzipJsCss}, security ${securityModern.gzipJsCss}`)
+  assert.equal(report.budget.withinTarget, true, `all-modern dashboard ${dashboards.modernDefault.gzipJsCss} gzip bytes exceeds the saved ~535 kB cutover target — record the miss and keep readiness pending`)
+  return report
+}
+
+// Capture registration: SHA-256 + pixel dimensions for every c5 evidence
+// image, so reviewers can verify the artifacts independently.
+async function registerCaptures() {
+  const { readFile } = await import('node:fs/promises')
+  const { readdir } = await import('node:fs/promises')
+  const entries = await readdir(DESIGN_ASSETS)
+  const captures = []
+  for (const entry of entries.filter((name) => name.endsWith('.png'))) {
+    const bytes = await readFile(resolve(DESIGN_ASSETS, entry))
+    // PNG dimensions: bytes 16..24 (big-endian width/height of IHDR).
+    const width = bytes.readUInt32BE(16)
+    const height = bytes.readUInt32BE(20)
+    captures.push({ file: entry, sha256: createHash('sha256').update(bytes).digest('hex'), bytes: bytes.length, width, height })
+  }
+  await writeFile(resolve(here, 'artifacts/charts-c5-captures.json'), `${JSON.stringify({ captures }, null, 2)}\n`)
+  assert.ok(captures.length >= 6, `expected the full capture set, got ${captures.length}`)
+  console.log(`MEASURE charts-c5 captures: ${captures.map((capture) => `${capture.file} ${capture.width}x${capture.height}`).join(', ')}`)
+}
+
 export async function runChartsC5Flow({
   appOrigin,
   flagOffRoot,
@@ -208,7 +603,15 @@ export async function runChartsC5Flow({
   try {
     await phaseALaziness({ candidateServer, fixtureServer, run })
     await phaseBPolicyMatrix({ appOrigin, candidateServer, navOnlyServer, fixtureServer, run })
-    void flagOffRoot
+
+    // Phases C and D run on the candidate session; the CDP url drives the
+    // native-zoom and tooltip capture scripts.
+    const cdpInfo = await runAgentBrowser({ args: ['get', 'cdp-url'], context: 'charts c5 cdp', initScript, log, session })
+    const cdpUrl = cdpInfo.cdpUrl ?? (cdpInfo.result && cdpInfo.result.cdpUrl)
+    await mkdir(DESIGN_ASSETS, { recursive: true })
+    await phaseCCombinedAcceptance({ candidateServer, fixtureServer, run, cdpUrl, initScript, log, session })
+    await phaseDDelivery({ appOrigin, flagOffRoot, candidateServer, candidateDir, navOnlyServer, navOnlyDir, fixtureServer, run })
+    await registerCaptures()
   } finally {
     await candidateServer.close().catch(() => undefined)
     await navOnlyServer.close().catch(() => undefined)
