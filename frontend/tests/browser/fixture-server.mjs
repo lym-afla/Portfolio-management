@@ -240,9 +240,12 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
     }
     return envelope
   }
-  const c4SecurityContext = (accountIds) => ({
+  // The C4 flow never selects a local account filter, so the document scope
+  // must be empty (fetchSecurityHistory strictly validates the scope since
+  // the reviewer round).
+  const c4SecurityContext = () => ({
     accountSelection: { type: 'all', id: null },
-    accountIds: accountIds ?? [],
+    accountIds: [],
     effectiveDate: '2026-09-08',
     currency: 'USD',
     digits: 2,
@@ -272,7 +275,7 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
       version: 2,
       kind,
       outcome: 'ready',
-      context: c4SecurityContext(price ? [] : [1]),
+      context: c4SecurityContext(),
       security: { id: securityId, instrumentType: 'Stock' },
       periods: rows.map((row) => c4Period(row.key, row.iso)),
       series: [

@@ -16,7 +16,8 @@ import { usePortfolioContextStore } from '@/stores/portfolioContext'
 import { useAppStore } from '@/stores/app'
 import { deferred } from '../../../../tests/unit/helpers/deferred'
 import type { AllocationResult, ChartDocument } from '../contracts'
-import { allocationFixture, securityFixture } from './fixtures'
+import { allocationFixture } from './fixtures'
+import { securityFixture as securityDocumentFixture } from './securityFixtures'
 import { ChartContextMismatchError } from '../chartApi'
 import { useBreakdownChart } from '../useBreakdownChart'
 import { useSecurityDetail } from '@/features/securities/useSecurityDetail'
@@ -136,11 +137,20 @@ function securityWire(
   kind: 'price' | 'position',
   corrupt?: (document: ChartDocument) => void,
 ): Record<string, unknown> {
-  const document = securityFixture(
+  // The price history carries three observations so the plotted axis (with
+  // the carry-forward endpoint) has four keys for the zoom-mapping cases.
+  const document = securityDocumentFixture({
     kind,
-    kind === 'price' ? 'percent_of_nominal' : 'quantity',
-    kind === 'price' ? '98.500000' : '0.000116590',
-  )
+    unit: kind === 'price' ? 'percent_of_nominal' : 'quantity',
+    value: kind === 'price' ? '98.500000' : '0.000116590',
+    points: kind === 'price'
+      ? [
+          { value: '98.125000', plotValue: '98.125000', status: 'ok', reason: 'observed', display: '98.125% of nominal' },
+          { value: '98.500000', plotValue: '98.500000', status: 'ok', reason: 'observed', display: '98.5% of nominal' },
+          { value: '99.125000', plotValue: '99.125000', status: 'ok', reason: 'observed', display: '99.125% of nominal' },
+        ]
+      : undefined,
+  })
   // The owner queries the route security (id 1); retarget the fixture identity.
   const withContext: ChartDocument = {
     ...document,
@@ -157,7 +167,13 @@ function securityWire(
   }
   corrupt?.(withContext)
   return {
-    legacy: kind === 'price' ? [{ date: '2026-01-31', price: 98.5 }] : [{ date: '2026-01-31', position: '0.000116590' }],
+    legacy: kind === 'price'
+      ? [
+          { date: '2026-01-31', price: 98.125 },
+          { date: '2026-01-31', price: 98.5 },
+          { date: '2026-01-31', price: 99.125 },
+        ]
+      : [{ date: '2026-01-31', position: '0.000116590' }],
     chartV2: withContext,
   }
 }
@@ -339,7 +355,11 @@ describe('useSecurityDetail over the v2 history transport', () => {
     expect(priceCalls[0].params).toEqual({ chart_contract: 2, period: '1Y' })
     expect(positionCalls[0].params).toEqual({ chart_contract: 2, period: '1Y' })
     // Legacy projections stay identical for the incumbent charts.
-    expect(detail.priceHistory.value).toEqual([{ date: '2026-01-31', price: 98.5 }])
+    expect(detail.priceHistory.value).toEqual([
+      { date: '2026-01-31', price: 98.125 },
+      { date: '2026-01-31', price: 98.5 },
+      { date: '2026-01-31', price: 99.125 },
+    ])
     expect(detail.positionHistory.value).toEqual([{ date: '2026-01-31', position: '0.000116590' }])
   })
 
@@ -535,9 +555,6 @@ describe('SecurityDetailPage security-history wiring', () => {
     expect(priceCalls).toHaveLength(1)
     expect(positionCalls).toHaveLength(1)
     expect(pieState.captured.length).toBe(before)
-    const pageHtml = wrapper.html()
-    console.log('PAGE has-skeleton:', pageHtml.includes('skeleton'), 'has-price-history:', pageHtml.includes('Price History'), 'has-alert:', (pageHtml.match(/Unable to load/g) || []).length, 'has-bar-stub:', pageHtml.includes('bar-stub'), 'has-line:', pageHtml.includes('line-chart'))
-    console.log('PAGE snippet:', pageHtml.slice(pageHtml.indexOf('Price History') - 50, pageHtml.indexOf('Price History') + 500))
     expect(wrapper.findAll('.bar-stub').length).toBeGreaterThanOrEqual(2)
     expect(wrapper.find('[data-testid="security-data-table"]').exists()).toBe(false)
     wrapper.unmount()
@@ -556,6 +573,61 @@ describe('SecurityDetailPage security-history wiring', () => {
       expect(tables).toHaveLength(2)
       expect(tables[0].text()).toContain('98.5% of nominal')
       expect(tables[1].text()).toContain('0.000116590')
+      wrapper.unmount()
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  }, 20000)
+
+  it('retains and reconciles security zoom through the page interaction state', async () => {
+    vi.stubEnv('VITE_SECURITY_ECHARTS_ENABLED', 'true')
+    try {
+      const wrapper = await mountSecurityPage()
+      const chartStub = wrapper.findAllComponents({ name: 'VChart' })[0]
+      // The stock price axis: three observed points plus the carry-forward
+      // endpoint (four plotted keys). 34%/67% map to row:2 and row:3.
+      chartStub.vm.$emit('datazoom', { start: 34, end: 67 })
+      await flush()
+      await flush()
+      const option = chartStub.props('option') as { dataZoom: Array<{ start: number; end: number }> }
+      expect(option.dataZoom[0].start).toBeCloseTo(33.33, 1)
+      expect(option.dataZoom[0].end).toBeCloseTo(66.67, 1)
+      // A compatible refresh (the fixture answers the same server keys)
+      // keeps the viewport on the re-rendered chart.
+      const refresh = wrapper.findAllComponents({ name: 'VChart' })[0]
+      expect((refresh.props('option') as { dataZoom: Array<{ start: number }> }).dataZoom[0].start).toBeCloseTo(33.33, 1)
+      wrapper.unmount()
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  }, 20000)
+
+  it('restores the loading skeleton while a period change is pending', async () => {
+    vi.stubEnv('VITE_SECURITY_ECHARTS_ENABLED', 'true')
+    try {
+      const wrapper = await mountSecurityPage()
+      expect(wrapper.findAll('[data-testid="security-data-table"]')).toHaveLength(2)
+      // Park the next history responses so the period change stays pending.
+      const deferreds: Array<{ kind: 'price' | 'position'; resolve: () => void }> = []
+      respondSecurity = (call) => {
+        const kind: 'price' | 'position' = call.url.endsWith('/price-history/') ? 'price' : 'position'
+        return new Promise((resolve) => {
+          deferreds.push({ kind, resolve: () => resolve({ data: securityWire(kind) }) })
+        })
+      }
+      const allButton = wrapper.findAll('button').find((button) => button.text() === 'All')
+      expect(allButton).toBeTruthy()
+      await allButton!.trigger('click')
+      await flush()
+      // While the histories are pending the section shows the incumbent
+      // loading treatment and no stale chart or table.
+      expect(wrapper.findAll('.v-skeleton-loader').length).toBeGreaterThan(0)
+      expect(wrapper.findAll('[data-testid="security-data-table"]')).toHaveLength(0)
+      for (const deferred of deferreds) deferred.resolve()
+      await flush()
+      await flush()
+      expect(wrapper.findAll('[data-testid="security-data-table"]')).toHaveLength(2)
+      expect(wrapper.findAll('.v-skeleton-loader').length).toBe(0)
       wrapper.unmount()
     } finally {
       vi.unstubAllEnvs()

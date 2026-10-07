@@ -32,7 +32,7 @@ import type { EChartsOption } from 'echarts'
 import type { ChartDocument } from './contracts'
 import type { SecurityInteraction } from './securityInteraction'
 import { reconcileSecurityInteraction } from './securityInteraction'
-import { buildSecurityOption } from './buildSecurityOption'
+import { buildSecurityOption, securityAxisKeys } from './buildSecurityOption'
 
 use([
   LineChart,
@@ -96,12 +96,14 @@ function onDataZoom(params: unknown): void {
   if (!last) return
   const start = typeof last.start === 'number' ? last.start : undefined
   const end = typeof last.end === 'number' ? last.end : undefined
-  const { periods } = props.document
-  if (periods.length === 0 || start === undefined || end === undefined) return
-  const lastIndex = periods.length - 1
+  // Percentages map over the FULL plotted axis — the same securityAxisKeys
+  // list buildSecurityOption rendered — so a carry-forward endpoint counts.
+  const axisKeys = securityAxisKeys(props.document)
+  if (axisKeys.length === 0 || start === undefined || end === undefined) return
+  const lastIndex = axisKeys.length - 1
   const firstIndex = Math.min(lastIndex, Math.max(0, Math.round((start / 100) * lastIndex)))
   const endIndex = Math.min(lastIndex, Math.max(firstIndex, Math.round((end / 100) * lastIndex)))
-  const viewport = { firstPeriodKey: periods[firstIndex].key, lastPeriodKey: periods[endIndex].key }
+  const viewport = { firstPeriodKey: axisKeys[firstIndex], lastPeriodKey: axisKeys[endIndex] }
   const next = reconcileSecurityInteraction(props.document, props.document, { viewport })
   if (
     next.viewport &&

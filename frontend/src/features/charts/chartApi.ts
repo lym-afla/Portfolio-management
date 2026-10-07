@@ -227,6 +227,19 @@ export async function fetchSecurityHistory(
         `Security ${kind} document answers security ${String(result.document.security?.id)} instead of ${query.securityId}`
       )
     }
+    // The local account scope is part of the document contract: the backend
+    // echoes the request's filter (`[accountId]` for a filtered position
+    // query, `[]` otherwise — the price endpoint has no account parameter).
+    const expectedAccountIds = kind === 'position' && query.accountId !== null ? [query.accountId] : []
+    const actualAccountIds = result.document.context.accountIds
+    if (
+      actualAccountIds.length !== expectedAccountIds.length ||
+      expectedAccountIds.some((id, index) => actualAccountIds[index] !== id)
+    ) {
+      throw new ChartContextMismatchError(
+        `Security ${kind} document account scope [${actualAccountIds.join(', ')}] does not match the requested filter [${expectedAccountIds.join(', ')}]`
+      )
+    }
     assertSecurityDate(query.context, result.document)
     assertContextIdentity(query.context, result.document.context)
   }

@@ -88,14 +88,17 @@ function allocationEnvelopeWithContext(): Record<string, unknown> {
   return envelope
 }
 
-function securityEnvelopeWithContext(kind: 'price' | 'position'): Record<string, unknown> {
+function securityEnvelopeWithContext(
+  kind: 'price' | 'position',
+  accountIds: readonly number[] = [],
+): Record<string, unknown> {
   const envelope = clone(securityEnvelope(kind))
   const document = envelope.chartV2 as ChartDocument
   envelope.chartV2 = {
     ...document,
     context: {
       accountSelection: { type: 'account', id: 7 },
-      accountIds: kind === 'position' ? [7] : [],
+      accountIds: [...accountIds],
       effectiveDate: '2026-02-02',
       currency: 'USD',
       digits: 2,
@@ -349,7 +352,7 @@ describe('fetchSecurityHistory', () => {
   })
 
   it('requests the position history with the local account filter when selected', async () => {
-    transport.mockResolvedValue({ data: securityEnvelopeWithContext('position') })
+    transport.mockResolvedValue({ data: securityEnvelopeWithContext('position', [5]) })
     await fetchSecurityHistory({ ...baseQuery, accountId: 5 }, 'position', { signal: new AbortController().signal })
     const [url, config] = transport.mock.calls[0]
     expect(url).toBe('/database/api/securities/9/position-history/')
@@ -371,6 +374,23 @@ describe('fetchSecurityHistory', () => {
     }]
     transport.mockResolvedValue({ data: envelope })
     const result = await fetchSecurityHistory(baseQuery, 'price', { signal: new AbortController().signal })
+    expect(result.capability).toBe('v2')
+  })
+
+  it.each([
+    ['a position request for account 5 answering with account 7', 'position', 5, [7]],
+    ['an all-accounts position request answering with a scoped document', 'position', null, [7]],
+    ['a price request answering with any account scope', 'price', null, [7]],
+  ] as const)('rejects %s as a context mismatch', async (_name, kind, accountId, accountIds) => {
+    transport.mockResolvedValue({ data: securityEnvelopeWithContext(kind, accountIds) })
+    const failure = await fetchSecurityHistory({ ...baseQuery, accountId }, kind, { signal: new AbortController().signal }).catch((error) => error)
+    expect(failure).toBeInstanceOf(ChartContextMismatchError)
+    expect(transport).toHaveBeenCalledTimes(1)
+  })
+
+  it('accepts a position document answering the exact local filter', async () => {
+    transport.mockResolvedValue({ data: securityEnvelopeWithContext('position', [5]) })
+    const result = await fetchSecurityHistory({ ...baseQuery, accountId: 5 }, 'position', { signal: new AbortController().signal })
     expect(result.capability).toBe('v2')
   })
 

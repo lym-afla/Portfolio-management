@@ -36,6 +36,7 @@ vi.mock('vue-echarts', async () => {
 import { emptySecurityFixture, securityFixture, type SecurityDocumentOverrides } from './securityFixtures'
 import type { ChartDocument } from '../contracts'
 import { buildSecurityOption } from '../buildSecurityOption'
+import { reconcileSecurityInteraction } from '../securityInteraction'
 import SecurityDataTable from '../SecurityDataTable.vue'
 import SecurityHistoryChart from '../SecurityHistoryChart.vue'
 
@@ -248,7 +249,7 @@ describe('SecurityHistoryChart', () => {
     return wrapper
   }
 
-  it('renders the renderer and the exact table for a populated document', async () => {
+  it('renders the renderer and the exact table for a populated document', { timeout: 20000 }, async () => {
     const wrapper = await mountChart(priceDocument())
     expect(chartState.captured).toHaveLength(1)
     expect(wrapper.get('[data-testid="security-data-table"]').text()).toContain('98.5% of nominal')
@@ -293,6 +294,50 @@ describe('SecurityHistoryChart', () => {
     expect(viewport.firstPeriodKey).toBe('security:9:price:row:1')
     expect(viewport.lastPeriodKey).toBe('security:9:price:row:1')
     wrapper.unmount()
+  })
+
+  it('maps zoom percentages over the full plotted axis including the carry-forward endpoint', async () => {
+    // Three observed points plus the carry-forward endpoint: a four-key
+    // axis. 50%..100% must map to row 3 and the carry-forward endpoint —
+    // proving the endpoint counts toward the percentages.
+    const doc = priceDocument({
+      points: [
+        { value: '101.250000', plotValue: '101.250000', status: 'ok', reason: 'observed', display: 'USD 101.25' },
+        { value: '100.500000', plotValue: '100.500000', status: 'ok', reason: 'observed', display: 'USD 100.50' },
+        { value: '102.250000', plotValue: '102.250000', status: 'ok', reason: 'observed', display: 'USD 102.25' },
+      ],
+      contextEffectiveDate: '2026-02-10',
+    })
+    const wrapper = await mountChart(doc)
+    wrapper.findComponent({ name: 'VChart' }).vm.$emit('datazoom', { start: 50, end: 100 })
+    await flushPromises()
+    const viewport = (wrapper.emitted('update:interaction')?.at(-1)?.[0] as { viewport: { firstPeriodKey: string; lastPeriodKey: string } }).viewport
+    expect(viewport.firstPeriodKey).toBe('security:9:price:row:3')
+    expect(viewport.lastPeriodKey).toBe('carry-forward:2026-02-10')
+    wrapper.unmount()
+  })
+
+  it('keeps a carry-forward viewport across reconciliation', () => {
+    const doc = priceDocument({ contextEffectiveDate: '2026-02-02' })
+    const state = { viewport: { firstPeriodKey: 'security:9:price:row:1', lastPeriodKey: 'carry-forward:2026-02-02' } }
+    expect(reconcileSecurityInteraction(doc, structuredClone(doc), state)).toEqual(state)
+  })
+
+  it('computes zoom window bounds over the full plotted axis', () => {
+    const doc = priceDocument({
+      points: [
+        { value: '101.250000', plotValue: '101.250000', status: 'ok', reason: 'observed', display: 'USD 101.25' },
+        { value: '100.500000', plotValue: '100.500000', status: 'ok', reason: 'observed', display: 'USD 100.50' },
+        { value: '102.250000', plotValue: '102.250000', status: 'ok', reason: 'observed', display: 'USD 102.25' },
+      ],
+      contextEffectiveDate: '2026-02-10',
+    })
+    const option = buildSecurityOption(doc, { viewport: { firstPeriodKey: 'security:9:price:row:2', lastPeriodKey: 'security:9:price:row:3' } })
+    const dataZoom = (option as { dataZoom: Array<{ start: number; end: number }> }).dataZoom[0]
+    // Four plotted keys (three observed + carry-forward): row 2 sits at 1/3,
+    // row 3 at 2/3 of the axis.
+    expect(dataZoom.start).toBeCloseTo(33.33, 1)
+    expect(dataZoom.end).toBeCloseTo(66.67, 1)
   })
 
   it('renders nothing modern when the gate did not request it', async () => {

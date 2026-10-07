@@ -80,6 +80,19 @@ export interface SecurityViewport {
   viewport: { firstPeriodKey: string; lastPeriodKey: string } | null
 }
 
+/** The full plotted axis: the observed period keys plus the presentation-only
+    carry-forward endpoint when one is appended. The single source of truth
+    for every viewport mapping — option zoom bounds, dataZoom event
+    normalization and interaction reconciliation all use THIS list, so zoom
+    percentages and axis positions can never disagree. */
+export function securityAxisKeys(document: ChartDocument): string[] {
+  const keys = document.periods.map((period) => period.key)
+  if (carriesForwardTo(document)) {
+    keys.push(`${CARRY_FORWARD_PREFIX}${document.context.effectiveDate}`)
+  }
+  return keys
+}
+
 export function buildSecurityOption(
   document: ChartDocument,
   interaction: SecurityViewport = { viewport: null },
@@ -90,16 +103,16 @@ export function buildSecurityOption(
     return { xAxis: { type: 'category', data: [] }, yAxis: { type: 'value' }, series: [] }
   }
   const labelsByKey = new Map(document.periods.map((period) => [period.key, period.displayLabel]))
-  const axisKeys = document.periods.map((period) => period.key)
+  const axisKeys = securityAxisKeys(document)
   const data = document.periods.map((_period, index) => toPlotNumber(series.points[index]))
   // Presentation-only carry-forward of the last known observation to the
-  // request's effective date (see module comment for the exact conditions).
+  // request's effective date (see module comment for the exact conditions);
+  // securityAxisKeys already appended its axis key, so only the plotted
+  // value is added here.
   let carriedForwardKey: string | null = null
   if (carriesForwardTo(document)) {
-    const key = `${CARRY_FORWARD_PREFIX}${document.context.effectiveDate}`
-    axisKeys.push(key)
+    carriedForwardKey = `${CARRY_FORWARD_PREFIX}${document.context.effectiveDate}`
     data.push(toPlotNumber(series.points[series.points.length - 1]))
-    carriedForwardKey = key
   }
   let startValue = 0
   let endValue = 100

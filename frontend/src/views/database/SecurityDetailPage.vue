@@ -53,13 +53,24 @@
                     v-model="selectedPeriod"
                     :effective-current-date="effectiveCurrentDate"
                   />
+                  <!-- The incumbent loading treatment applies to BOTH
+                       renderers: while a period change is pending the
+                       skeleton replaces the chart and table, so the previous
+                       period's data can never look current. -->
+                  <div v-if="loadingPriceChart" style="height: 400px">
+                    <v-skeleton-loader type="image" />
+                  </div>
                   <!-- C4: the gated modern composition (view-only zoom plus
-                       the exact observed-point table); the fallback slot
-                       keeps the incumbent Chart.js chart one click away. -->
+                       the exact observed-point table); zoom state lives in
+                       the page and is reconciled across compatible
+                       refreshes. The fallback slot keeps the incumbent
+                       Chart.js chart one click away. -->
                   <SecurityHistoryChart
-                    v-if="priceDocument"
+                    v-else-if="priceDocument"
                     :document="priceDocument"
+                    :interaction="priceInteraction"
                     :requested="true"
+                    @update:interaction="priceInteraction = $event"
                   >
                     <template #fallback>
                       <div style="height: 400px">
@@ -71,9 +82,7 @@
                     </template>
                   </SecurityHistoryChart>
                   <div v-else style="height: 400px">
-                    <v-skeleton-loader v-if="loadingPriceChart" type="image" />
                     <LineChart
-                      v-else
                       :chart-data="priceChartData"
                       :options="priceChartOptions"
                     />
@@ -92,10 +101,15 @@
                     v-model="selectedPeriod"
                     :effective-current-date="effectiveCurrentDate"
                   />
+                  <div v-if="loadingPositionChart" style="height: 400px">
+                    <v-skeleton-loader type="image" />
+                  </div>
                   <SecurityHistoryChart
-                    v-if="positionDocument"
+                    v-else-if="positionDocument"
                     :document="positionDocument"
+                    :interaction="positionInteraction"
                     :requested="true"
+                    @update:interaction="positionInteraction = $event"
                   >
                     <template #fallback>
                       <div style="height: 400px">
@@ -107,9 +121,7 @@
                     </template>
                   </SecurityHistoryChart>
                   <div v-else style="height: 400px">
-                    <v-skeleton-loader v-if="loadingPositionChart" type="image" />
                     <LineChart
-                      v-else
                       :chart-data="positionChartData"
                       :options="positionChartOptions"
                     />
@@ -146,13 +158,14 @@
 </template>
 
 <script setup>
-import { computed, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { usePortfolioContextStore } from '@/stores/portfolioContext'
 import { useAppStore } from '@/stores/app'
 import { useSecurityDetail } from '@/features/securities/useSecurityDetail'
 import SecurityHistoryChart from '@/features/charts/SecurityHistoryChart.vue'
 import { securityEchartsRequested } from '@/features/charts/rendererPolicy'
+import { defaultSecurityInteraction, reconcileSecurityInteraction } from '@/features/charts/securityInteraction'
 import SecurityOverview from '@/features/securities/SecurityOverview.vue'
 import SecurityMetadata from '@/features/securities/SecurityMetadata.vue'
 import SecurityActivity from '@/features/securities/SecurityActivity.vue'
@@ -250,6 +263,18 @@ const positionDocument = computed(() => {
   if (!securityPilotRequested || positionChartResult.value?.capability !== 'v2') return null
   return positionChartResult.value.document
 })
+
+// C4: zoom state is owned here (one interaction per section) so it survives
+// renderer re-renders and is RECONCILED across compatible refreshes — keys
+// that survive in the new plotted axis keep the window, anything else resets.
+const priceInteraction = ref(defaultSecurityInteraction())
+const positionInteraction = ref(defaultSecurityInteraction())
+watch(priceDocument, (next, previous) => {
+  priceInteraction.value = reconcileSecurityInteraction(previous ?? next, next, priceInteraction.value)
+}, { immediate: true })
+watch(positionDocument, (next, previous) => {
+  positionInteraction.value = reconcileSecurityInteraction(previous ?? next, next, positionInteraction.value)
+}, { immediate: true })
 
 // ---- Display views: pure mappings from the accepted server response to the
 // section models. Every value stays the server display string; conditions
