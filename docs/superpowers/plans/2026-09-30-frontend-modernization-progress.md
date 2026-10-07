@@ -12,12 +12,12 @@ Updated 7 October 2026. This is the durable, human-facing status tracker for the
 ## Current checkpoint
 
 - Implementation branch: `codex/frontend-modernization`.
-- Verified remote and synchronized local code checkpoint: `671171be`, PR #59/C4 merged, reviewed through `4feb48d4`. C5a is implemented on `codex/chart-cutover-c5` (base `a5250250`, draft PR #60 into `codex/frontend-modernization`, pending review): the three chart flags are the deterministic default-on release candidate there (absent = on, exact `'false'` = per-family rollback), with the legacy Chart.js runtime genuinely lazy. The modernization branch itself still carries default-off gates until the PR is reviewed and merged.
+- Verified remote and synchronized local code checkpoint: `9d369af7`, PR #60/C5a merged, reviewed through `6c701ec0`. D8 is next; all three chart families now default on for absent flags, with explicit-false rollback and lazy Chart.js compatibility.
 - D6 is integrated through final proposal head `17a196c8` (implementation `67b02326`).
 - The earlier `9b32d3d9` checkpoint was 34 commits ahead of main. That historical count is not a completion measure or the current branch count.
 - Financial fixes [#46](https://github.com/lym-afla/Portfolio-management/pull/46), [#47](https://github.com/lym-afla/Portfolio-management/pull/47) and [#48](https://github.com/lym-afla/Portfolio-management/pull/48) are merged into the implementation branch. Their source branches were deleted by the user.
 - Main has not received the modernization branch. No deployment performed.
-- 22 of 24 planned tasks are integrated. C5 and D8 remain; C5 is split into C5a reversible cutover preparation and C5b removal after an accepted release validation cycle. Main/release completion remains outstanding.
+- 22 of 24 whole planned tasks are integrated, plus C5a. C5 remains partially complete pending C5b removal after an accepted release validation cycle; D8 is the next implementation assignment. Main/release completion remains outstanding.
 - Last whole-foundation verification at `deea60df`: 262 frontend tests; 1261 backend tests / 10 skipped; both type checks, lint/build; 72 synthetic browser route profiles. These results predate the three merges. The combined `9b32d3d9` baseline has not been rerun in this planning turn.
 
 ## Task status
@@ -46,12 +46,16 @@ Updated 7 October 2026. This is the durable, human-facing status tracker for the
 | 20 | D6 | Transaction import workflow extraction | User-merged PR #57 at `0167c409`, reviewed through `17a196c8`; see [D6 record](#d6-implementation-record) |
 | 21 | D7 | Broker/security workflow extraction | User-merged PR #58 at `13a2129d`, reviewed through `531a56cf`; see D7 record |
 | 22 | C4 | Three solid allocation pies and security histories | User-merged PR [#59](https://github.com/lym-afla/Portfolio-management/pull/59) at `671171be`, reviewed through `4feb48d4`; see [C4 record](#c4-implementation-record) |
-| 23 | C5 | ECharts cutover and Chart.js removal | C5a implemented/pending review: `codex/chart-cutover-c5` (base `a5250250`), draft PR #60 into `codex/frontend-modernization`, tested head `9f4d9986`; see [C5a record](#c5a-implementation-record). Chart.js NOT removed; C5b remains a separate assignment after the owner's accepted release validation cycle |
-| 24 | D8 | All-page visual/keyboard/responsive/behavior QA and documentation | Not implemented |
+| 23 | C5 | ECharts cutover and Chart.js removal | C5a user-merged PR #60 at `9d369af7`, reviewed through `6c701ec0`; C5b remains pending release validation and separate removal approval |
+| 24 | D8 | All-page visual/keyboard/responsive/behavior QA and documentation | Handoff prepared; execute default-on integrated QA before C5b cleanup |
 
 ## Next execution and boundaries
 
-C5a is implemented and awaiting review (see the [C5a record](#c5a-implementation-record) and the [evidence document](../../design/frontend-chart-cutover.md)): a draft PR into `codex/frontend-modernization` carries the default-on candidate with three independent rollback flags, the lazy Chart.js compatibility fallback, the closed task-0 recovery exceptions and the measured delivery (all-modern dashboard 483,951 gzip against the saved ~535 kB cutover target). The owner's review, an accepted release validation cycle across ordinary refresh/context changes and all six views, and explicit removal approval precede C5b. No Chart.js removal, backend/financial change, main merge or deployment happened in C5a; C5 remains incomplete until C5b's removal obligations are resolved.
+Next: [D8 final QA handoff](2026-10-07-final-qa-d8-handoff.md) and [GLM prompt](2026-10-07-final-qa-d8-glm-prompt.md), on a dedicated `codex/frontend-final-qa-d8` worktree. Audit the actual unflagged default-on artifact across every route and workflow; retain the existing explicit-false browser matrix separately as rollback coverage. Fix bounded defects, inspect rendered evidence, update documentation and stop at a draft PR.
+
+C5a is merged. Root closed all three review findings and independently passed 29 loader/policy/fallback tests. Final executor report: 1003 units, unflagged dashboard 483,948 gzip bytes, charts-c5/charts-c4/delivery/full 72-profile matrix and backend 1386/10 passing; see its evidence for the precise gate list. No application gates were rerun for this planning update.
+
+C5b is not authorized by the C5a merge: retain Chart.js until an owner-accepted release validation cycle and separate removal approval. D8 local synthetic QA is useful before that decision but is not a claimed live release cycle. No main merge or deployment has occurred. After later cleanup, repeat affected acceptance checks before release.
 
 The inherited D4 `requests`/`dates` selector issue was closed by C3 task 0 (`2620c2fa`); do not reuse the historical baseline waiver. Screen-reader testing is out of scope under the owner-approved amendment above. No application gates were rerun for this documentation-only handoff.
 
@@ -68,6 +72,9 @@ PR #54's header account-label fix is user-merged at `610dff992d76fe4f9459f059c68
 ## Detailed records
 
 ### C5a implementation record
+
+- Integration: user merged PR #60 at `9d369af7`, reviewed through `6c701ec0`, verified from the remote branch. Root independently passed 29 targeted tests including the previously failing fallback regression; full browser/delivery measurements remain executor-reported. The following draft records are historical. C5b remains pending.
+
 
 - Status: implemented on branch `codex/chart-cutover-c5` in the dedicated worktree `Portfolio-management-c5`, base `a5250250` (latest `origin/codex/frontend-modernization`: PR #59/C4 merged at `671171be` plus the C5a handoff documents). Draft PR #60 into `codex/frontend-modernization`; not merged, no deployment, no release tag, no dependency removal, no backend change.
 - Commits (task-sized, each verified on its committed tree): `41542414` task 0 — baseline (unit 96 files/974, type-checks x3, api:types, lint 0/8, build, backend 1386/10 at pristine `a5250250`, all exit 0) + [Chart.js inventory](../../design/frontend-chart-cutover.md) + the bounded recovery-harness repair (the inherited `recovery`/`dialog-recovery` covered-click races did not reproduce in 14 pristine-base runs incl. under load; the recorded mechanism — clicking without awaiting the overlay transition — was closed harness-only, no assertion dropped, and both cases pass on every later run); `b3e065bb` task 1 — genuinely lazy legacy Chart.js leaves (`LegacyAllocationChart` extraction, async `StackedBarLineChart`/`LineChart` with the time-scale/adapter/locale registration moved into the security leaf, shared `lazyChartRenderer` turning rejected chunk downloads into visible recoverable errors with a single user-driven retry and routing modern chunk failures into the existing failure UIs; charts-c5 phase A observed RED on the pre-fix sources, GREEN after); `96eecc58` task 2 — deterministic default-on policy (`chartFlagEnabled`: absent = on, exact `'true'` = on, exact `'false'` = rollback, anything else = conservative off; `rendererPolicy.spec.ts` 22 cases RED-first incl. all eight flag combinations; NAV-only/all-on/no-flags/all-off rendered independence in charts-c5 phase B; older pilot tests moved to explicit `'false'` rollback envs, no assertion weakened); `a894aeae` task 3 — combined acceptance + measured delivery (charts-c5 phases C/D); `c4ad77a8` task 4 — rollback rehearsal helper; `9f4d9986` — two new lint diagnostics in the new harness files fixed.

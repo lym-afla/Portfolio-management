@@ -1,5 +1,8 @@
 # Frontend Modernization Implementation Plan
 
+> Current checkpoint (7 October 2026): PR #60/C5a is merged at `9d369af7`; 22 whole tasks plus C5a are integrated. [D8 final QA](2026-10-07-final-qa-d8-handoff.md) is next. C5b requires release validation and separate removal approval. The [durable tracker](2026-09-30-frontend-modernization-progress.md) supersedes historical status/next-assignment paragraphs below. Main merge and deployment remain outstanding.
+
+
 ## Scope amendment — 5 October 2026
 
 The owner has removed dedicated screen-reader support work and real assistive-technology audits (NVDA, JAWS, VoiceOver or equivalent) from the modernization scope. They are not acceptance criteria, release blockers or deferred D8 work. This amendment supersedes earlier screen-reader requirements and historical references assigning their audit to D8, including prior handoffs and evidence records. Past statements that no such audit was performed remain historically accurate; do not present them as outstanding acceptance gaps.
