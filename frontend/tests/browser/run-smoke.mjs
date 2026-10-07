@@ -23,7 +23,7 @@ import { assertDialogDeliveryFlow, assertDialogChunkRecovery, dialogRoutes } fro
 import { assertD4TablesFlow, assertD4TransactionsFlow, assertD4ViewportChecks, captureD4Screenshots } from './d4.mjs'
 import { assertChartsC2Flow } from './charts-c2.mjs'
 import { assertChartsC4FlagOffFlow, runChartsC4PilotFlow } from './charts-c4.mjs'
-import { runChartsC5LazinessFlow } from './charts-c5.mjs'
+import { runChartsC5Flow } from './charts-c5.mjs'
 import { assertD5FamilyProbesFlow, assertD5NativeZoomFlow, assertD5StatesFlow, assertMobilePageControlsFlow, captureD5Screenshots, d5FamilyRoutes } from './d5.mjs'
 import { assertSettingsAccountFlow } from './settings-account.mjs'
 import { assertImportsD6Flow } from './imports-d6.mjs'
@@ -272,7 +272,8 @@ async function main() {
             }
             if (selectedCase === 'charts-c5' && !chartsC5Ran) {
               chartsC5Ran = true
-              await runChartsC5LazinessFlow({
+              await runChartsC5Flow({
+                appOrigin: appServer.origin,
                 flagOffRoot: builtAppDir,
                 frontendRoot,
                 fixtureServer,
@@ -280,7 +281,7 @@ async function main() {
                 registerSession: (extra) => sessions.set(extra, resolve(browserDir, 'auth-init.js')),
                 artifactsDir,
               })
-              console.log('PASS charts c5 laziness flow')
+              console.log('PASS charts c5 flow')
             }
             if (selectedCase === 'charts-c3') {
               await assertChartsC3FlagOffFlow({ appOrigin: appServer.origin, context: `${viewport.name} charts c3 flag-off`, initScript, log, session })

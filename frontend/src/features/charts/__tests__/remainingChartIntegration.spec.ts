@@ -425,7 +425,8 @@ describe('DashboardPage allocation wiring', () => {
       await new Promise((resolve) => setTimeout(resolve, 10))
       if (
         pieState.captured.length >= 3 ||
-        wrapper.find('[data-testid="allocation-capability-notice"]').exists() ||
+        (wrapper.find('[data-testid="allocation-capability-notice"]').exists() &&
+          wrapper.findAll('.bar-stub').length >= 3) ||
         wrapper.find('[data-testid="allocation-assetType-error"]').exists() ||
         wrapper.findAll('.bar-stub').length >= 3
       ) break
@@ -448,6 +449,10 @@ describe('DashboardPage allocation wiring', () => {
   })
 
   it('keeps the incumbent cards and one negotiated request while the gate is off', async () => {
+    // C5a: absent flags are the default-on candidate; the rollback path is
+    // tested with an EXPLICIT all-false build configuration.
+    vi.stubEnv('VITE_ALLOCATION_ECHARTS_ENABLED', 'false')
+    vi.stubEnv('VITE_SECURITY_ECHARTS_ENABLED', 'false')
     const breakdownCalls = () => transportCalls.filter((call) => call.url === '/dashboard/api/get-breakdown/')
     const wrapper = await mountDashboard()
     expect(breakdownCalls()).toHaveLength(1)
@@ -456,6 +461,7 @@ describe('DashboardPage allocation wiring', () => {
     expect(wrapper.findAll('.bar-stub')).toHaveLength(3)
     expect(wrapper.find('[data-testid="allocation-capability-notice"]').exists()).toBe(false)
     wrapper.unmount()
+    vi.unstubAllEnvs()
   }, 20000)
 
   it('renders one solid pie per card from the same request when the gate is on', async () => {
@@ -523,6 +529,14 @@ describe('DashboardPage allocation wiring', () => {
 describe('SecurityDetailPage security-history wiring', () => {
   const securityVuetify = createVuetify({ components: vuetifyComponents, directives: vuetifyDirectives })
 
+  beforeEach(() => {
+    // The shared VChart mock state must not leak from the dashboard describe
+    // (harmless while every gate was default-off, load-bearing under the C5a
+    // default-on candidate).
+    pieState.captured = []
+    respondSecurity = null
+  })
+
   async function mountSecurityPage() {
     const pinia = createPinia()
     await usePortfolioContextStore(pinia).reconcileContext()
@@ -548,6 +562,8 @@ describe('SecurityDetailPage security-history wiring', () => {
   }
 
   it('keeps the incumbent charts with the gate off, one negotiated request per history', async () => {
+    // C5a: the rollback path is an explicit false, not an absent flag.
+    vi.stubEnv('VITE_SECURITY_ECHARTS_ENABLED', 'false')
     const before = pieState.captured.length
     const wrapper = await mountSecurityPage()
     const priceCalls = transportCalls.filter((call) => call.url.endsWith('/price-history/'))
@@ -558,6 +574,7 @@ describe('SecurityDetailPage security-history wiring', () => {
     expect(wrapper.findAll('.bar-stub').length).toBeGreaterThanOrEqual(2)
     expect(wrapper.find('[data-testid="security-data-table"]').exists()).toBe(false)
     wrapper.unmount()
+    vi.unstubAllEnvs()
   }, 20000)
 
   it('renders both modern histories from the same negotiated results with the gate on', async () => {
