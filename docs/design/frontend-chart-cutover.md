@@ -316,16 +316,16 @@ builds its own artifacts and drives, in order:
 
 | Route / state | gzip bytes |
 |---|---|
-| Dashboard, modern default (no flags) | **483,960** |
-| Dashboard, NAV-only | 543,214 |
-| Dashboard, all-off rollback | 345,263 |
-| Dashboard, fallback activated | 549,596 |
-| Login (candidate) | 236,761 |
-| Profile (candidate) | 236,676 |
-| Transactions (candidate) | 271,341 |
-| Security detail (candidate) | 463,239 |
+| Dashboard, modern default (no flags) | **483,951** |
+| Dashboard, NAV-only | 543,210 |
+| Dashboard, all-off rollback | 345,257 |
+| Dashboard, fallback activated | 549,587 |
+| Login (candidate) | 236,754 |
+| Profile (candidate) | 236,669 |
+| Transactions (candidate) | 271,335 |
+| Security detail (candidate) | 463,230 |
 
-**Budget: the all-modern dashboard is 483,960 gzip bytes — 51,055 bytes
+**Budget: the all-modern dashboard is 483,951 gzip bytes (tested head `9f4d9986`) — 51,055 bytes
 under the saved approximately 535 kB cutover target and below the C4
 flag-on measurement (549,104).** The reduction comes exactly from task 1's
 lazy extraction (Chart.js and its datalabels/adapter runtime left the
@@ -346,3 +346,129 @@ distinct color buckets — real rendered content, no blank frames), and
 `frontend/tests/browser/artifacts/charts-c5-captures.json` (local artifact, gitignored like the C4 delivery records) records SHA-256, byte
 size and pixel dimensions for every artifact. All captures are synthetic
 fixtures only.
+
+## 6. Task 4 final gates, rollback rehearsal and handoff
+
+Full matrix on the committed implementation head `c4ad77a8` (sequential,
+actual exit codes; Node v24.20.0). Two findings were corrected in a
+follow-up commit `9f4d9986` (two unused-symbol lint diagnostics in the NEW
+harness files) and the affected gates re-verified on that head; everything
+else is unchanged by that two-line commit. The evidence/tracker commits
+that follow are markdown-only.
+
+| Gate | Result |
+|---|---|
+| `npm run test:unit` | exit 0 — 98 files / 1002 passed |
+| `npm run type-check` | exit 0 |
+| `npm run type-check:reliability` | exit 0 |
+| `npm run type-check:charts` | exit 0 |
+| `npm run api:types:check` | exit 0 |
+| `npm run lint` | exit 1 on `c4ad77a8` (two NEW diagnostics in the new harness files: unused `mkdir` import, unused parameter); exit 0 after `9f4d9986` — 0 errors / 8 pre-existing warnings, baseline unchanged |
+| `npm run build` | exit 0 |
+| focused `charts-c2`, `charts-c3`, `charts-c5`, `brokers-security-d7`, `imports-d6`, `layout`, `context`, `dates`, `requests`, `recovery`, `dialogs`, `dialog-recovery`, `d4`, `d5`, `settings-account` | all exit 0 on `c4ad77a8` — including `recovery` and `dialog-recovery` (the task-0 harness repair holds) and `layout` (the historically flaky Year hit-test passed) |
+| focused `charts-c4` | exit 1 on `c4ad77a8`: the pilot flow's signed-state wait timed out after 12 s while its own earlier pie assertions and the immediately following FULL matrix (same artifact config, same fixtures) passed; re-run on `9f4d9986` — see below |
+| `npm run test:delivery` | exit 0 (rollback artifact; dashboard below the R7 401 kB pre-chart assertion) |
+| FULL `npm run test:browser` | exit 0 — 18 routes x 4 viewports, zero fixture mismatches, zero route failures |
+| backend `uv run python -m pytest` (test settings) | exit 0 — 1386 passed / 10 skipped (no backend file touched) |
+
+charts-c4 re-run on `9f4d9986`: exit 0 — the full pilot flow passes
+(pies, signed state, malformed, legacy-only, stock/bond/crypto histories,
+renderer-failure fallback, mobile hit-tests/tooltips, per-flag delivery),
+so the matrix failure was the recorded agent-browser transient class (the
+same flow passes in the FULL matrix on `c4ad77a8`, which shares the
+artifact configuration and fixtures).
+charts-c5 re-run on `9f4d9986`: exit 0 — all phases green; measured
+delivery dashboard modern 483,951 / NAV-only 543,210 / all-off 345,257 /
+fallback-activated 549,587 gzip bytes (run-to-run deltas are content-hash
+noise; the budget assertion holds in every run).
+lint re-run on `9f4d9986`: exit 0 (0 errors / 8 pre-existing warnings).
+
+### Rollback rehearsal
+
+`scripts/qa-c5-rollback-rehearsal.mjs` rebuilt the app with each family
+flag false individually and all three false; every artifact built cleanly
+and its identity is recorded locally in
+`tests/browser/artifacts/charts-c5-rollback-rehearsal.json` (gitignored,
+like the other local delivery records):
+
+| Artifact | Flags (NAV/allocation/security) | Files | Combined SHA-256 (prefix) |
+|---|---|---|---|
+| rehearsal-nav-off | false/true/true | 153 | (recorded locally) |
+| rehearsal-allocation-off | true/false/true | 153 | (recorded locally) |
+| rehearsal-security-off | true/true/false | 153 | (recorded locally) |
+| rehearsal-all-off | false/false/false | 153 | (recorded locally) |
+
+Accepted-payload fallback rehearsal: charts-c5 phase A exercises the
+accepted-payload fallback end-to-end on a built artifact (renderer failure →
+explicit "Use previous chart" → the same accepted response rendered by the
+lazily downloaded legacy runtime with zero additional API calls), and phase
+B renders the all-off rollback artifact.
+
+**Precise prior dual-renderer baseline:** `671171be` is the merged C4
+source (PR #59) — the last commit where all three flags are default-OFF
+with opt-in exact-`'true'` semantics and eager legacy leaves; this branch
+diverges from it through `a5250250` (handoff docs). Restoring that
+behavior requires REBUILDING and REDEPLOYING: either build any C5a-or-later
+checkout with `VITE_NAV_ECHARTS_ENABLED=false
+VITE_ALLOCATION_ECHARTS_ENABLED=false VITE_SECURITY_ECHARTS_ENABLED=false`
+(the all-off rollback artifact, rehearsed above), or build from `671171be`
+directly. A commit alone is NOT a deployed or tagged rollback release; no
+deployment or release tag was created in this assignment, and only the
+owner can perform an actual deployment rollback.
+
+## 7. Deviations and limitations
+
+- The inherited `recovery`/`dialog-recovery` covered-click races did not
+  reproduce in 14 runs at the pristine base (including under concurrent
+  build load) on this machine; the recorded mechanism (clicking without
+  awaiting the overlay transition) was closed with a bounded,
+  assertion-preserving harness repair instead of being relabeled
+  environmental (section 2).
+- Security zoom remains view-only and resets when a replacement document
+  arrives (C4 recorded limitation, unchanged); the zoom-reset-on-context
+  behavior is pinned by the C4 round-2 unit regression
+  (`remainingChartIntegration.spec.ts`) and charts-c5 asserts the
+  browser-level invariants (no crash, no cross-security leakage, bond
+  context renders fully after a zoomed stock).
+- The allocation v2 contract stays all-or-nothing (one negotiated response
+  carries all three documents; a malformed document fails the whole
+  breakdown section) — the C4 recorded behavior, unchanged.
+- showTip/dataZoom acceptance hooks (`__c4DispatchAction`) remain attached
+  to the host elements by the ECharts leaf components; they are inert in
+  production (never called by app code) and exist so the rendered cases can
+  drive the REAL chart instances where headless pointer sweeps are
+  unreliable.
+- Logout-after-zoom was not driven as a full UI logout/login cycle in
+  charts-c5 (the fixture server has no login endpoint); context resets are
+  covered by the C4 round-2 mounted-page regressions (null-document reset),
+  the context-mismatch/bounded-reconciliation flows in charts-c2/c3, and
+  charts-c5's security-switch-after-zoom with zero page errors.
+- `tsconfig.charts.json` continues to scope the app-graph integration specs
+  out of the strict charts project (documented in the config; they stay
+  type-checked by the main tsconfig) — the recorded C2/C4 scoping,
+  unchanged.
+- Chart.js and its companions are NOT removed: package.json and the
+  lockfile are untouched (audit-only in C5a); dormant `PriceChart.vue` is
+  untouched. C5b owns removal after the owner's release validation cycle.
+- Dedicated screen-reader support work and AT audits are out of scope per
+  the owner amendment of 5 October 2026 (not an outstanding gap); the
+  retained keyboard/focus/labels/contrast/responsive/native-zoom checks
+  are covered above and by the inherited suites.
+
+## 8. Acceptance matrix (traced to existing records; nothing rerun)
+
+| Requirement | Record |
+|---|---|
+| F1 sample alignment approval | PR #46 merged into `codex/frontend-modernization` (merge `607f5383`) — [tracker](../superpowers/plans/2026-09-30-frontend-modernization-progress.md) task 8 |
+| F2 contribution boundary approval | PR #47 merged (`71eaa1d7`) — tracker task 9 |
+| F3 allocation scale resolution | PR #48 merged (`9b32d3d9`) — tracker task 10; C4's approved ratio contract is the allocation fixture basis (`allocationFixture`) |
+| C1 opt-in exact chart contract | PR #49 merged at `7481e060` (reviewed `213e70bf`): legacy compatibility, identity, units, diagnostics, errors; protected `NAV_at_date` diagnostics reviewed and merged by the owner |
+| C2 typed adapters and lifecycle | PR #52 user-merged at `2424edbf` (reviewed `5d4c5a87`): validated documents, request lifecycle, bounded reconciliation |
+| C3 NAV pilot, 7 modes x 5 frequencies | PR #53 user-merged at `2e77e5c7` (reviewed through `3cd33c06`). Authoritative lists in `frontend/src/features/charts/contracts.ts`: `NavMode` = none, account, asset_type, asset_class, currency, value_contributions, value_contributions_cumulative (7); `Frequency` = D, W, M, Q, Y (5); `navOption.spec.ts` covers all 35 mappings plus toPlotNumber edges, visibility/zoom immutability; review rounds added tooltip containment/horizons (rounds 1-4 records in the tracker) |
+| C4 three solid pies + security histories | PR #59 user-merged at `671171be` (reviewed through `4feb48d4`): one pie series per card, server-certified `pieEligibility`, exact tables, account-scope validation, shared plotted-axis zoom model, null-document reset, loading skeleton |
+| Races/exact values/keyboard/responsive evidence | C3/C4 review-round records (tracker) + this branch's charts-c5 phase C (legend toggles zero requests, keyboard inspection, zoom/refresh/park retention, malformed/legacy/no-downgrade, 390px hit-tests, mobile tooltip containment, native 200% DPR-verified zoom) |
+| Measurements | Section 5 (this document): modern dashboard 483,960 gzip within the ~535 kB cutover target; per-route and per-flag graphs in the local `charts-c5-delivery.json` |
+| Licenses | Section 1.3: chart.js 4.4.4 MIT, vue-chartjs 5.3.1 MIT, chartjs-plugin-datalabels 2.2.0 MIT, chartjs-adapter-date-fns 3.0.0 MIT, echarts 6.1.0 Apache-2.0, vue-echarts 8.3.1 MIT, date-fns 3.6.0 MIT (retained) |
+| Remaining exceptions | Section 7 |
+| Rollback | Section 6: rehearsed per-family and all-off artifacts with local checksums; prior dual-renderer source baseline `671171be`; restoration requires owner build+deploy |
+| C5b boundary | Not part of this assignment: dependency/reference removal needs the owner's accepted release validation cycle; Chart.js remains installed; date-fns retained |
