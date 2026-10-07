@@ -45,7 +45,7 @@ Updated 6 October 2026. This is the durable, human-facing status tracker for the
 | 19 | D5 | Visual system across route families | User-merged PR #56 at `7248a020`, final head `b5fc13d0`; see [D5 record](#d5-implementation-record) |
 | 20 | D6 | Transaction import workflow extraction | User-merged PR #57 at `0167c409`, reviewed through `17a196c8`; see [D6 record](#d6-implementation-record) |
 | 21 | D7 | Broker/security workflow extraction | User-merged PR #58 at `13a2129d`, reviewed through `531a56cf`; see D7 record |
-| 22 | C4 | Three solid allocation pies and security histories | Implemented, awaiting review as a draft PR into `codex/frontend-modernization`; see [C4 record](#c4-implementation-record) |
+| 22 | C4 | Three solid allocation pies and security histories | Implemented, awaiting review as draft PR [#59](https://github.com/lym-afla/Portfolio-management/pull/59) into `codex/frontend-modernization`; see [C4 record](#c4-implementation-record) |
 | 23 | C5 | ECharts cutover and Chart.js removal | Not implemented; gate last, retain fallback until acceptance |
 | 24 | D8 | All-page visual/keyboard/responsive/behavior QA and documentation | Not implemented |
 
