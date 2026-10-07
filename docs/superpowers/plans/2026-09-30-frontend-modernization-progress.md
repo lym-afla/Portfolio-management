@@ -7,17 +7,17 @@ The owner has removed dedicated screen-reader support work and real assistive-te
 Retain keyboard navigation, focus entry/return, readable labels, contrast, responsive layouts, native 200% zoom, visible/hittable controls, semantic HTML and exact-value chart tables. Preserve existing ARIA/semantic markup and tests; this scope change does not request application-code removal. D8 still verifies visual quality, keyboard usability, responsive behavior and workflow correctness. General accessibility references in these plans apply to those retained checks, not a screen-reader certification or dedicated compatibility project.
 
 
-Updated 6 October 2026. This is the durable, human-facing status tracker for the accepted [master plan](2026-09-08-frontend-modernization.md). The original task numbering is retained. Update this file after each independently verified task; commit evidence and distinguish implementation, review, merge and release.
+Updated 7 October 2026. This is the durable, human-facing status tracker for the accepted [master plan](2026-09-08-frontend-modernization.md). The original task numbering is retained. Update this file after each independently verified task; commit evidence and distinguish implementation, review, merge and release.
 
 ## Current checkpoint
 
 - Implementation branch: `codex/frontend-modernization`.
-- Verified remote and synchronized local code checkpoint: `8f1b0aba`, the PR #58/D7 integration plus the C4 handoff documents. C4 is implemented on `codex/allocation-security-charts-c4` (base `8f1b0aba`) as a draft PR awaiting review.
+- Verified remote and synchronized local code checkpoint: `671171be`, PR #59/C4 merged, reviewed through `4feb48d4`. C5a is the next executor assignment; all three chart gates are still default-off in current application code.
 - D6 is integrated through final proposal head `17a196c8` (implementation `67b02326`). C3 and the new C4 gates remain default-off.
 - The earlier `9b32d3d9` checkpoint was 34 commits ahead of main. That historical count is not a completion measure or the current branch count.
 - Financial fixes [#46](https://github.com/lym-afla/Portfolio-management/pull/46), [#47](https://github.com/lym-afla/Portfolio-management/pull/47) and [#48](https://github.com/lym-afla/Portfolio-management/pull/48) are merged into the implementation branch. Their source branches were deleted by the user.
 - Main has not received the modernization branch. No deployment performed.
-- 21 of 24 planned tasks are integrated; C4 is implemented and awaiting review as a draft PR. C5 and D8 remain; main/release completion remains outstanding.
+- 22 of 24 planned tasks are integrated. C5 and D8 remain; C5 is split into C5a reversible cutover preparation and C5b removal after an accepted release validation cycle. Main/release completion remains outstanding.
 - Last whole-foundation verification at `deea60df`: 262 frontend tests; 1261 backend tests / 10 skipped; both type checks, lint/build; 72 synthetic browser route profiles. These results predate the three merges. The combined `9b32d3d9` baseline has not been rerun in this planning turn.
 
 ## Task status
@@ -45,15 +45,15 @@ Updated 6 October 2026. This is the durable, human-facing status tracker for the
 | 19 | D5 | Visual system across route families | User-merged PR #56 at `7248a020`, final head `b5fc13d0`; see [D5 record](#d5-implementation-record) |
 | 20 | D6 | Transaction import workflow extraction | User-merged PR #57 at `0167c409`, reviewed through `17a196c8`; see [D6 record](#d6-implementation-record) |
 | 21 | D7 | Broker/security workflow extraction | User-merged PR #58 at `13a2129d`, reviewed through `531a56cf`; see D7 record |
-| 22 | C4 | Three solid allocation pies and security histories | Implemented, awaiting review as draft PR [#59](https://github.com/lym-afla/Portfolio-management/pull/59) into `codex/frontend-modernization`; see [C4 record](#c4-implementation-record) |
-| 23 | C5 | ECharts cutover and Chart.js removal | Not implemented; gate last, retain fallback until acceptance |
+| 22 | C4 | Three solid allocation pies and security histories | User-merged PR [#59](https://github.com/lym-afla/Portfolio-management/pull/59) at `671171be`, reviewed through `4feb48d4`; see [C4 record](#c4-implementation-record) |
+| 23 | C5 | ECharts cutover and Chart.js removal | C5a handoff prepared; default-on candidate with lazy fallback, then separate C5b removal after release acceptance |
 | 24 | D8 | All-page visual/keyboard/responsive/behavior QA and documentation | Not implemented |
 
 ## Next execution and boundaries
 
-C4 is implemented on `codex/allocation-security-charts-c4` (base `8f1b0aba`) and stops for review as a draft PR into `codex/frontend-modernization`; review findings are corrected on that branch when they arrive. Preserve D7 broker lifecycle/credential fixes, mobile pagination and its single security request owner. After C4 integrates, C5 (default-on rollout and Chart.js removal) is next.
+Next: [C5a chart cutover handoff](2026-10-07-chart-cutover-c5-handoff.md) and [GLM prompt](2026-10-07-chart-cutover-c5-glm-prompt.md). Execute on a dedicated `codex/chart-cutover-c5` worktree from the latest modernization tip. Prepare a default-on release candidate with three independent rollback flags and lazy Chart.js compatibility; stop at a draft PR. Preserve C4 scope validation, carry-forward zoom model, section loading, null resets and actual refresh retention.
 
-C4 adds separate default-off renderer gates; NAV remains unchanged and default-off. C5 owns default-on release and Chart.js removal. C4 does not authorize backend/financial changes, main merge or deployment.
+C5a must directly resolve/retest C4's inherited `recovery` and `dialog-recovery` exceptions and measure all-modern combined delivery against the saved budget. No Chart.js removal in this assignment: C5b requires an accepted release validation cycle and separate removal approval. Neither task authorizes backend/financial changes, main merge or deployment. C5 remains incomplete after C5a implementation.
 
 The inherited D4 `requests`/`dates` selector issue was closed by C3 task 0 (`2620c2fa`); do not reuse the historical baseline waiver. Screen-reader testing is out of scope under the owner-approved amendment above. No application gates were rerun for this documentation-only handoff.
 
@@ -70,6 +70,9 @@ PR #54's header account-label fix is user-merged at `610dff992d76fe4f9459f059c68
 ## Detailed records
 
 ### C4 implementation record
+
+- Integration: user merged PR #59 at `671171be`, final implementation `4feb48d4`, verified from the remote branch. All root review findings closed. Root independently reran 15 targeted tests, including the previously failing mounted-page context-reset probe; full gates/captures were not independently repeated. Final executor report: 974 units, three type checks, API types, lint 0 errors/8 warnings, build, charts-c4 and full 72-profile browser matrix exit 0. The historical recovery/dialog-recovery exceptions remain explicit C5a task-0 work. Historical draft records below are implementation history, not current PR status.
+
 
 - Status: implemented on branch `codex/allocation-security-charts-c4` in the dedicated worktree `Portfolio-management-c4`, base `8f1b0aba` (PR #58/D7 merged at `13a2129d` plus the C4 handoff documents). Draft PR into `codex/frontend-modernization`; not merged, no deployment. Three gates stay default-off (NAV, allocations, security); C5 owns default-on rollout and Chart.js removal.
 - Commits (task-sized, each preceded by observed RED runs): task 0 — source-linked [wire/behavior inventory](../../design/frontend-charts-c4.md) plus baseline gates at pristine `8f1b0aba` (unit 92 files/857, type-checks x3, api:types, lint 0/8, build, backend 1386 passed/10 skipped — all exit 0); task 1 — negotiated transports (`parseAllocationEnvelope`/`parseSecurityEnvelope`, `fetchBreakdownChart`/`fetchSecurityHistory`, independent `VITE_ALLOCATION_ECHARTS_ENABLED`/`VITE_SECURITY_ECHARTS_ENABLED` gates, `useBreakdownChart`, D7 owner rewiring, 40-case RED suite + 7 integration cases, D7 pins re-bound); task 2 — three solid pies (`buildAllocationOption`, `AllocationLegend`, `AllocationDataTable`, `AllocationChart` + lazy `EChartsAllocation`, BreakdownChart/DashboardPage wiring, 32-case RED suite); task 3 — security histories (`buildSecurityOption`, `SecurityDataTable`, `SecurityHistoryChart` + lazy `EChartsSecurity`, page wiring through the D7 owner, 22-case RED suite); task 4 — `charts-c4` rendered acceptance + delivery measurements + evidence/tracker.
