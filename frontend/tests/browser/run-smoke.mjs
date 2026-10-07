@@ -23,6 +23,7 @@ import { assertDialogDeliveryFlow, assertDialogChunkRecovery, dialogRoutes } fro
 import { assertD4TablesFlow, assertD4TransactionsFlow, assertD4ViewportChecks, captureD4Screenshots } from './d4.mjs'
 import { assertChartsC2Flow } from './charts-c2.mjs'
 import { assertChartsC4FlagOffFlow, runChartsC4PilotFlow } from './charts-c4.mjs'
+import { runChartsC5LazinessFlow } from './charts-c5.mjs'
 import { assertD5FamilyProbesFlow, assertD5NativeZoomFlow, assertD5StatesFlow, assertMobilePageControlsFlow, captureD5Screenshots, d5FamilyRoutes } from './d5.mjs'
 import { assertSettingsAccountFlow } from './settings-account.mjs'
 import { assertImportsD6Flow } from './imports-d6.mjs'
@@ -30,7 +31,7 @@ import { assertBrokersSecurityD7Flow } from './brokers-security-d7.mjs'
 
 const caseIndex = process.argv.indexOf('--case')
 const selectedCase = caseIndex < 0 ? null : process.argv[caseIndex + 1]
-if (selectedCase !== null && !['layout', 'context', 'dates', 'requests', 'recovery', 'delivery', 'dialogs', 'dialog-recovery', 'd4', 'charts-c2', 'charts-c3', 'charts-c4', 'd5', 'settings-account', 'imports-d6', 'brokers-security-d7'].includes(selectedCase)) {
+if (selectedCase !== null && !['layout', 'context', 'dates', 'requests', 'recovery', 'delivery', 'dialogs', 'dialog-recovery', 'd4', 'charts-c2', 'charts-c3', 'charts-c4', 'charts-c5', 'd5', 'settings-account', 'imports-d6', 'brokers-security-d7'].includes(selectedCase)) {
   throw new Error(`Unknown browser case: ${selectedCase || '(missing)'}`)
 }
 
@@ -140,28 +141,54 @@ async function main() {
   await mkdir(screenshotsDir, { recursive: true })
   await writeFile(browserLog, '', 'utf8')
 
-  const fixtureServer = await startFixtureServer({ longAccount: selectedCase === 'layout', contextFailures: selectedCase === 'context', dateFlow: selectedCase === 'dates', requestFlow: selectedCase === 'requests', recoveryFlow: selectedCase === 'recovery', d4Flow: selectedCase === 'd4', chartsC2Flow: selectedCase === 'charts-c2', chartsC3Flow: selectedCase === 'charts-c3', chartsC4Flow: selectedCase === 'charts-c4', settingsAccountFlow: selectedCase === 'settings-account', d5States: selectedCase === 'd5', importsD6Flow: selectedCase === 'imports-d6', brokersSecurityD7Flow: selectedCase === 'brokers-security-d7' })
+  const fixtureServer = await startFixtureServer({ longAccount: selectedCase === 'layout', contextFailures: selectedCase === 'context', dateFlow: selectedCase === 'dates', requestFlow: selectedCase === 'requests', recoveryFlow: selectedCase === 'recovery', d4Flow: selectedCase === 'd4', chartsC2Flow: selectedCase === 'charts-c2', chartsC3Flow: selectedCase === 'charts-c3' || selectedCase === 'charts-c5', chartsC4Flow: selectedCase === 'charts-c4' || selectedCase === 'charts-c5', settingsAccountFlow: selectedCase === 'settings-account', d5States: selectedCase === 'd5', importsD6Flow: selectedCase === 'imports-d6', brokersSecurityD7Flow: selectedCase === 'brokers-security-d7' })
   let appServer
   const sessions = new Map()
   const routeFailures = []
   const deliveryGraphs = {}
   let chartsC4PilotRan = false
+  let chartsC5Ran = false
 
   await runBrowserHarnessLifecycle({
     run: async () => {
     process.env.VITE_API_URL = fixtureServer.origin
     await log({ fixtureOrigin: fixtureServer.origin, status: 'building fixture-bound app' })
-    await build({
-      mode: 'browser-test',
-      root: frontendRoot,
-      build: { emptyOutDir: true, outDir: builtAppDir },
-    })
+    // C5a: missing flags mean the default-on release candidate, so every
+    // pre-existing case that exercises the incumbent/rollback behavior builds
+    // its base artifact with an EXPLICIT all-false rollback configuration.
+    // Flag-off assertions keep their strength; the unflagged candidate is
+    // built separately by the charts-c5 case.
+    const baseFlagState = {
+      nav: process.env.VITE_NAV_ECHARTS_ENABLED,
+      allocation: process.env.VITE_ALLOCATION_ECHARTS_ENABLED,
+      security: process.env.VITE_SECURITY_ECHARTS_ENABLED,
+    }
+    process.env.VITE_NAV_ECHARTS_ENABLED = 'false'
+    process.env.VITE_ALLOCATION_ECHARTS_ENABLED = 'false'
+    process.env.VITE_SECURITY_ECHARTS_ENABLED = 'false'
+    let buildFailed = false
+    try {
+      await build({
+        mode: 'browser-test',
+        root: frontendRoot,
+        build: { emptyOutDir: true, outDir: builtAppDir },
+      })
+    } catch (error) {
+      buildFailed = true
+      throw error
+    } finally {
+      for (const [key, value] of Object.entries(baseFlagState)) {
+        if (value === undefined) delete process.env[key]
+        else process.env[key] = value
+      }
+      await log({ status: buildFailed ? 'fixture-bound build failed' : 'fixture-bound build explicit all-false rollback flags' })
+    }
     appServer = await startBuiltAppServer(builtAppDir, selectedCase === 'dialog-recovery')
 
-    for (const viewport of selectedCase === 'brokers-security-d7' ? viewports.filter((entry) => ['desktop', 'tablet', 'mobile'].includes(entry.name)) : ['dialogs', 'd4', 'd5', 'settings-account', 'imports-d6'].includes(selectedCase) ? viewports.filter(entry => ['desktop', 'mobile'].includes(entry.name)) : ['dates', 'requests', 'recovery', 'delivery', 'dialog-recovery', 'charts-c2', 'charts-c3', 'charts-c4'].includes(selectedCase) ? viewports.filter((entry) => entry.name === 'desktop') : viewports) {
+    for (const viewport of selectedCase === 'brokers-security-d7' ? viewports.filter((entry) => ['desktop', 'tablet', 'mobile'].includes(entry.name)) : ['dialogs', 'd4', 'd5', 'settings-account', 'imports-d6'].includes(selectedCase) ? viewports.filter(entry => ['desktop', 'mobile'].includes(entry.name)) : ['dates', 'requests', 'recovery', 'delivery', 'dialog-recovery', 'charts-c2', 'charts-c3', 'charts-c4', 'charts-c5'].includes(selectedCase) ? viewports.filter((entry) => entry.name === 'desktop') : viewports) {
       for (const authenticated of selectedCase && selectedCase !== 'delivery' ? [true] : [false, true]) {
         const selectedRoutes = routes.filter((route) =>
-          selectedCase === 'dialog-recovery' ? route.path === '/transactions' : selectedCase === 'dialogs' ? dialogRoutes.includes(route.path) : selectedCase === 'delivery' ? ['/login', '/profile', '/dashboard'].includes(route.path) && route.authenticated === authenticated : selectedCase === 'd4' ? ['/open-positions', '/closed-positions', '/transactions'].includes(route.path) : ['charts-c2', 'charts-c3'].includes(selectedCase) ? route.path === '/dashboard' : selectedCase === 'charts-c4' ? ['/dashboard', '/database/securities/1'].includes(route.path) : selectedCase === 'requests' ? ['/database/fx', '/transactions'].includes(route.path) : selectedCase === 'dates' ? route.path === '/open-positions' : ['context', 'recovery'].includes(selectedCase) ? route.path === '/dashboard' : selectedCase === 'd5' ? d5FamilyRoutes.includes(route.path) : selectedCase === 'settings-account' ? route.path === '/profile/settings' : selectedCase === 'imports-d6' ? route.path === '/transactions' : selectedCase === 'brokers-security-d7' ? ['/profile/settings', '/database/securities/1'].includes(route.path) : selectedCase === 'layout'
+          selectedCase === 'dialog-recovery' ? route.path === '/transactions' : selectedCase === 'dialogs' ? dialogRoutes.includes(route.path) : selectedCase === 'delivery' ? ['/login', '/profile', '/dashboard'].includes(route.path) && route.authenticated === authenticated : selectedCase === 'd4' ? ['/open-positions', '/closed-positions', '/transactions'].includes(route.path) : ['charts-c2', 'charts-c3'].includes(selectedCase) ? route.path === '/dashboard' : selectedCase === 'charts-c4' || selectedCase === 'charts-c5' ? ['/dashboard', '/database/securities/1'].includes(route.path) : selectedCase === 'requests' ? ['/database/fx', '/transactions'].includes(route.path) : selectedCase === 'dates' ? route.path === '/open-positions' : ['context', 'recovery'].includes(selectedCase) ? route.path === '/dashboard' : selectedCase === 'd5' ? d5FamilyRoutes.includes(route.path) : selectedCase === 'settings-account' ? route.path === '/profile/settings' : selectedCase === 'imports-d6' ? route.path === '/transactions' : selectedCase === 'brokers-security-d7' ? ['/profile/settings', '/database/securities/1'].includes(route.path) : selectedCase === 'layout'
             ? ['/dashboard', '/summary', '/profile', '/database'].includes(route.path)
             : route.authenticated === authenticated,
         )
@@ -242,6 +269,18 @@ async function main() {
             }
             if (selectedCase === 'charts-c4') {
               await assertChartsC4FlagOffFlow({ appOrigin: appServer.origin, context: `${viewport.name} charts c4 flag-off`, initScript, log, session })
+            }
+            if (selectedCase === 'charts-c5' && !chartsC5Ran) {
+              chartsC5Ran = true
+              await runChartsC5LazinessFlow({
+                flagOffRoot: builtAppDir,
+                frontendRoot,
+                fixtureServer,
+                log,
+                registerSession: (extra) => sessions.set(extra, resolve(browserDir, 'auth-init.js')),
+                artifactsDir,
+              })
+              console.log('PASS charts c5 laziness flow')
             }
             if (selectedCase === 'charts-c3') {
               await assertChartsC3FlagOffFlow({ appOrigin: appServer.origin, context: `${viewport.name} charts c3 flag-off`, initScript, log, session })
@@ -380,8 +419,8 @@ async function main() {
       fixtureRequests: fixtureServer.requests.length,
       routeFailures,
       routeManifestCount: routes.length,
-      routes: selectedCase === 'dialog-recovery' ? 1 : selectedCase === 'd4' ? 3 : selectedCase === 'dialogs' ? dialogRoutes.length : selectedCase === 'delivery' ? 3 : selectedCase === 'requests' ? 2 : ['dates', 'context', 'recovery', 'charts-c2', 'charts-c3', 'charts-c4'].includes(selectedCase) ? 1 : selectedCase === 'd5' ? d5FamilyRoutes.length : ['settings-account', 'imports-d6', 'brokers-security-d7'].includes(selectedCase) ? 2 : selectedCase === 'layout' ? 4 : routes.length,
-      viewports: selectedCase === 'brokers-security-d7' ? 3 : ['d4', 'dialogs', 'd5', 'settings-account', 'imports-d6'].includes(selectedCase) ? 2 : ['dates', 'requests', 'recovery', 'delivery', 'dialog-recovery', 'charts-c2', 'charts-c3', 'charts-c4'].includes(selectedCase) ? 1 : viewports.length,
+      routes: selectedCase === 'dialog-recovery' ? 1 : selectedCase === 'd4' ? 3 : selectedCase === 'dialogs' ? dialogRoutes.length : selectedCase === 'delivery' ? 3 : selectedCase === 'requests' ? 2 : ['dates', 'context', 'recovery', 'charts-c2', 'charts-c3', 'charts-c4', 'charts-c5'].includes(selectedCase) ? 1 : selectedCase === 'd5' ? d5FamilyRoutes.length : ['settings-account', 'imports-d6', 'brokers-security-d7'].includes(selectedCase) ? 2 : selectedCase === 'layout' ? 4 : routes.length,
+      viewports: selectedCase === 'brokers-security-d7' ? 3 : ['d4', 'dialogs', 'd5', 'settings-account', 'imports-d6'].includes(selectedCase) ? 2 : ['dates', 'requests', 'recovery', 'delivery', 'dialog-recovery', 'charts-c2', 'charts-c3', 'charts-c4', 'charts-c5'].includes(selectedCase) ? 1 : viewports.length,
     }
     await writeFile(resolve(artifactsDir, 'summary.json'), `${JSON.stringify(summary, null, 2)}\n`)
     console.log(JSON.stringify(summary, null, 2))

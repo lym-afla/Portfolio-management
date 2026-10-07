@@ -51,6 +51,9 @@ vi.mock('@/utils/logger', () => ({
 }))
 
 vi.mock('@/components/charts/LineChart.vue', () => ({
+  // __esModule is required so the async legacy leaf unwraps `.default`
+  // (Vue checks the flag before treating the module as the component).
+  __esModule: true,
   default: {
     name: 'LineChart',
     template: '<div class="line-chart" />',

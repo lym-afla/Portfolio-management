@@ -12,23 +12,26 @@
           <!-- C4: when the dashboard hands over a validated allocation
                document, the chart tab is the gated modern composition (solid
                pie, or the certified reason when ineligible); the fallback
-               slot keeps the incumbent bars one click away. -->
+               slot keeps the incumbent bars one click away. C5a: the legacy
+               leaf (and its Chart.js runtime) loads only when it renders. -->
+          <template v-if="legacyLoadError">
+            <div class="chart-leaf-error" data-testid="allocation-legacy-load-error" role="alert">
+              <p>The chart could not be loaded: {{ legacyLoadError.message }}</p>
+              <button type="button" data-testid="allocation-legacy-load-retry" @click="retryLegacyLoad">Retry chart</button>
+            </div>
+          </template>
           <AllocationChart
-            v-if="chartDocument"
+            v-else-if="chartDocument"
             :document="chartDocument"
             :interaction="allocationInteraction"
             :requested="true"
             @update:interaction="allocationInteraction = $event"
           >
             <template #fallback>
-              <div class="chart-container">
-                <Bar :data="chartData" :options="barChartOptions" />
-              </div>
+              <LegacyAllocationChart :data="chartData" :options="barChartOptions" />
             </template>
           </AllocationChart>
-          <div v-else class="chart-container">
-            <Bar :data="chartData" :options="barChartOptions" />
-          </div>
+          <LegacyAllocationChart v-else :data="chartData" :options="barChartOptions" />
         </v-window-item>
 
         <v-window-item value="table">
@@ -70,34 +73,24 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
-import { Bar } from 'vue-chartjs'
-import {
-  Chart as ChartJS,
-  Title,
-  Tooltip,
-  Legend,
-  BarElement,
-  CategoryScale,
-  LinearScale,
-} from 'chart.js'
-import ChartDataLabels from 'chartjs-plugin-datalabels'
 import { getChartOptions, colorPalette } from '@/config/chartConfig'
 import AllocationChart from '@/features/charts/AllocationChart.vue'
 import AllocationDataTable from '@/features/charts/AllocationDataTable.vue'
+import { lazyChartRenderer } from '@/features/charts/lazyRenderer'
 import {
   defaultAllocationInteraction,
   reconcileAllocationInteraction,
 } from '@/features/charts/allocationInteraction'
 
-ChartJS.register(
-  Title,
-  Tooltip,
-  Legend,
-  BarElement,
-  CategoryScale,
-  LinearScale,
-  ChartDataLabels
-)
+// C5a: the incumbent Chart.js leaf is the only remaining Chart.js import for
+// the allocation cards, and it loads through an async boundary so a modern
+// route never downloads the legacy runtime. A rejected chunk download shows
+// a visible, recoverable error instead of an empty card.
+const {
+  component: LegacyAllocationChart,
+  loadError: legacyLoadError,
+  retry: retryLegacyLoad,
+} = lazyChartRenderer(() => import('@/components/charts/LegacyAllocationChart.vue'))
 
 const props = defineProps({
   title: {
@@ -196,14 +189,29 @@ onMounted(async () => {
 })
 </script>
 <style scoped>
-.chart-container {
-  position: relative;
-  width: 100%;
-}
-
 .v-window-item {
   height: 100%;
   width: 100%;
+}
+
+.chart-leaf-error {
+  border: 1px solid #b3261e;
+  border-radius: 8px;
+  padding: 12px;
+  color: #b3261e;
+  background: #fff;
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+
+.chart-leaf-error button {
+  border: 1px solid rgba(23, 43, 77, 0.24);
+  background: #fff;
+  border-radius: 4px;
+  min-height: 36px;
+  padding: 4px 12px;
+  cursor: pointer;
 }
 
 .v-table :deep(th) {

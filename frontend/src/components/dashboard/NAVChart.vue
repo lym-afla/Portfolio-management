@@ -34,16 +34,24 @@
       </v-row>
       <!-- Named chart slot (C3): the complete incumbent chart/no-data body is
            the default content; the ECharts pilot may replace exactly this
-           area. Query controls above stay single-owned here. -->
+           area. Query controls above stay single-owned here. C5a: the legacy
+           leaf (and its Chart.js runtime) loads only when it renders, and a
+           rejected chunk download is a visible, recoverable error. -->
       <slot name="chart">
         <div class="chart-wrapper" v-if="!hasNoData">
-          <StackedBarLineChart
-            v-if="chartDataComputed && chartOptionsComputed"
-            :chart-data="chartDataComputed"
-            :options="chartOptionsComputed"
-          />
-          <div v-if="loading" class="chart-overlay">
-            <v-progress-circular indeterminate color="primary" size="64" />
+          <template v-if="!leafLoadError">
+            <StackedBarLineChart
+              v-if="chartDataComputed && chartOptionsComputed"
+              :chart-data="chartDataComputed"
+              :options="chartOptionsComputed"
+            />
+            <div v-if="loading" class="chart-overlay">
+              <v-progress-circular indeterminate color="primary" size="64" />
+            </div>
+          </template>
+          <div v-else class="chart-leaf-error" data-testid="nav-legacy-load-error" role="alert">
+            <p>The chart could not be loaded: {{ leafLoadError.message }}</p>
+            <button type="button" data-testid="nav-legacy-load-retry" @click="retryLeafLoad">Retry chart</button>
           </div>
         </div>
         <v-alert v-else type="info" variant="tonal" density="compact"
@@ -56,10 +64,19 @@
 <script setup>
 import { ref, watch, computed } from 'vue'
 import { useAppStore } from '@/stores/app'
-import StackedBarLineChart from '@/components/charts/StackedBarLineChart.vue'
 import { getChartOptions, colorPalette } from '@/config/chartConfig'
+import { lazyChartRenderer } from '@/features/charts/lazyRenderer'
 import DateRangeSelector from '@/components/DateRangeSelector.vue'
 // import { calculateDateRange } from '@/utils/dateRangeUtils'
+
+// C5a: the incumbent Chart.js leaf loads through an async boundary so the
+// dashboard never downloads the legacy runtime on a modern route; a rejected
+// chunk download shows a visible, recoverable error instead of an empty box.
+const {
+  component: StackedBarLineChart,
+  loadError: leafLoadError,
+  retry: retryLeafLoad,
+} = lazyChartRenderer(() => import('@/components/charts/StackedBarLineChart.vue'))
 
 const props = defineProps({
   chartData: {
@@ -240,5 +257,25 @@ const dateRangeForSelector = computed(() => ({
   justify-content: center;
   align-items: center;
   z-index: 1;
+}
+
+.chart-leaf-error {
+  border: 1px solid #b3261e;
+  border-radius: 8px;
+  padding: 12px;
+  color: #b3261e;
+  background: #fff;
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+
+.chart-leaf-error button {
+  border: 1px solid rgba(23, 43, 77, 0.24);
+  background: #fff;
+  border-radius: 4px;
+  min-height: 36px;
+  padding: 4px 12px;
+  cursor: pointer;
 }
 </style>
