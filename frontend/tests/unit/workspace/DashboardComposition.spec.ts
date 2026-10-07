@@ -109,13 +109,15 @@ describe('PortfolioMetrics presentation', () => {
 
 const api = vi.hoisted(() => ({
   getDashboardSummary: vi.fn(),
-  getDashboardBreakdown: vi.fn(),
   getDashboardSummaryOverTime: vi.fn(),
 }))
 vi.mock('@/services/api', () => api)
 
+// C4: the breakdown request negotiates chart contract v2 through the shared
+// chart transport (one request still feeds all three cards).
 const chartApi = vi.hoisted(() => ({
   fetchNavChart: vi.fn(),
+  fetchBreakdownChart: vi.fn(),
   ChartApiError: class ChartApiError extends Error {},
   ChartContextMismatchError: class ChartContextMismatchError extends Error {},
 }))
@@ -155,11 +157,14 @@ beforeEach(() => {
   vi.resetAllMocks()
   configureContextFixture('2026-09-08')
   api.getDashboardSummary.mockResolvedValue(summaryFixture)
-  api.getDashboardBreakdown.mockResolvedValue({
-    assetType: { data: { Stocks: '$1,000.00' }, percentage: { Stocks: '100%' } },
-    assetClass: { data: { Equity: '$1,000.00' }, percentage: { Equity: '100%' } },
-    currency: { data: { USD: '$1,000.00' }, percentage: { USD: '100%' } },
-    totalNAV: '$1,000.00',
+  chartApi.fetchBreakdownChart.mockResolvedValue({
+    capability: 'legacy_only',
+    legacy: {
+      assetType: { data: { Stocks: '$1,000.00' }, percentage: { Stocks: '100%' } },
+      assetClass: { data: { Equity: '$1,000.00' }, percentage: { Equity: '100%' } },
+      currency: { data: { USD: '$1,000.00' }, percentage: { USD: '100%' } },
+      totalNAV: '$1,000.00',
+    },
   })
   api.getDashboardSummaryOverTime.mockResolvedValue({
     lines: [{ name: 'EoP NAV', data: { YTD: '$1,000.00', 'All-time': '$1,000.00' } }],

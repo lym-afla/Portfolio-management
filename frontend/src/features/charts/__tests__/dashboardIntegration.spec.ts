@@ -19,7 +19,6 @@ import { navSeriesFixture } from './fixtures'
 
 const api = vi.hoisted(() => ({
   getDashboardSummary: vi.fn(),
-  getDashboardBreakdown: vi.fn(),
   getDashboardSummaryOverTime: vi.fn(),
 }))
 vi.mock('@/services/api', () => api)
@@ -43,16 +42,24 @@ const chartApi = vi.hoisted(() => {
       this.name = 'ChartContextMismatchError'
     }
   }
-  return { fetchNavChart: vi.fn(), ChartApiError, ChartContextMismatchError }
+  return {
+    fetchNavChart: vi.fn(),
+    fetchBreakdownChart: vi.fn(),
+    ChartApiError,
+    ChartContextMismatchError,
+  }
 })
 vi.mock('@/features/charts/chartApi', () => chartApi)
 
 const summaryFixture = { 'Current NAV': '$1,000.00', Invested: '$900.00', 'Cash-out': '$0.00', total_return: '11.11%', irr: 'N/R' }
 const breakdownFixture = {
-  assetType: { data: { Stocks: '$1,000.00' }, percentage: { Stocks: '100%' } },
-  assetClass: { data: { Equity: '$1,000.00' }, percentage: { Equity: '100%' } },
-  currency: { data: { USD: '$1,000.00' }, percentage: { USD: '100%' } },
-  totalNAV: '$1,000.00',
+  capability: 'legacy_only',
+  legacy: {
+    assetType: { data: { Stocks: '$1,000.00' }, percentage: { Stocks: '100%' } },
+    assetClass: { data: { Equity: '$1,000.00' }, percentage: { Equity: '100%' } },
+    currency: { data: { USD: '$1,000.00' }, percentage: { USD: '100%' } },
+    totalNAV: '$1,000.00',
+  },
 }
 const historyFixture = {
   lines: [{ name: 'EoP NAV', data: { YTD: '$1,000.00', 'All-time': '$1,000.00' } }],
@@ -117,15 +124,16 @@ beforeEach(() => {
   vi.resetAllMocks()
   configureContextFixture('2026-09-08')
   api.getDashboardSummary.mockResolvedValue(summaryFixture)
-  api.getDashboardBreakdown.mockResolvedValue(breakdownFixture)
   api.getDashboardSummaryOverTime.mockResolvedValue(historyFixture)
   chartApi.fetchNavChart.mockResolvedValue(v2Result())
+  chartApi.fetchBreakdownChart.mockResolvedValue(breakdownFixture)
 })
 
 describe('DashboardPage NAV chart wiring', () => {
   it('issues exactly one NAV request on initial load with the mapped query', async () => {
     const wrapper = await mountDashboard()
     expect(chartApi.fetchNavChart).toHaveBeenCalledTimes(1)
+    expect(chartApi.fetchBreakdownChart).toHaveBeenCalledTimes(1)
     const query = chartApi.fetchNavChart.mock.calls[0][0] as NavQuery
     expect(query.mode).toBe('none')
     expect(query.frequency).toBe('Q')
@@ -214,7 +222,7 @@ describe('DashboardPage NAV chart wiring', () => {
     await flushPromises()
     expect(chartApi.fetchNavChart).toHaveBeenCalledTimes(2)
     expect(api.getDashboardSummary).toHaveBeenCalledTimes(2)
-    expect(api.getDashboardBreakdown).toHaveBeenCalledTimes(2)
+    expect(chartApi.fetchBreakdownChart).toHaveBeenCalledTimes(2)
     expect(api.getDashboardSummaryOverTime).toHaveBeenCalledTimes(2)
     wrapper.unmount()
   })

@@ -9,13 +9,36 @@
 
       <v-window v-model="tab" class="flex-grow-1" v-if="hasData">
         <v-window-item value="chart">
-          <div class="chart-container">
+          <!-- C4: when the dashboard hands over a validated allocation
+               document, the chart tab is the gated modern composition (solid
+               pie, or the certified reason when ineligible); the fallback
+               slot keeps the incumbent bars one click away. -->
+          <AllocationChart
+            v-if="chartDocument"
+            :document="chartDocument"
+            :interaction="allocationInteraction"
+            :requested="true"
+            @update:interaction="allocationInteraction = $event"
+          >
+            <template #fallback>
+              <div class="chart-container">
+                <Bar :data="chartData" :options="barChartOptions" />
+              </div>
+            </template>
+          </AllocationChart>
+          <div v-else class="chart-container">
             <Bar :data="chartData" :options="barChartOptions" />
           </div>
         </v-window-item>
 
         <v-window-item value="table">
-          <v-table density="compact">
+          <AllocationDataTable
+            v-if="chartDocument"
+            :document="chartDocument"
+            :interaction="allocationInteraction"
+            @update:interaction="allocationInteraction = $event"
+          />
+          <v-table v-else density="compact">
             <thead>
               <tr>
                 <th class="text-left category-column" />
@@ -46,7 +69,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { Bar } from 'vue-chartjs'
 import {
   Chart as ChartJS,
@@ -59,6 +82,12 @@ import {
 } from 'chart.js'
 import ChartDataLabels from 'chartjs-plugin-datalabels'
 import { getChartOptions, colorPalette } from '@/config/chartConfig'
+import AllocationChart from '@/features/charts/AllocationChart.vue'
+import AllocationDataTable from '@/features/charts/AllocationDataTable.vue'
+import {
+  defaultAllocationInteraction,
+  reconcileAllocationInteraction,
+} from '@/features/charts/allocationInteraction'
 
 ChartJS.register(
   Title,
@@ -86,10 +115,35 @@ const props = defineProps({
     type: String,
     required: true,
   },
+  // C4: the card's validated allocation document, handed over only while the
+  // allocation gate is on and the negotiated result is v2. Null keeps the
+  // incumbent presentation byte-identical.
+  chartDocument: {
+    type: Object,
+    default: null,
+  },
 })
 
 const tab = ref('chart')
 const barChartOptions = ref({})
+// Highlight-only interaction (C4): focus never hides or renormalizes; a
+// compatible refresh keeps the focus, a disappearing category clears it.
+const allocationInteraction = ref(defaultAllocationInteraction())
+watch(
+  () => props.chartDocument,
+  (next, previous) => {
+    if (!next) {
+      allocationInteraction.value = defaultAllocationInteraction()
+      return
+    }
+    allocationInteraction.value = reconcileAllocationInteraction(
+      previous ?? next,
+      next,
+      allocationInteraction.value,
+    )
+  },
+  { immediate: true },
+)
 
 const hasData = computed(() => {
   return (

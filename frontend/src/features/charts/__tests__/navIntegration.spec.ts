@@ -18,7 +18,6 @@ import { navWireFixture } from './navFixtures'
 
 const api = vi.hoisted(() => ({
   getDashboardSummary: vi.fn(),
-  getDashboardBreakdown: vi.fn(),
   getDashboardSummaryOverTime: vi.fn(),
 }))
 vi.mock('@/services/api', () => api)
@@ -42,7 +41,7 @@ const chartApi = vi.hoisted(() => {
       this.name = 'ChartContextMismatchError'
     }
   }
-  return { fetchNavChart: vi.fn(), ChartApiError, ChartContextMismatchError }
+  return { fetchNavChart: vi.fn(), fetchBreakdownChart: vi.fn(), ChartApiError, ChartContextMismatchError }
 })
 vi.mock('@/features/charts/chartApi', () => chartApi)
 
@@ -72,11 +71,16 @@ vi.mock('../EChartsNav.vue', async () => {
 import EChartsNavStub from '../EChartsNav.vue'
 
 const summaryFixture = { 'Current NAV': '$1,000.00', Invested: '$900.00', 'Cash-out': '$0.00', total_return: '11.11%', irr: 'N/R' }
+// C4: the breakdown arrives negotiated — the legacy card fields ride beside
+// the three v2 documents in one response.
 const breakdownFixture = {
-  assetType: { data: { Stocks: '$1,000.00' }, percentage: { Stocks: '100%' } },
-  assetClass: { data: { Equity: '$1,000.00' }, percentage: { Equity: '100%' } },
-  currency: { data: { USD: '$1,000.00' }, percentage: { USD: '100%' } },
-  totalNAV: '$1,000.00',
+  capability: 'legacy_only',
+  legacy: {
+    assetType: { data: { Stocks: '$1,000.00' }, percentage: { Stocks: '100%' } },
+    assetClass: { data: { Equity: '$1,000.00' }, percentage: { Equity: '100%' } },
+    currency: { data: { USD: '$1,000.00' }, percentage: { USD: '100%' } },
+    totalNAV: '$1,000.00',
+  },
 }
 const historyFixture = { lines: [{ name: 'EoP NAV', data: { YTD: '$1,000.00' } }], years: [2026], currentYear: 2026 }
 
@@ -124,7 +128,7 @@ beforeEach(() => {
   configureContextFixture('2026-09-08')
   pilot.enabled = false
   api.getDashboardSummary.mockResolvedValue(summaryFixture)
-  api.getDashboardBreakdown.mockResolvedValue(breakdownFixture)
+  chartApi.fetchBreakdownChart.mockResolvedValue(breakdownFixture)
   api.getDashboardSummaryOverTime.mockResolvedValue(historyFixture)
   chartApi.fetchNavChart.mockResolvedValue(v2Result())
 })

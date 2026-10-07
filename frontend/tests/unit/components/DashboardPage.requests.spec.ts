@@ -10,13 +10,16 @@ import DashboardPage from '@/views/DashboardPage.vue'
 import { useAppStore } from '@/stores/app'
 
 const api = vi.hoisted(() => ({
-  getDashboardSummary: vi.fn(), getDashboardBreakdown: vi.fn(),
+  getDashboardSummary: vi.fn(),
   getDashboardSummaryOverTime: vi.fn(),
 }))
 vi.mock('@/services/api', () => api)
 
+// C4: the breakdown request negotiates chart contract v2 through the shared
+// chart transport (one request still feeds all three cards).
 const chartApi = vi.hoisted(() => ({
   fetchNavChart: vi.fn(),
+  fetchBreakdownChart: vi.fn(),
   ChartApiError: class ChartApiError extends Error {},
   ChartContextMismatchError: class ChartContextMismatchError extends Error {},
 }))
@@ -29,7 +32,10 @@ const legacyOnlyResult = (labels: string[] = ['2026-09-08']) => ({
 })
 const fixtures = {
   getDashboardSummary: summaryFixture,
-  getDashboardBreakdown: { assetType: { data: { Stocks: '1,000.00' }, percentage: { Stocks: '100%' } }, assetClass: {}, currency: {}, totalNAV: '1,000.00' },
+  fetchBreakdownChart: {
+    capability: 'legacy_only',
+    legacy: { assetType: { data: { Stocks: '1,000.00' }, percentage: { Stocks: '100%' } }, assetClass: {}, currency: {}, totalNAV: '1,000.00' },
+  },
   getDashboardSummaryOverTime: { lines: [{ name: 'EoP NAV', data: { YTD: '1,000.00', 'All-time': '1,000.00' } }], years: [], currentYear: 2026 },
   fetchNavChart: legacyOnlyResult(),
 }
@@ -56,17 +62,18 @@ beforeEach(() => {
   configureContextFixture('2026-09-08')
   Object.entries(api).forEach(([name, fetcher]) => fetcher.mockRejectedValue(new Error(`${name} temporarily failed`)))
   chartApi.fetchNavChart.mockRejectedValue(new Error('fetchNavChart temporarily failed'))
+  chartApi.fetchBreakdownChart.mockRejectedValue(new Error('fetchBreakdownChart temporarily failed'))
 })
 
 it.each([
   ['getDashboardSummary', 0, 'Total NAV'],
-  ['getDashboardBreakdown', 2, 'Stocks'],
+  ['fetchBreakdownChart', 2, 'Stocks'],
   ['getDashboardSummaryOverTime', 5, 'EoP NAV'],
   ['fetchNavChart', 1, '2026-09-08'],
 ] as const)('restores visible %s content after a successful retry while other widgets stay failed', async (name, buttonIndex, content) => {
   const wrapper = await mountDashboardWithRealStores()
   expect(wrapper.text()).toContain(`${name} temporarily failed`)
-  const mock = name === 'fetchNavChart' ? chartApi.fetchNavChart : api[name as keyof typeof api]
+  const mock = name in chartApi ? chartApi[name as keyof typeof chartApi] : api[name as keyof typeof api]
   const fixture = fixtures[name as keyof typeof fixtures]
   mock.mockResolvedValueOnce(fixture)
   const buttons = wrapper.findAll('button').filter((button) => button.text().includes('Retry'))
@@ -75,7 +82,7 @@ it.each([
   expect(wrapper.text()).not.toContain(`${name} temporarily failed`)
   expect(wrapper.text()).toContain(content)
   if (name === 'getDashboardSummary') expect(wrapper.text()).toContain(summaryFixture['Current NAV'])
-  const other = name === 'getDashboardSummary' ? 'getDashboardBreakdown' : 'getDashboardSummary'
+  const other = name === 'getDashboardSummary' ? 'fetchBreakdownChart' : 'getDashboardSummary'
   expect(wrapper.text()).toContain(`${other} temporarily failed`)
   expect(mock).toHaveBeenCalledTimes(2)
   wrapper.unmount()
@@ -84,6 +91,7 @@ it.each([
 function resolveAllWidgets() {
   Object.entries(fixtures).forEach(([name, value]) => {
     if (name === 'fetchNavChart') chartApi.fetchNavChart.mockResolvedValue(value)
+    else if (name === 'fetchBreakdownChart') chartApi.fetchBreakdownChart.mockResolvedValue(value)
     else api[name as keyof typeof api].mockResolvedValue(value)
   })
 }

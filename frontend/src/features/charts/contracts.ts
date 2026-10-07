@@ -178,3 +178,56 @@ export interface LegacyNav {
 export type NavResult =
   | { capability: 'v2'; legacy: LegacyNav; document: ChartDocument }
   | { capability: 'legacy_only'; legacy: LegacyNav }
+
+// ---- C4: breakdown (three allocation documents, one request) --------------
+
+export interface BreakdownQuery {
+  context: ReadyChartContext
+}
+
+/** One legacy breakdown card: category label → formatted amount/percentage. */
+export interface LegacyBreakdownDimension {
+  data: Readonly<Record<string, string>>
+  percentage: Readonly<Record<string, string>>
+}
+
+export interface LegacyBreakdown {
+  assetType: LegacyBreakdownDimension
+  assetClass: LegacyBreakdownDimension
+  currency: LegacyBreakdownDimension
+  totalNAV: string
+  /** Legacy envelopes may carry extra fields; they survive as-is. */
+  [key: string]: unknown
+}
+
+export interface AllocationDocuments {
+  assetType: ChartDocument
+  assetClass: ChartDocument
+  currency: ChartDocument
+}
+
+export type AllocationResult =
+  | { capability: 'v2'; legacy: LegacyBreakdown; documents: AllocationDocuments }
+  | { capability: 'legacy_only'; legacy: LegacyBreakdown }
+
+// ---- C4: security price/position histories --------------------------------
+
+export interface SecurityHistoryQuery {
+  context: ReadyChartContext
+  securityId: number
+  /** Local page filter; the price endpoint has no account parameter at all. */
+  accountId: number | null
+  period: string
+}
+
+/** Legacy history row: the endpoint-specific fields stay lossless. */
+export interface LegacySecurityRow {
+  date: string
+  [key: string]: unknown
+}
+
+export type LegacySecurityHistory = readonly LegacySecurityRow[]
+
+export type SecurityHistoryResult =
+  | { capability: 'v2'; legacy: LegacySecurityHistory; document: ChartDocument }
+  | { capability: 'legacy_only'; legacy: LegacySecurityHistory }

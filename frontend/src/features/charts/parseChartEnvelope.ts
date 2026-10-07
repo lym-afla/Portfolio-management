@@ -4,6 +4,8 @@
 // coercion. ISO dates are validated with an exclusive UTC year/month/day
 // round-trip. Allocation and security document specifics are Task 2.
 import type {
+  AllocationDocuments,
+  AllocationResult,
   ChartAllocation,
   ChartAllocationSummary,
   ChartDocument,
@@ -12,7 +14,11 @@ import type {
   ChartSeriesCategory,
   ChartUnit,
   ChartValue,
+  LegacyBreakdown,
+  LegacyBreakdownDimension,
   LegacyNav,
+  LegacySecurityHistory,
+  LegacySecurityRow,
   NavResult,
   ValueStatus,
 } from './contracts'
@@ -519,6 +525,138 @@ export function parseNavEnvelope(input: unknown): NavResult {
   }
   const { chartV2: _modern, ...legacyRest } = input
   const legacy: LegacyNav = adaptLegacyNav(legacyRest)
+  return { capability: 'v2', legacy, document }
+}
+
+// ---- C4: breakdown and security history envelopes --------------------------
+
+/** The v2 dimension map of the breakdown endpoint: response key → document dimension. */
+const ALLOCATION_DIMENSION_KEYS = {
+  assetType: 'asset_type',
+  assetClass: 'asset_class',
+  currency: 'currency',
+} as const
+
+function parseLegacyBreakdownDimension(input: unknown, where: string): LegacyBreakdownDimension {
+  if (!isRecord(input)) throw new ChartContractError(`${where} must be an object`)
+  for (const field of ['data', 'percentage'] as const) {
+    const record = input[field]
+    if (!isRecord(record)) throw new ChartContractError(`${where} ${field} must be an object`)
+    for (const [key, value] of Object.entries(record)) {
+      if (typeof value !== 'string') {
+        throw new ChartContractError(`${where} ${field}.${key} must be a string, never coerced`)
+      }
+    }
+  }
+  return {
+    data: input.data as LegacyBreakdownDimension['data'],
+    percentage: input.percentage as LegacyBreakdownDimension['percentage'],
+  }
+}
+
+function parseLegacyBreakdown(input: unknown): LegacyBreakdown {
+  if (!isRecord(input)) throw new ChartContractError('Legacy breakdown payload must be an object')
+  const legacy: LegacyBreakdown = {
+    ...input,
+    assetType: parseLegacyBreakdownDimension(input.assetType, 'Legacy assetType'),
+    assetClass: parseLegacyBreakdownDimension(input.assetClass, 'Legacy assetClass'),
+    currency: parseLegacyBreakdownDimension(input.currency, 'Legacy currency'),
+    totalNAV: typeof input.totalNAV === 'string' ? input.totalNAV : (() => {
+      throw new ChartContractError('Legacy breakdown totalNAV must be a string')
+    })(),
+  }
+  return legacy
+}
+
+/** Validate the breakdown envelope: one request, three allocation documents. */
+export function parseAllocationEnvelope(input: unknown): AllocationResult {
+  if (!isRecord(input)) throw new ChartContractError('Breakdown envelope must be an object')
+  const legacy = parseLegacyBreakdown(input)
+  if (!('chartV2' in input)) {
+    return { capability: 'legacy_only', legacy }
+  }
+  const rawDocuments = input.chartV2
+  if (rawDocuments == null) {
+    throw new ChartContractError('A present chartV2 must carry all three allocation documents, never a silent downgrade')
+  }
+  if (!isRecord(rawDocuments)) throw new ChartContractError('Breakdown chartV2 must be an object of allocation documents')
+  const documents = {} as AllocationDocuments
+  for (const key of Object.keys(ALLOCATION_DIMENSION_KEYS) as (keyof typeof ALLOCATION_DIMENSION_KEYS)[]) {
+    const parsed = parseEnvelopeDocument(rawDocuments[key], 'allocation', `Breakdown chartV2.${key}`)
+    const dimension = parsed.allocationSummary?.dimension
+    if (dimension !== ALLOCATION_DIMENSION_KEYS[key]) {
+      throw new ChartContractError(
+        `Breakdown chartV2.${key} carried dimension ${String(dimension)} instead of ${ALLOCATION_DIMENSION_KEYS[key]}`
+      )
+    }
+    documents[key] = parsed
+  }
+  for (const extraKey of Object.keys(rawDocuments)) {
+    if (!(extraKey in ALLOCATION_DIMENSION_KEYS)) {
+      throw new ChartContractError(`Breakdown chartV2 carried an unexpected dimension ${extraKey}`)
+    }
+  }
+  return { capability: 'v2', legacy, documents }
+}
+
+function parseEnvelopeDocument(
+  input: unknown,
+  kind: 'allocation' | 'price' | 'position',
+  where: string,
+): ChartDocument {
+  let document: ChartDocument
+  try {
+    document = parseChartDocument(input)
+  } catch (error) {
+    if (error instanceof ChartContractError) {
+      throw new ChartContractError(`Invalid chartV2 document (${where}): ${error.message}`)
+    }
+    throw error
+  }
+  if (document.kind !== kind) {
+    throw new ChartContractError(`${where} carried a ${document.kind} document instead of ${kind}`)
+  }
+  return document
+}
+
+function parseLegacySecurityHistory(input: unknown, kind: 'price' | 'position'): LegacySecurityHistory {
+  if (!Array.isArray(input)) {
+    throw new ChartContractError(`Legacy ${kind} history must be an array`)
+  }
+  return input.map((row, index): LegacySecurityRow => {
+    if (!isRecord(row)) throw new ChartContractError(`Legacy ${kind} row ${index} must be an object`)
+    if (typeof row.date !== 'string') {
+      throw new ChartContractError(`Legacy ${kind} row ${index} date must be a string`)
+    }
+    if (kind === 'price') {
+      if (typeof row.price !== 'number' || !Number.isFinite(row.price)) {
+        throw new ChartContractError(`Legacy price row ${index} price must be a finite number`)
+      }
+    } else if (typeof row.position !== 'string') {
+      throw new ChartContractError(`Legacy position row ${index} position must be a string`)
+    }
+    return row as LegacySecurityRow
+  })
+}
+
+/** Validate a security history envelope against the endpoint's own legacy shape. */
+export function parseSecurityEnvelope(
+  input: unknown,
+  kind: 'price' | 'position',
+): { capability: 'v2'; legacy: LegacySecurityHistory; document: ChartDocument } | { capability: 'legacy_only'; legacy: LegacySecurityHistory } {
+  // The pre-v2 wire of both security endpoints is a bare JSON array.
+  if (Array.isArray(input)) {
+    return { capability: 'legacy_only', legacy: parseLegacySecurityHistory(input, kind) }
+  }
+  if (!isRecord(input)) throw new ChartContractError(`Security ${kind} envelope must be an array or an object`)
+  if (!('chartV2' in input)) {
+    throw new ChartContractError(`Security ${kind} envelope carried an unrecognized object without chartV2`)
+  }
+  const legacy = parseLegacySecurityHistory(input.legacy, kind)
+  if (input.chartV2 == null) {
+    throw new ChartContractError('A present chartV2 must be a valid chart document, never a silent legacy downgrade')
+  }
+  const document = parseEnvelopeDocument(input.chartV2, kind, `Security ${kind} chartV2`)
   return { capability: 'v2', legacy, document }
 }
 

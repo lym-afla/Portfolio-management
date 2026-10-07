@@ -6,6 +6,11 @@
     "composite": false,
     "noEmit": true
   },
+  // remainingChartIntegration.spec.ts mounts the real security owner and the
+  // app stores: its import graph is the whole legacy app, whose pre-existing
+  // non-strict sources would drag app-wide violations into this strict
+  // project (same recorded scoping as the C2 integration specs). It stays
+  // type-checked by the main tsconfig via src/**/*.
   "include": [
     "src/features/charts/**/*.ts",
     "tests/unit/helpers/**/*.ts",
@@ -17,6 +22,7 @@
     "src/features/charts/__tests__/dashboardIntegration.spec.ts",
     "src/features/charts/__tests__/navIntegration.spec.ts",
     "src/features/charts/__tests__/navReview.spec.ts",
+    "src/features/charts/__tests__/remainingChartIntegration.spec.ts",
     "src/features/charts/__tests__/render"
   ],
   "references": []
