@@ -29,12 +29,23 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onErrorCaptured, onUnmounted, ref } from 'vue'
+import { computed, onErrorCaptured, onUnmounted, ref } from 'vue'
 import type { NavResult } from './contracts'
 import type { ChartInteraction } from './interaction'
 import { resolveRenderer, type Renderer } from './rendererPolicy'
+import { lazyChartRenderer } from './lazyRenderer'
 
-const EChartsNav = defineAsyncComponent(() => import('./EChartsNav.vue'))
+// The lazy ECharts subtree: a rejected chunk download is routed into the
+// same recoverable failure UI as a render error (explicit retry and
+// user-chosen fallback), instead of surfacing as an empty-success chart.
+const {
+  component: EChartsNav,
+  retry: retryRendererChunk,
+} = lazyChartRenderer(() => import('./EChartsNav.vue'), {
+  onLoadError: (error) => {
+    if (!disposed) failure.value = error
+  },
+})
 
 const props = withDefaults(
   defineProps<{
@@ -74,6 +85,10 @@ function onRenderError(error: Error): void {
 function retry(): void {
   if (disposed) return
   failure.value = null
+  // The chunk-load retry clears the loader's failed attempt so a fresh
+  // mount can re-download; after a resolved chunk this is a no-op and the
+  // remount alone redraws.
+  retryRendererChunk()
   mountKey.value += 1
 }
 

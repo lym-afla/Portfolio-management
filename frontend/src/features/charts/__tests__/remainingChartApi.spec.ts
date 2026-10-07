@@ -451,9 +451,17 @@ describe('fetchSecurityHistory', () => {
 })
 
 describe('C4 renderer gates', () => {
-  it('default both allocation and security gates off', () => {
+  it('C5a candidate: absent flags default both gates on', () => {
+    expect(allocationEchartsRequested()).toBe(true)
+    expect(securityEchartsRequested()).toBe(true)
+  })
+
+  it('explicit false turns each gate off (the rollback build)', () => {
+    vi.stubEnv('VITE_ALLOCATION_ECHARTS_ENABLED', 'false')
+    vi.stubEnv('VITE_SECURITY_ECHARTS_ENABLED', 'false')
     expect(allocationEchartsRequested()).toBe(false)
     expect(securityEchartsRequested()).toBe(false)
+    vi.unstubAllEnvs()
   })
 
   it('enables each gate only for the exact string true', () => {

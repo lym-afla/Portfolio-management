@@ -46,13 +46,23 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onErrorCaptured, onUnmounted, ref } from 'vue'
+import { computed, onErrorCaptured, onUnmounted, ref } from 'vue'
 import type { ChartDocument } from './contracts'
 import type { SecurityInteraction } from './securityInteraction'
 import { defaultSecurityInteraction } from './securityInteraction'
+import { lazyChartRenderer } from './lazyRenderer'
 import SecurityDataTable from './SecurityDataTable.vue'
 
-const EChartsSecurity = defineAsyncComponent(() => import('./EChartsSecurity.vue'))
+// A rejected ECharts chunk download lands in the same recoverable failure
+// UI as a render error (explicit retry and user-chosen legacy fallback).
+const {
+  component: EChartsSecurity,
+  retry: retryRendererChunk,
+} = lazyChartRenderer(() => import('./EChartsSecurity.vue'), {
+  onLoadError: (error) => {
+    if (!disposed) failure.value = error
+  },
+})
 
 const props = withDefaults(
   defineProps<{
@@ -92,6 +102,7 @@ function onRenderError(error: Error): void {
 function retry(): void {
   if (disposed) return
   failure.value = null
+  retryRendererChunk()
   fallbackActive.value = false
   mountKey.value += 1
 }

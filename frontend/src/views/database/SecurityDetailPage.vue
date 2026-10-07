@@ -38,6 +38,24 @@
       </v-col>
     </v-row>
 
+    <v-alert
+      v-if="legacyChartLoadError"
+      type="error"
+      class="mb-4"
+      data-testid="security-legacy-load-error"
+    >
+      The chart could not be loaded: {{ legacyChartLoadError.message }}
+      <v-btn
+        color="error"
+        variant="outlined"
+        class="ml-2"
+        data-testid="security-legacy-load-retry"
+        @click="retryLegacyChartLoad"
+      >
+        Retry chart
+      </v-btn>
+    </v-alert>
+
     <template v-if="loading">
       <v-skeleton-loader v-for="i in 3" :key="i" type="card" class="mb-6" />
     </template>
@@ -165,24 +183,13 @@ import { useAppStore } from '@/stores/app'
 import { useSecurityDetail } from '@/features/securities/useSecurityDetail'
 import SecurityHistoryChart from '@/features/charts/SecurityHistoryChart.vue'
 import { securityEchartsRequested } from '@/features/charts/rendererPolicy'
+import { lazyChartRenderer } from '@/features/charts/lazyRenderer'
 import { defaultSecurityInteraction, reconcileSecurityInteraction } from '@/features/charts/securityInteraction'
 import SecurityOverview from '@/features/securities/SecurityOverview.vue'
 import SecurityMetadata from '@/features/securities/SecurityMetadata.vue'
 import SecurityActivity from '@/features/securities/SecurityActivity.vue'
-import LineChart from '@/components/charts/LineChart.vue'
 import TimelineSelector from '@/components/TimelineSelector.vue'
 import { colorPalette } from '@/config/chartConfig'
-import 'chartjs-adapter-date-fns'
-import {
-  Chart,
-  TimeScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-} from 'chart.js'
 import {
   subDays,
   subMonths,
@@ -198,19 +205,15 @@ defineOptions({ name: 'SecurityDetailPage' })
 
 const emit = defineEmits(['update-page-title'])
 
-// Register Chart.js components
-Chart.register(
-  TimeScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend
-)
-
-// Set the default locale for Chart.js
-Chart.defaults.locale = 'en-US'
+// C5a: the incumbent Chart.js leaf loads through an async boundary — the
+// page keeps only its pure option factories; the Chart.js runtime, the time
+// scale and the date adapter now live in the lazy leaf. A rejected chunk
+// download shows a visible, recoverable error instead of empty sections.
+const {
+  component: LineChart,
+  loadError: legacyChartLoadError,
+  retry: retryLegacyChartLoad,
+} = lazyChartRenderer(() => import('@/components/charts/LineChart.vue'))
 
 const route = useRoute()
 const appStore = useAppStore()
