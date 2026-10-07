@@ -270,9 +270,17 @@ const positionDocument = computed(() => {
 const priceInteraction = ref(defaultSecurityInteraction())
 const positionInteraction = ref(defaultSecurityInteraction())
 watch(priceDocument, (next, previous) => {
+  if (!next) {
+    priceInteraction.value = defaultSecurityInteraction()
+    return
+  }
   priceInteraction.value = reconcileSecurityInteraction(previous ?? next, next, priceInteraction.value)
 }, { immediate: true })
 watch(positionDocument, (next, previous) => {
+  if (!next) {
+    positionInteraction.value = defaultSecurityInteraction()
+    return
+  }
   positionInteraction.value = reconcileSecurityInteraction(previous ?? next, next, positionInteraction.value)
 }, { immediate: true })
 

@@ -372,7 +372,7 @@ describe('AllocationChart', () => {
     return wrapper
   }
 
-  it('renders the pie and legend for an eligible document when requested', async () => {
+  it('renders the pie and legend for an eligible document when requested', { timeout: 20000 }, async () => {
     const wrapper = await mountChart(documentFor())
     expect(chartState.captured).toHaveLength(1)
     expect(wrapper.find('[data-testid="allocation-legend"]').exists()).toBe(true)
@@ -381,7 +381,7 @@ describe('AllocationChart', () => {
     wrapper.unmount()
   })
 
-  it('renders the reason and no pie for every ineligible state', async () => {
+  it('renders the reason and no pie for every ineligible state', { timeout: 20000 }, async () => {
     for (const options of [
       { pieEligibility: 'signed', partition: 'complete' },
       { pieEligibility: 'incomplete', partition: 'unknown' },

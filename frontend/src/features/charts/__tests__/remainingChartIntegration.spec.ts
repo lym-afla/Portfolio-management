@@ -592,10 +592,44 @@ describe('SecurityDetailPage security-history wiring', () => {
       const option = chartStub.props('option') as { dataZoom: Array<{ start: number; end: number }> }
       expect(option.dataZoom[0].start).toBeCloseTo(33.33, 1)
       expect(option.dataZoom[0].end).toBeCloseTo(66.67, 1)
-      // A compatible refresh (the fixture answers the same server keys)
-      // keeps the viewport on the re-rendered chart.
-      const refresh = wrapper.findAllComponents({ name: 'VChart' })[0]
-      expect((refresh.props('option') as { dataZoom: Array<{ start: number }> }).dataZoom[0].start).toBeCloseTo(33.33, 1)
+      // A real data refresh re-reads every history; once the replacement
+      // responses land, the zoom survives on the re-rendered chart.
+      const priceBefore = transportCalls.filter((call) => call.url.endsWith('/price-history/')).length
+      usePortfolioContextStore().triggerDataRefresh()
+      await flush()
+      await flush()
+      await flush()
+      expect(transportCalls.filter((call) => call.url.endsWith('/price-history/')).length).toBe(priceBefore + 1)
+      const refreshed = wrapper.findAllComponents({ name: 'VChart' })[0]
+      expect((refreshed.props('option') as { dataZoom: Array<{ start: number; end: number }> }).dataZoom[0].start).toBeCloseTo(33.33, 1)
+      expect((refreshed.props('option') as { dataZoom: Array<{ start: number; end: number }> }).dataZoom[0].end).toBeCloseTo(66.67, 1)
+      wrapper.unmount()
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  }, 20000)
+
+  it('resets the interaction when a context reset clears the chart document', async () => {
+    vi.stubEnv('VITE_SECURITY_ECHARTS_ENABLED', 'true')
+    try {
+      const wrapper = await mountSecurityPage()
+      const chartStub = wrapper.findAllComponents({ name: 'VChart' })[0]
+      chartStub.vm.$emit('datazoom', { start: 34, end: 67 })
+      await flush()
+      await flush()
+      expect((chartStub.props('option') as { dataZoom: Array<{ start: number }> }).dataZoom[0].start).toBeCloseTo(33.33, 1)
+      // A context event invalidates the documents (they briefly disappear);
+      // the reset must not crash on the null document and must not carry
+      // the zoom into the replacement documents.
+      const context = usePortfolioContextStore()
+      await context.changeContext({ effectiveCurrentDate: '2026-09-30' })
+      await flush()
+      await flush()
+      await flush()
+      const interaction = wrapper.findComponent({ name: 'EChartsSecurity' })?.props('interaction') as { viewport: unknown }
+      expect(interaction.viewport).toBeNull()
+      const refreshed = wrapper.findAllComponents({ name: 'VChart' })[0]
+      expect((refreshed.props('option') as { dataZoom: Array<{ start: number }> }).dataZoom[0].start).toBe(0)
       wrapper.unmount()
     } finally {
       vi.unstubAllEnvs()
