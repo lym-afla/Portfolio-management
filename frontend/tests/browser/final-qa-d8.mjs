@@ -556,6 +556,7 @@ export async function runFinalQaD8Flow({ frontendRoot, browserDir, artifactsDir,
   const sessions = new Map()
   const routeFailures = []
   const matrixRows = []
+  const workflowResults = []
   const captures = []
   let delivery = null
   // Shared across phases; closed via the harness cleanup on any exit path.
@@ -792,7 +793,6 @@ export async function runFinalQaD8Flow({ frontendRoot, browserDir, artifactsDir,
         await fixtureServer.close().catch(() => undefined)
         fixtureServer = await startFixtureServer({ ...modes, port: fixturePort })
       }
-      const workflowResults = []
       const TRANSIENT_ERROR = /unknown JSON envelope|No connection could be made|actively refused|appChildren: 0|Daemon version mismatch/
       let workflowSessionRef = null
       const runWorkflow = async (name, fn) => {
