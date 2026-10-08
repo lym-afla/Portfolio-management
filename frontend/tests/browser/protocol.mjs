@@ -59,13 +59,20 @@ export async function runAgentBrowser({ args, context, initScript, log, session 
     })
     let settled = false
     exec.catch(() => {})
+    let watchdogTimer = null
     const watchdog = new Promise((resolveUnused, rejectWatchdog) => {
-      setTimeout(() => {
+      watchdogTimer = setTimeout(() => {
         if (!settled) rejectWatchdog(new Error(`${context}: agent-browser command exceeded 45s (daemon wedge suspected)`))
       }, 45_000)
     })
-    result = await Promise.race([exec.then((value) => { settled = true; return value }), watchdog])
-    settled = true
+    try {
+      result = await Promise.race([exec.then((value) => { settled = true; return value }), watchdog])
+      settled = true
+    } finally {
+      // A completed command must not leave its 45s timer holding the process
+      // alive for up to 45 more seconds (thousands of commands per run).
+      clearTimeout(watchdogTimer)
+    }
   } catch (error) {
     await log?.({ args, context, stderr: error.stderr, stdout: error.stdout })
     if (error.stdout) {

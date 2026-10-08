@@ -99,6 +99,44 @@ const LONGNAME_CAPTURES = {
   'mobile /transactions': 'd8-transactions-longname-mobile.png',
 }
 
+// Real keyboard dialog contract on the default-on artifact: seed focus on
+// the route's dialog-opening action (where a keyboard user lands after
+// tabbing), activate with a real Enter key press, assert focus moved into
+// the open dialog (useDialogFormFocus focuses the first eligible control),
+// close with a real Escape, and assert focus returned to the same invoker.
+const D8_DIALOG_INVOKERS = {
+  '/transactions': 'Add transaction',
+  '/database/accounts': 'Add Account',
+  '/database/brokers': 'Add Broker',
+  '/database/securities': 'Add Security',
+  '/database/prices': 'Add Price Entry',
+  '/database/fx': 'Add FX Rate',
+  '/dashboard': 'Update Account Performance',
+}
+
+async function assertD8DialogKeyboardFlow({ run, route }) {
+  const invokerLabel = D8_DIALOG_INVOKERS[route]
+  assert.ok(invokerLabel, `dialog keyboard flow: no invoker mapped for ${route}`)
+  const seed = await evalProbe(run, `(() => {
+    const invoker = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '${invokerLabel}' && !b.disabled)
+    if (!invoker) return { found: false }
+    invoker.scrollIntoView({ block: 'center' })
+    invoker.focus()
+    return { found: true, focused: document.activeElement === invoker }
+  })()`)
+  assert.equal(seed.found, true, `dialog keyboard: invoker '${invokerLabel}' rendered on ${route}`)
+  assert.equal(seed.focused, true, `dialog keyboard: invoker '${invokerLabel}' holds focus before activation`)
+  await run(['press', 'Enter'])
+  await waitFor(run, `document.querySelector('.v-dialog.v-overlay--active .v-card') !== null`)
+  const focusInDialog = await evalProbe(run, `(() => { const overlay = document.querySelector('.v-dialog.v-overlay--active'); return { open: !!overlay, focusInside: !!overlay && overlay.contains(document.activeElement), tag: document.activeElement ? document.activeElement.tagName : null } })()`)
+  assert.equal(focusInDialog.open, true, `dialog keyboard: dialog open after Enter (${invokerLabel})`)
+  assert.equal(focusInDialog.focusInside, true, `dialog keyboard: focus entered the dialog (activeElement is ${focusInDialog.tag})`)
+  await run(['press', 'Escape'])
+  await waitFor(run, `document.querySelector('.v-dialog.v-overlay--active') === null`)
+  const focusAfter = await evalProbe(run, `(() => { const invoker = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '${invokerLabel}'); return { backOnInvoker: document.activeElement === invoker, active: document.activeElement ? document.activeElement.tagName : null } })()`)
+  assert.equal(focusAfter.backOnInvoker, true, `dialog keyboard: focus returned to the invoker after Escape (${invokerLabel})`)
+}
+
 // The D8 viewport set: the four production viewports plus 768x1024
 // (tablet-portrait), which the broker-manager flows already target, and the
 // CSS zoom-200 viewport (distinct from the native-zoom flow, which is driven
@@ -151,10 +189,22 @@ async function assertD8ChartAcceptance({ appOrigin, fixtureServer, frontendRoot,
   assert.match(String(tableText), /Since-inception \(to \d{4}-\d{2}-\d{2}\)|Inception to \d{4}-\d{2}-\d{2}/, 'table names the inception horizon')
   await run(['eval', `(() => { const b = [...document.querySelectorAll('[data-series-id]')].find((x) => x.getAttribute('data-series-id') === 'metric:irr_interval'); b.click(); return true })()`])
 
-  await run(['eval', `(() => { const row = document.querySelectorAll('[data-testid="nav-echarts-pilot"] tbody tr')[1]; row.focus(); row.click(); document.querySelector('.chart-inspection').scrollIntoView({ block: 'center' }); return true })()`])
-  await run(['wait', '150'])
+  // REAL keyboard activation: the exact-values table region is a tab stop;
+  // its rows are tab stops with Enter/Space handlers (ChartDataTable.vue).
+  // Seed focus on the region (where a keyboard user lands), then drive real
+  // Tab + Enter key events and assert the focused element and the inspected
+  // period — no synthetic focus()/click() on the row.
+  await run(['eval', `(() => { const region = document.querySelector('[data-testid="nav-echarts-pilot"] .chart-table'); if (!region) throw new Error('chart table region missing'); region.scrollIntoView({ block: 'center' }); region.focus(); return document.activeElement === region })()`])
+  await run(['press', 'Tab'])
+  const rowFocus = await evalProbe(run, `(() => { const el = document.activeElement; return { isRow: !!el && el.tagName === 'TR' && !!el.closest('[data-testid="nav-echarts-pilot"]'), period: el && el.tagName === 'TR' ? (el.querySelector('.chart-table__period')?.childNodes[0]?.textContent ?? '').trim() : null } })()`)
+  assert.equal(rowFocus.isRow, true, 'Tab moves from the table region into its first row')
+  await run(['press', 'Enter'])
+  await run(['wait', '300'])
   const inspection = await evalProbe(run, `document.querySelector('.chart-inspection')?.innerText ?? ''`)
-  assert.match(String(inspection), /[A-Z][a-z]{2}-\d{2}/, 'keyboard row inspection shows the selected period')
+  assert.match(String(inspection), /[A-Z][a-z]{2}-\d{2}/, 'keyboard inspection shows the selected period')
+  assert.ok(String(inspection).includes(rowFocus.period), `Enter on the focused row inspects ITS period (${rowFocus.period})`)
+  const selectedPeriod = await evalProbe(run, `(() => { const row = document.querySelector('[data-testid="nav-echarts-pilot"] tbody tr[aria-selected="true"]'); return row ? (row.querySelector('.chart-table__period')?.childNodes[0]?.textContent ?? '').trim() : null })()`)
+  assert.equal(selectedPeriod, rowFocus.period, 'the Enter-inspected row is the aria-selected row')
 
   const zoomState = () => evalProbe(run, `(() => {
     const selects = [...document.querySelectorAll('.chart-inspection select')]
@@ -494,7 +544,15 @@ async function assertD8RenderedStates({ appOrigin, fixtureServer, frontendRoot, 
     if (ready) await waitFor(run, ready, 8000).catch(() => {})
   }
   const textOf = (sel) => evalProbe(run, `document.querySelector('${sel}')?.textContent ?? document.body.innerText`)
+  const searchNoMatch = async (route) => {
+    await open(route, `document.querySelector('.workspace-table-toolbar input') !== null`)
+    await run(['eval', `(() => { const input = document.querySelector('.workspace-table-toolbar input'); input.value = 'zzz-no-match'; input.dispatchEvent(new Event('input', { bubbles: true })); return true })()`])
+    await run(['wait', '900'])
+    const probe = await textOf('.v-data-table')
+    assert.ok(probe.toLowerCase().includes('no data available'), `filtered-empty: ${route} renders a server-owned no-match response`)
+  }
 
+  // --- EMPTY state (every family the d5 machine covers) ---------------------
   fixtureServer.setD5State('empty')
   await open('/summary')
   let probe = await textOf('main')
@@ -504,30 +562,82 @@ async function assertD8RenderedStates({ appOrigin, fixtureServer, frontendRoot, 
   assert.equal(probe, true, 'summary period controls disabled for empty data')
   await shoot('d8-summary-empty.png')
 
-  await open('/database/brokers', `document.querySelectorAll('.v-data-table tbody tr').length >= 0 && document.querySelector('.v-data-table') !== null`)
-  probe = await textOf('.v-data-table')
-  assert.ok(probe.toLowerCase().includes('no data available'), 'brokers empty inventory state')
-  probe = await textOf('main')
-  assert.ok(probe.includes('Add Broker'), 'brokers keeps its primary action in the empty state')
+  for (const [route, marker] of [
+    ['/database/brokers', 'Add Broker'],
+    ['/database/accounts', 'Add Account'],
+    ['/database/securities', 'Record Merger'],
+  ]) {
+    await open(route, `document.querySelectorAll('.v-data-table tbody tr').length >= 0 && document.querySelector('.v-data-table') !== null`)
+    probe = await textOf('.v-data-table')
+    assert.ok(probe.toLowerCase().includes('no data available'), `empty: ${route} renders the no-data state`)
+    probe = await textOf('main')
+    assert.ok(probe.includes(marker), `empty: ${route} keeps its primary actions (${marker})`)
+  }
+  await shoot('d8-securities-empty.png')
 
+  await open('/database/prices', `document.querySelector('.v-data-table') !== null`)
+  probe = await textOf('.v-data-table')
+  assert.ok(probe.includes('Apply Filters'), 'prices empty state keeps its guided Apply Filters text')
+  await open('/database/fx', `document.querySelector('.v-data-table') !== null`)
+  probe = await evalProbe(run, `(() => ({ headers: [...document.querySelectorAll('.v-data-table thead th')].map((th) => th.textContent.trim()), addAction: [...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Add FX Rate') }))()`)
+  assert.deepEqual(probe.headers, ['Date'], 'fx empty pivot renders the Date column only')
+  assert.equal(probe.addAction, true, 'fx keeps Add FX Rate in the empty state')
+  await shoot('d8-fx-empty.png')
+
+  // --- ERROR state (every family with a retry surface + settings) -----------
   fixtureServer.setD5State('error')
   await open('/summary')
   await waitFor(run, `document.body.innerText.includes('Unable to load part of the summary')`, 8000).catch(() => {})
   probe = await textOf('main')
   assert.ok(probe.includes('Unable to load part of the summary'), 'summary error state')
-  await open('/database/brokers')
-  await waitFor(run, `document.body.innerText.includes('Unable to load this table')`, 8000).catch(() => {})
+  for (const route of ['/database/brokers', '/database/accounts', '/database/securities']) {
+    await open(route)
+    await waitFor(run, `document.body.innerText.includes('Unable to load this table')`, 8000).catch(() => {})
+    probe = await textOf('main')
+    assert.ok(probe.includes('Unable to load this table'), `error: ${route} renders the retry state`)
+  }
+  await open('/database/prices')
+  await waitFor(run, `document.body.innerText.includes('Unable to load prices or filters')`, 8000).catch(() => {})
   probe = await textOf('main')
-  assert.ok(probe.includes('Unable to load this table'), 'brokers error state with retry')
+  assert.ok(probe.includes('Unable to load prices or filters'), 'prices error state')
+  await open('/database/fx')
+  await waitFor(run, `document.body.innerText.includes('Unable to load exchange rates')`, 8000).catch(() => {})
+  probe = await textOf('main')
+  assert.ok(probe.includes('Unable to load exchange rates'), 'fx error state')
   await shoot('d8-brokers-error.png')
+  await open('/profile/settings')
+  await waitFor(run, `document.body.innerText.includes('Failed to load settings')`, 8000).catch(() => {})
+  probe = await textOf('body')
+  assert.ok(probe.includes('Failed to load settings'), 'settings error state surfaces the page-owned failure')
+  await shoot('d8-settings-error.png')
 
+  // --- FILTERED-EMPTY (genuine server-side filtering on a no-match search) --
   fixtureServer.setD5State('populated')
-  await open('/database/brokers', `document.querySelector('.workspace-table-toolbar input') !== null`)
+  await searchNoMatch('/database/brokers')
+  await searchNoMatch('/database/accounts')
+  await searchNoMatch('/database/securities')
+  await open('/database/fx', `document.querySelector('.workspace-table-toolbar input') !== null`)
   await run(['eval', `(() => { const input = document.querySelector('.workspace-table-toolbar input'); input.value = 'zzz-no-match'; input.dispatchEvent(new Event('input', { bubbles: true })); return true })()`])
   await run(['wait', '900'])
-  probe = await textOf('.v-data-table')
-  assert.ok(probe.toLowerCase().includes('no data available'), 'brokers filtered-empty after a genuine server-side no-match search')
+  probe = await evalProbe(run, `[...document.querySelectorAll('.v-data-table thead th')].map((th) => th.textContent.trim())`)
+  assert.deepEqual(probe, ['Date'], 'fx filtered-empty drops every pair column')
   await shoot('d8-brokers-filtered-empty.png')
+
+  // --- LOGIN error (public session; 401 renders a readable on-page error) ---
+  fixtureServer.setD5State('error')
+  const loginSession = `d8-states-login-${process.pid}`
+  const loginRun = (args) => runAgentBrowser({ args, context: 'd8 states login', initScript: undefined, log: async () => {}, session: loginSession })
+  await loginRun(['open', `${appOrigin}/login`])
+  await loginRun(['wait', '400'])
+  await loginRun(['eval', `(() => { const user = document.querySelector('input[autocomplete="username"]'); const pass = document.querySelector('input[autocomplete="current-password"]'); if (!user || !pass) throw new Error('login fields missing'); user.value = 'fixture-user'; user.dispatchEvent(new Event('input', { bubbles: true })); pass.value = 'wrong-password'; pass.dispatchEvent(new Event('input', { bubbles: true })); return true })()`])
+  await loginRun(['eval', `(() => { document.querySelector('button[type="submit"]')?.click(); return true })()`])
+  await loginRun(['wait', '--fn', `!!document.querySelector('[role="alert"], .v-alert') || document.body.innerText.toLowerCase().includes('invalid') || document.body.innerText.toLowerCase().includes('credential')`, '--timeout', '8000']).catch(() => {})
+  const loginText = (await loginRun(['eval', 'document.body.innerText'])).result
+  assert.match(String(loginText), /invalid|credential|error|denied|failed/i, 'login error state surfaces a readable error summary')
+  assert.equal((await loginRun(['eval', 'location.pathname'])).result, '/login', 'failed login stays on the login page')
+  await loginRun(['close'])
+
+  fixtureServer.setD5State('populated')
 }
 
 export async function runFinalQaD8Flow({ frontendRoot, browserDir, artifactsDir, screenshotsDir, browserLog }) {
@@ -556,6 +666,15 @@ export async function runFinalQaD8Flow({ frontendRoot, browserDir, artifactsDir,
   const routeFailures = []
   const matrixRows = []
   const workflowResults = []
+  // Every fixture server's unmatched requests are aggregated here (the base
+  // smoke runner fails its run on them; a family swap must not discard them).
+  const fixtureMismatches = []
+  const harvestUnmatched = (server) => {
+    if (server && Array.isArray(server.unmatchedRequests) && server.unmatchedRequests.length > 0) {
+      fixtureMismatches.push(...server.unmatchedRequests.map((entry) => ({ ...entry })))
+      server.unmatchedRequests.length = 0
+    }
+  }
   const captures = []
   let delivery = null
   // Shared across phases; closed via the harness cleanup on any exit path.
@@ -789,6 +908,7 @@ export async function runFinalQaD8Flow({ frontendRoot, browserDir, artifactsDir,
       // machine) therefore cannot leak between families.
       const fixturePort = Number(new URL(fixtureServer.origin).port)
       const swapFixtureServer = async (modes) => {
+        harvestUnmatched(fixtureServer)
         await fixtureServer.close().catch(() => undefined)
         fixtureServer = await startFixtureServer({ ...modes, port: fixturePort })
       }
@@ -889,6 +1009,10 @@ export async function runFinalQaD8Flow({ frontendRoot, browserDir, artifactsDir,
           await runWorkflow(`dialogs-desktop ${route}`, async () => {
             await runRoute({ appOrigin: defaultOnApp.origin, authenticated: true, route: routes.find((entry) => entry.path === route), session: desktop, viewport: { name: 'desktop', width: 1440, height: 1000, zoom: 1 }, log })
             await assertDialogDeliveryFlow({ context: `d8 dialogs desktop ${route}`, initScript: authInit, log, session: desktop, route: routes.find((entry) => entry.path === route) })
+          })
+          await runWorkflow(`dialogs-keyboard-desktop ${route}`, async () => {
+            await runRoute({ appOrigin: defaultOnApp.origin, authenticated: true, route: routes.find((entry) => entry.path === route), session: desktop, viewport: { name: 'desktop', width: 1440, height: 1000, zoom: 1 }, log })
+            await assertD8DialogKeyboardFlow({ run: (args) => runAgentBrowser({ args, context: `d8 dialogs keyboard ${route}`, initScript: authInit, log, session: desktop }), route })
           })
         }
         workflowSessionRef = mobile
@@ -1013,7 +1137,10 @@ export async function runFinalQaD8Flow({ frontendRoot, browserDir, artifactsDir,
           if (defaultOnApp) await defaultOnApp.close().catch(() => undefined)
         },
         closeFixtureServer: async () => {
-          if (fixtureServer) await fixtureServer.close().catch(() => undefined)
+          if (fixtureServer) {
+            harvestUnmatched(fixtureServer)
+            await fixtureServer.close().catch(() => undefined)
+          }
         },
         recordError: log,
       }),
@@ -1040,6 +1167,7 @@ export async function runFinalQaD8Flow({ frontendRoot, browserDir, artifactsDir,
     },
     workflows: workflowResults,
     routeFailures,
+    fixtureMismatches,
     delivery,
     artifacts: {
       defaultOn: artifactRecordsRef && { flags: artifactRecordsRef.defaultOn.flags, sha256: artifactRecordsRef.defaultOn.hash.sha256, files: artifactRecordsRef.defaultOn.hash.files, bytes: artifactRecordsRef.defaultOn.hash.bytes },
@@ -1059,6 +1187,15 @@ export async function runFinalQaD8Flow({ frontendRoot, browserDir, artifactsDir,
     dashboardGzip: delivery?.dashboard?.gzip ?? null,
   }, null, 2))
 
+  if (fixtureMismatches.length > 0) {
+    routeFailures.push({
+      matrix: 'aggregate',
+      workflow: 'fixture-mismatches',
+      error: `${fixtureMismatches.length} unmatched fixture request(s) across the run's fixture servers`,
+      requests: fixtureMismatches.slice(0, 20),
+    })
+    console.error(`D8 FAIL fixture mismatches: ${fixtureMismatches.length} unmatched request(s)`)
+  }
   if (routeFailures.length > 0) {
     process.exitCode = 1
   }

@@ -4,7 +4,7 @@
     "defaultOn": {
       "routeProbes": 90,
       "longNameProbes": 12,
-      "workflows": 30,
+      "workflows": 37,
       "failures": []
     },
     "rollback": {
@@ -75,7 +75,15 @@
       "result": "pass"
     },
     {
+      "workflow": "dialogs-keyboard-desktop /transactions",
+      "result": "pass"
+    },
+    {
       "workflow": "dialogs-desktop /database/accounts",
+      "result": "pass"
+    },
+    {
+      "workflow": "dialogs-keyboard-desktop /database/accounts",
       "result": "pass"
     },
     {
@@ -83,7 +91,15 @@
       "result": "pass"
     },
     {
+      "workflow": "dialogs-keyboard-desktop /database/brokers",
+      "result": "pass"
+    },
+    {
       "workflow": "dialogs-desktop /database/securities",
+      "result": "pass"
+    },
+    {
+      "workflow": "dialogs-keyboard-desktop /database/securities",
       "result": "pass"
     },
     {
@@ -91,11 +107,23 @@
       "result": "pass"
     },
     {
+      "workflow": "dialogs-keyboard-desktop /database/prices",
+      "result": "pass"
+    },
+    {
       "workflow": "dialogs-desktop /database/fx",
       "result": "pass"
     },
     {
+      "workflow": "dialogs-keyboard-desktop /database/fx",
+      "result": "pass"
+    },
+    {
       "workflow": "dialogs-desktop /dashboard",
+      "result": "pass"
+    },
+    {
+      "workflow": "dialogs-keyboard-desktop /dashboard",
       "result": "pass"
     },
     {
@@ -136,41 +164,42 @@
     }
   ],
   "routeFailures": [],
+  "fixtureMismatches": [],
   "delivery": {
     "note": "gzip+raw JS/CSS over the observed per-route cold resource graph on the app-d8-default-on artifact. Loopback timings are not production latency evidence. The dashboard target is the saved C5a cutover target (~535 kB gzip); the 401 kB legacy budget is asserted by the rollback delivery case.",
     "dashboard": {
-      "gzip": 483964,
+      "gzip": 483954,
       "raw": 1613431,
       "targetGzip": 535000,
       "withinTarget": true
     },
     "login": {
-      "gzip": 236765,
+      "gzip": 236757,
       "raw": 880529
     },
     "profile": {
-      "gzip": 236679,
+      "gzip": 236672,
       "raw": 875171
     },
     "transactions": {
-      "gzip": 271339,
+      "gzip": 271332,
       "raw": 988895
     },
     "securityDetail": {
-      "gzip": 463238,
+      "gzip": 463233,
       "raw": 1560334
     }
   },
   "artifacts": {
     "defaultOn": {
       "flags": "absent (default-on policy)",
-      "sha256": "538674379e53d813c91ec085596abf8f0b288796af05a46a1e2aa8216c43d7ba",
+      "sha256": "85366d8fef37e014d5f101cc37a789ffd958495439b1f7a96d8c4f252dfc82a9",
       "files": 153,
       "bytes": 2477947
     },
     "rollback": {
       "flags": "VITE_NAV_ECHARTS_ENABLED=false, VITE_ALLOCATION_ECHARTS_ENABLED=false, VITE_SECURITY_ECHARTS_ENABLED=false",
-      "sha256": "4961173d40dfe341d3b15fd2b589844685319413a0e3c53f9b4bebc5a3a5a511",
+      "sha256": "2d2d20df40ba1086569a76222868042319c11a40bf38441afe3bd0599aebb22f",
       "files": 153,
       "bytes": 2477950
     },
@@ -200,15 +229,15 @@
     },
     {
       "file": "d8-brokers-error.png",
-      "sha256": "ff9d33ac7ddeddcbaddf1217d3d2d23bbda4f6af269fe4c88eb4620850f3aec6",
-      "bytes": 50453,
+      "sha256": "b38711847149f296623309764289c094695f8d207fbeaf1dd1e14f89bc355c9f",
+      "bytes": 53284,
       "width": 1440,
       "height": 1000
     },
     {
       "file": "d8-brokers-filtered-empty.png",
-      "sha256": "f6bd8ac0bd546f2e70dfb31798ad51eb7b72e26cc3ecd8271d03a0b8fbc989ad",
-      "bytes": 46386,
+      "sha256": "be6aad67d1f5a4238342b68c575c3a4afe57920e4b76ad7b766e460d0b8d743a",
+      "bytes": 49981,
       "width": 1440,
       "height": 1000
     },
@@ -246,6 +275,13 @@
       "bytes": 68588,
       "width": 1024,
       "height": 768
+    },
+    {
+      "file": "d8-fx-empty.png",
+      "sha256": "7adda3a560532d7d7ebca5de593022b5b9b0a2e3f86c2375d908b97bf8d1e20a",
+      "bytes": 49747,
+      "width": 1440,
+      "height": 1000
     },
     {
       "file": "d8-fx-mobile.png",
@@ -298,8 +334,8 @@
     },
     {
       "file": "d8-rollback-dashboard.png",
-      "sha256": "4063018fd8e817fb0064ccdfe524d0f502541735b596e81c101392fd0cc9d15c",
-      "bytes": 93102,
+      "sha256": "148d8a54bf3917101da743f03e9e3a6bf90b8247b59a88301ecaded6310fae97",
+      "bytes": 92876,
       "width": 1440,
       "height": 1000
     },
@@ -307,6 +343,13 @@
       "file": "d8-rollback-security.png",
       "sha256": "c7bcca9e22660044d96fd11f15e91d6b0a5df5e32534fa4168d144a1fc70b5d6",
       "bytes": 55922,
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "d8-securities-empty.png",
+      "sha256": "dd94a8bad86648a1077c869117c37c8df4afe5e71b4388084fe28fe8cf2c3aa0",
+      "bytes": 49188,
       "width": 1440,
       "height": 1000
     },
@@ -335,6 +378,13 @@
       "file": "d8-security-stock.png",
       "sha256": "a09eb98918f77a90e959f941d2a23a6475d0c3e63b4ed10bf36ac26b7315c3b3",
       "bytes": 69821,
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "d8-settings-error.png",
+      "sha256": "1c5d9132f8ee26ecf0ef6efc663096ab209fbafddd963e4d87d1b9cca840e5c8",
+      "bytes": 69197,
       "width": 1440,
       "height": 1000
     },
