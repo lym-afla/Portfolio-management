@@ -116,6 +116,10 @@ Four review findings, each corrected with the corrected case run green end to en
 3. **Keyboard/focus evidence was overstated** — the chart "keyboard inspection" used synthetic `focus()`+`click()`, and the dialogs family inherited delivery-only coverage. The case now drives real key events: Tab from the chart-table region into its first row with a focused-element assertion, Enter to activate, and the inspected/aria-selected period must equal the focused row's; on every dialog route a real Enter opens the dialog from the focused invoker, focus must enter the dialog, a real Escape closes it and focus must return to the invoker.
 4. **The command watchdog leaked its 45 s timer** on every successful command (keeping completed runs alive unnecessarily) — the timer handle is now cleared in a `finally` around the race.
 
+Evidence follow-ups from the same review:
+- The mismatch gate now runs **before** the summary is created (the gate is the exported `applyFixtureMismatchFailures(routeFailures, fixtureMismatches)` in `tests/browser/artifact-flags.mjs`, called ahead of summary construction), so the saved failure list and the exit result can never disagree. Negative unit regressions in `tests/unit/browser/harness.spec.ts` prove an unmatched request reaches the saved `routeFailures` entry (with its request attached) and returns the count that drives `process.exitCode = 1`, plus the clean-run no-op case.
+- Two state captures named `d8-brokers-*.png` had actually been shot after the flow navigated to FX. Every states capture now asserts `location.pathname` before shooting; the Brokers error and filtered-empty captures are taken on `/database/brokers`, and FX's filtered state has its own `d8-fx-filtered-empty.png`.
+
 ## Boundaries, and what this record does NOT claim
 
 - **C5b is not approved by this work.** Chart.js is retained as the lazy compatibility fallback; removal still requires an owner-accepted release validation cycle and separate removal approval. This local synthetic QA is explicitly **not** that cycle.

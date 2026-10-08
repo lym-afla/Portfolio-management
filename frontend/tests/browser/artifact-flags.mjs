@@ -61,6 +61,32 @@ export async function scanFlagEnvFiles(frontendRoot) {
   return { files, flagKeysFound }
 }
 
+// Move a fixture server's unmatched requests into the run-wide aggregate and
+// empty the server's own list, so a server closed after the harvest cannot
+// double-report.
+export function collectFixtureMismatches(server) {
+  const mismatches = []
+  if (server && Array.isArray(server.unmatchedRequests) && server.unmatchedRequests.length > 0) {
+    mismatches.push(...server.unmatchedRequests.map((entry) => ({ ...entry })))
+    server.unmatchedRequests.length = 0
+  }
+  return mismatches
+}
+
+// Apply the mismatch gate BEFORE the summary is created: the aggregate lands
+// in the routeFailures list that the summary saves, and the returned count is
+// >0 exactly when the run must exit failing (process.exitCode = 1).
+export function applyFixtureMismatchFailures(routeFailures, fixtureMismatches) {
+  if (fixtureMismatches.length === 0) return 0
+  routeFailures.push({
+    matrix: 'aggregate',
+    workflow: 'fixture-mismatches',
+    error: `${fixtureMismatches.length} unmatched fixture request(s) across the run's fixture servers`,
+    requests: fixtureMismatches.slice(0, 20),
+  })
+  return fixtureMismatches.length
+}
+
 // Deterministic content hash of a built artifact: sha256 over the sorted
 // relative file paths and their individual sha256 digests. Recorded in the
 // evidence so reviewers can reproduce the exact audited bytes.

@@ -21,6 +21,8 @@ import { assertMobilePageControlsFlow } from './d5.mjs'
 import { measureRouteBundles } from '../../scripts/measure-route-bundles.mjs'
 import { CHARTJS_RUNTIME, ECHARTS_RUNTIME, LOADED_MODULE_GRAPH } from './charts-c5.mjs'
 import {
+  applyFixtureMismatchFailures,
+  collectFixtureMismatches,
   hashArtifact,
   scanFlagEnvFiles,
   withFlagEnvironment,
@@ -533,7 +535,14 @@ async function assertD8ChartAcceptance({ appOrigin, fixtureServer, frontendRoot,
 // rendered-state matrix remains the d5 case on the rollback artifact).
 // ---------------------------------------------------------------------------
 async function assertD8RenderedStates({ appOrigin, fixtureServer, frontendRoot, run, captures }) {
-  const shoot = async (name) => {
+  const shoot = async (name, expectedPath) => {
+    // A capture named for a route must be taken on that route: assert the
+    // current path first (two captures were previously taken after the flow
+    // had already navigated to FX).
+    if (expectedPath) {
+      const current = await evalProbe(run, 'location.pathname')
+      assert.equal(current, expectedPath, `capture ${name} must be shot on ${expectedPath} (found ${current})`)
+    }
     await run(['screenshot', resolve(D8_ASSETS(frontendRoot), name)])
     captures.push(name)
   }
@@ -560,7 +569,7 @@ async function assertD8RenderedStates({ appOrigin, fixtureServer, frontendRoot, 
   assert.ok(probe.includes('No breakdown data'), 'summary empty breakdown state')
   probe = await evalProbe(run, `(() => { const sel = document.querySelector('[data-testid="performance-view-select"]'); return sel ? sel.classList.contains('v-input--disabled') || !!sel.querySelector('input[disabled]') : null })()`)
   assert.equal(probe, true, 'summary period controls disabled for empty data')
-  await shoot('d8-summary-empty.png')
+  await shoot('d8-summary-empty.png', '/summary')
 
   for (const [route, marker] of [
     ['/database/brokers', 'Add Broker'],
@@ -572,8 +581,8 @@ async function assertD8RenderedStates({ appOrigin, fixtureServer, frontendRoot, 
     assert.ok(probe.toLowerCase().includes('no data available'), `empty: ${route} renders the no-data state`)
     probe = await textOf('main')
     assert.ok(probe.includes(marker), `empty: ${route} keeps its primary actions (${marker})`)
+    if (route === '/database/securities') await shoot('d8-securities-empty.png', route)
   }
-  await shoot('d8-securities-empty.png')
 
   await open('/database/prices', `document.querySelector('.v-data-table') !== null`)
   probe = await textOf('.v-data-table')
@@ -582,7 +591,7 @@ async function assertD8RenderedStates({ appOrigin, fixtureServer, frontendRoot, 
   probe = await evalProbe(run, `(() => ({ headers: [...document.querySelectorAll('.v-data-table thead th')].map((th) => th.textContent.trim()), addAction: [...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Add FX Rate') }))()`)
   assert.deepEqual(probe.headers, ['Date'], 'fx empty pivot renders the Date column only')
   assert.equal(probe.addAction, true, 'fx keeps Add FX Rate in the empty state')
-  await shoot('d8-fx-empty.png')
+  await shoot('d8-fx-empty.png', '/database/fx')
 
   // --- ERROR state (every family with a retry surface + settings) -----------
   fixtureServer.setD5State('error')
@@ -595,6 +604,7 @@ async function assertD8RenderedStates({ appOrigin, fixtureServer, frontendRoot, 
     await waitFor(run, `document.body.innerText.includes('Unable to load this table')`, 8000).catch(() => {})
     probe = await textOf('main')
     assert.ok(probe.includes('Unable to load this table'), `error: ${route} renders the retry state`)
+    if (route === '/database/brokers') await shoot('d8-brokers-error.png', route)
   }
   await open('/database/prices')
   await waitFor(run, `document.body.innerText.includes('Unable to load prices or filters')`, 8000).catch(() => {})
@@ -604,16 +614,16 @@ async function assertD8RenderedStates({ appOrigin, fixtureServer, frontendRoot, 
   await waitFor(run, `document.body.innerText.includes('Unable to load exchange rates')`, 8000).catch(() => {})
   probe = await textOf('main')
   assert.ok(probe.includes('Unable to load exchange rates'), 'fx error state')
-  await shoot('d8-brokers-error.png')
   await open('/profile/settings')
   await waitFor(run, `document.body.innerText.includes('Failed to load settings')`, 8000).catch(() => {})
   probe = await textOf('body')
   assert.ok(probe.includes('Failed to load settings'), 'settings error state surfaces the page-owned failure')
-  await shoot('d8-settings-error.png')
+  await shoot('d8-settings-error.png', '/profile/settings')
 
   // --- FILTERED-EMPTY (genuine server-side filtering on a no-match search) --
   fixtureServer.setD5State('populated')
   await searchNoMatch('/database/brokers')
+  await shoot('d8-brokers-filtered-empty.png', '/database/brokers')
   await searchNoMatch('/database/accounts')
   await searchNoMatch('/database/securities')
   await open('/database/fx', `document.querySelector('.workspace-table-toolbar input') !== null`)
@@ -621,7 +631,7 @@ async function assertD8RenderedStates({ appOrigin, fixtureServer, frontendRoot, 
   await run(['wait', '900'])
   probe = await evalProbe(run, `[...document.querySelectorAll('.v-data-table thead th')].map((th) => th.textContent.trim())`)
   assert.deepEqual(probe, ['Date'], 'fx filtered-empty drops every pair column')
-  await shoot('d8-brokers-filtered-empty.png')
+  await shoot('d8-fx-filtered-empty.png', '/database/fx')
 
   // --- LOGIN error (public session; 401 renders a readable on-page error) ---
   fixtureServer.setD5State('error')
@@ -670,10 +680,7 @@ export async function runFinalQaD8Flow({ frontendRoot, browserDir, artifactsDir,
   // smoke runner fails its run on them; a family swap must not discard them).
   const fixtureMismatches = []
   const harvestUnmatched = (server) => {
-    if (server && Array.isArray(server.unmatchedRequests) && server.unmatchedRequests.length > 0) {
-      fixtureMismatches.push(...server.unmatchedRequests.map((entry) => ({ ...entry })))
-      server.unmatchedRequests.length = 0
-    }
+    fixtureMismatches.push(...collectFixtureMismatches(server))
   }
   const captures = []
   let delivery = null
@@ -1149,6 +1156,13 @@ export async function runFinalQaD8Flow({ frontendRoot, browserDir, artifactsDir,
     clearInterval(settleWatchdog)
   }
 
+  // Apply the mismatch gate BEFORE the summary is created, so the saved
+  // failure list and the exit result can never disagree.
+  const mismatchCount = applyFixtureMismatchFailures(routeFailures, fixtureMismatches)
+  if (mismatchCount > 0) {
+    console.error(`D8 FAIL fixture mismatches: ${mismatchCount} unmatched request(s)`)
+  }
+
   const captureRegistry = await registerPngCaptures(assetsDir)
   const summary = {
     case: 'final-qa-d8',
@@ -1187,16 +1201,7 @@ export async function runFinalQaD8Flow({ frontendRoot, browserDir, artifactsDir,
     dashboardGzip: delivery?.dashboard?.gzip ?? null,
   }, null, 2))
 
-  if (fixtureMismatches.length > 0) {
-    routeFailures.push({
-      matrix: 'aggregate',
-      workflow: 'fixture-mismatches',
-      error: `${fixtureMismatches.length} unmatched fixture request(s) across the run's fixture servers`,
-      requests: fixtureMismatches.slice(0, 20),
-    })
-    console.error(`D8 FAIL fixture mismatches: ${fixtureMismatches.length} unmatched request(s)`)
-  }
-  if (routeFailures.length > 0) {
+  if (routeFailures.length > 0 || mismatchCount > 0) {
     process.exitCode = 1
   }
 }

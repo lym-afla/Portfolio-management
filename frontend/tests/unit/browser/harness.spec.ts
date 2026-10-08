@@ -12,6 +12,8 @@ import { resolveFixture } from '../../../tests/browser/fixtures.mjs'
 import { routes, viewports } from '../../../tests/browser/routes.mjs'
 import {
   D8_FLAG_KEYS,
+  applyFixtureMismatchFailures,
+  collectFixtureMismatches,
   hashArtifact,
   scanFlagEnvFiles,
   withFlagEnvironment,
@@ -282,5 +284,44 @@ describe('D8 release-flag artifact selection', () => {
     } finally {
       await rm(dir, { recursive: true, force: true })
     }
+  })
+})
+
+describe('D8 fixture-mismatch gate', () => {
+  it('harvests unmatched requests and empties the server list', () => {
+    const server = { unmatchedRequests: [{ method: 'GET', path: '/users/api/not-covered/' }] }
+    expect(collectFixtureMismatches(server)).toEqual([
+      { method: 'GET', path: '/users/api/not-covered/' },
+    ])
+    // Harvested requests cannot double-report after the server closes.
+    expect(server.unmatchedRequests).toHaveLength(0)
+    expect(collectFixtureMismatches(server)).toEqual([])
+  })
+
+  it('an unmatched request reaches the saved failure list and the failing exit result', () => {
+    const routeFailures: Array<Record<string, unknown>> = []
+    const mismatches = collectFixtureMismatches({
+      unmatchedRequests: [{ method: 'POST', path: '/transactions/api/unexpected/' }],
+    })
+    const failingCount = applyFixtureMismatchFailures(routeFailures, mismatches)
+    // The returned count is what drives `process.exitCode = 1` in the case.
+    expect(failingCount).toBe(1)
+    // The aggregate is part of routeFailures BEFORE the summary JSON is
+    // written, so the saved failure list must carry it.
+    expect(routeFailures).toHaveLength(1)
+    expect(routeFailures[0]).toMatchObject({
+      matrix: 'aggregate',
+      workflow: 'fixture-mismatches',
+    })
+    expect(String(routeFailures[0].error)).toContain('1 unmatched fixture request')
+    expect(routeFailures[0].requests).toEqual([
+      { method: 'POST', path: '/transactions/api/unexpected/' },
+    ])
+  })
+
+  it('a clean run adds no failure entry and never flips the exit result', () => {
+    const routeFailures: Array<Record<string, unknown>> = []
+    expect(applyFixtureMismatchFailures(routeFailures, [])).toBe(0)
+    expect(routeFailures).toHaveLength(0)
   })
 })

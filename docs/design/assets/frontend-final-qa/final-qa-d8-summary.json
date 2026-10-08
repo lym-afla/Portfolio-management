@@ -168,38 +168,38 @@
   "delivery": {
     "note": "gzip+raw JS/CSS over the observed per-route cold resource graph on the app-d8-default-on artifact. Loopback timings are not production latency evidence. The dashboard target is the saved C5a cutover target (~535 kB gzip); the 401 kB legacy budget is asserted by the rollback delivery case.",
     "dashboard": {
-      "gzip": 483954,
+      "gzip": 483965,
       "raw": 1613431,
       "targetGzip": 535000,
       "withinTarget": true
     },
     "login": {
-      "gzip": 236757,
+      "gzip": 236763,
       "raw": 880529
     },
     "profile": {
-      "gzip": 236672,
+      "gzip": 236678,
       "raw": 875171
     },
     "transactions": {
-      "gzip": 271332,
+      "gzip": 271343,
       "raw": 988895
     },
     "securityDetail": {
-      "gzip": 463233,
+      "gzip": 463240,
       "raw": 1560334
     }
   },
   "artifacts": {
     "defaultOn": {
       "flags": "absent (default-on policy)",
-      "sha256": "85366d8fef37e014d5f101cc37a789ffd958495439b1f7a96d8c4f252dfc82a9",
+      "sha256": "6d23c76714189a2c11e1dc0808cf178fcfaa1dbe611e830b9c224c46e53938b2",
       "files": 153,
       "bytes": 2477947
     },
     "rollback": {
       "flags": "VITE_NAV_ECHARTS_ENABLED=false, VITE_ALLOCATION_ECHARTS_ENABLED=false, VITE_SECURITY_ECHARTS_ENABLED=false",
-      "sha256": "2d2d20df40ba1086569a76222868042319c11a40bf38441afe3bd0599aebb22f",
+      "sha256": "e08ef008b64128eccb72e1bb6c924c2ccb1f9812488c8aedc3ca2b8298076896",
       "files": 153,
       "bytes": 2477950
     },
@@ -229,15 +229,15 @@
     },
     {
       "file": "d8-brokers-error.png",
-      "sha256": "b38711847149f296623309764289c094695f8d207fbeaf1dd1e14f89bc355c9f",
-      "bytes": 53284,
+      "sha256": "ff9d33ac7ddeddcbaddf1217d3d2d23bbda4f6af269fe4c88eb4620850f3aec6",
+      "bytes": 50453,
       "width": 1440,
       "height": 1000
     },
     {
       "file": "d8-brokers-filtered-empty.png",
-      "sha256": "be6aad67d1f5a4238342b68c575c3a4afe57920e4b76ad7b766e460d0b8d743a",
-      "bytes": 49981,
+      "sha256": "f6bd8ac0bd546f2e70dfb31798ad51eb7b72e26cc3ecd8271d03a0b8fbc989ad",
+      "bytes": 46386,
       "width": 1440,
       "height": 1000
     },
@@ -280,6 +280,13 @@
       "file": "d8-fx-empty.png",
       "sha256": "7adda3a560532d7d7ebca5de593022b5b9b0a2e3f86c2375d908b97bf8d1e20a",
       "bytes": 49747,
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "d8-fx-filtered-empty.png",
+      "sha256": "be6aad67d1f5a4238342b68c575c3a4afe57920e4b76ad7b766e460d0b8d743a",
+      "bytes": 49981,
       "width": 1440,
       "height": 1000
     },
@@ -334,8 +341,8 @@
     },
     {
       "file": "d8-rollback-dashboard.png",
-      "sha256": "148d8a54bf3917101da743f03e9e3a6bf90b8247b59a88301ecaded6310fae97",
-      "bytes": 92876,
+      "sha256": "b31374dfaf39ef1764e395de61a17e456b675e2672cc3409fcbecc44a9f6bdec",
+      "bytes": 92903,
       "width": 1440,
       "height": 1000
     },
