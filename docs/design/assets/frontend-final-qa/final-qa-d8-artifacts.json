@@ -3,7 +3,7 @@
     "dir": "tests/browser/artifacts/app-d8-default-on",
     "flags": "absent (default-on policy)",
     "hash": {
-      "sha256": "765f6ebb1d8b3da34fd6d757a57c5b78bcda53ec6cf27645d488fe819d9b99a6",
+      "sha256": "538674379e53d813c91ec085596abf8f0b288796af05a46a1e2aa8216c43d7ba",
       "files": 153,
       "bytes": 2477947
     }
@@ -12,7 +12,7 @@
     "dir": "tests/browser/artifacts/app-d8-rollback",
     "flags": "VITE_NAV_ECHARTS_ENABLED=false, VITE_ALLOCATION_ECHARTS_ENABLED=false, VITE_SECURITY_ECHARTS_ENABLED=false",
     "hash": {
-      "sha256": "d35e99567c1ae41860eb55acda3e22fa704f0fdcfd4603e114c25a1f59aea096",
+      "sha256": "4961173d40dfe341d3b15fd2b589844685319413a0e3c53f9b4bebc5a3a5a511",
       "files": 153,
       "bytes": 2477950
     }

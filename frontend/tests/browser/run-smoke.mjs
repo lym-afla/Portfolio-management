@@ -13,7 +13,7 @@ import {
 } from './lifecycle.mjs'
 import { runAgentBrowser } from './protocol.mjs'
 import { runRoute, routeSlug } from './route-probe.mjs'
-import { assertFocusedLayoutFlow, assertLayoutGeometry, assertPositionsToolbarFlow } from './layout.mjs'
+import { assertFocusedLayoutFlow, assertPositionsToolbarFlow } from './layout.mjs'
 import { assertContextFailureFlow } from './context.mjs'
 import { assertMountedDateFlow } from './dates.mjs'
 import { assertRequestOrderFlow } from './requests.mjs'

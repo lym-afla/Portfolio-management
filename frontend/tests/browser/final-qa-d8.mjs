@@ -21,7 +21,6 @@ import { assertMobilePageControlsFlow } from './d5.mjs'
 import { measureRouteBundles } from '../../scripts/measure-route-bundles.mjs'
 import { CHARTJS_RUNTIME, ECHARTS_RUNTIME, LOADED_MODULE_GRAPH } from './charts-c5.mjs'
 import {
-  D8_FLAG_KEYS,
   hashArtifact,
   scanFlagEnvFiles,
   withFlagEnvironment,

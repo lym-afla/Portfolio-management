@@ -4,7 +4,7 @@
     "defaultOn": {
       "routeProbes": 90,
       "longNameProbes": 12,
-      "workflows": 1,
+      "workflows": 30,
       "failures": []
     },
     "rollback": {
@@ -15,8 +15,123 @@
   },
   "workflows": [
     {
-      "matrix": "default-on",
-      "workflow": "rendered-states-subset",
+      "workflow": "d4-tables-desktop",
+      "result": "pass"
+    },
+    {
+      "workflow": "d4-transactions-desktop",
+      "result": "pass"
+    },
+    {
+      "workflow": "d4-viewport-desktop /open-positions",
+      "result": "pass"
+    },
+    {
+      "workflow": "d4-viewport-desktop /closed-positions",
+      "result": "pass"
+    },
+    {
+      "workflow": "d4-viewport-desktop /transactions",
+      "result": "pass"
+    },
+    {
+      "workflow": "d4-viewport-mobile /open-positions",
+      "result": "pass"
+    },
+    {
+      "workflow": "d4-viewport-mobile /closed-positions",
+      "result": "pass"
+    },
+    {
+      "workflow": "d4-viewport-mobile /transactions",
+      "result": "pass"
+    },
+    {
+      "workflow": "brokers-security-d7-desktop",
+      "result": "pass"
+    },
+    {
+      "workflow": "brokers-security-d7-mobile",
+      "result": "pass"
+    },
+    {
+      "workflow": "imports-d6-desktop",
+      "result": "pass"
+    },
+    {
+      "workflow": "imports-d6-mobile",
+      "result": "pass"
+    },
+    {
+      "workflow": "settings-account-desktop",
+      "result": "pass"
+    },
+    {
+      "workflow": "settings-account-mobile",
+      "result": "pass"
+    },
+    {
+      "workflow": "dialogs-desktop /transactions",
+      "result": "pass"
+    },
+    {
+      "workflow": "dialogs-desktop /database/accounts",
+      "result": "pass"
+    },
+    {
+      "workflow": "dialogs-desktop /database/brokers",
+      "result": "pass"
+    },
+    {
+      "workflow": "dialogs-desktop /database/securities",
+      "result": "pass"
+    },
+    {
+      "workflow": "dialogs-desktop /database/prices",
+      "result": "pass"
+    },
+    {
+      "workflow": "dialogs-desktop /database/fx",
+      "result": "pass"
+    },
+    {
+      "workflow": "dialogs-desktop /dashboard",
+      "result": "pass"
+    },
+    {
+      "workflow": "dialogs-mobile /transactions",
+      "result": "pass"
+    },
+    {
+      "workflow": "dialogs-mobile /database/accounts",
+      "result": "pass"
+    },
+    {
+      "workflow": "dialogs-mobile /database/brokers",
+      "result": "pass"
+    },
+    {
+      "workflow": "dialogs-mobile /database/securities",
+      "result": "pass"
+    },
+    {
+      "workflow": "dialogs-mobile /database/prices",
+      "result": "pass"
+    },
+    {
+      "workflow": "dialogs-mobile /database/fx",
+      "result": "pass"
+    },
+    {
+      "workflow": "dialogs-mobile /dashboard",
+      "result": "pass"
+    },
+    {
+      "workflow": "mobile-page-controls",
+      "result": "pass"
+    },
+    {
+      "workflow": "chart-acceptance",
       "result": "pass"
     }
   ],
@@ -24,38 +139,38 @@
   "delivery": {
     "note": "gzip+raw JS/CSS over the observed per-route cold resource graph on the app-d8-default-on artifact. Loopback timings are not production latency evidence. The dashboard target is the saved C5a cutover target (~535 kB gzip); the 401 kB legacy budget is asserted by the rollback delivery case.",
     "dashboard": {
-      "gzip": 483952,
+      "gzip": 483964,
       "raw": 1613431,
       "targetGzip": 535000,
       "withinTarget": true
     },
     "login": {
-      "gzip": 236759,
+      "gzip": 236765,
       "raw": 880529
     },
     "profile": {
-      "gzip": 236672,
+      "gzip": 236679,
       "raw": 875171
     },
     "transactions": {
-      "gzip": 271334,
+      "gzip": 271339,
       "raw": 988895
     },
     "securityDetail": {
-      "gzip": 463234,
+      "gzip": 463238,
       "raw": 1560334
     }
   },
   "artifacts": {
     "defaultOn": {
       "flags": "absent (default-on policy)",
-      "sha256": "765f6ebb1d8b3da34fd6d757a57c5b78bcda53ec6cf27645d488fe819d9b99a6",
+      "sha256": "538674379e53d813c91ec085596abf8f0b288796af05a46a1e2aa8216c43d7ba",
       "files": 153,
       "bytes": 2477947
     },
     "rollback": {
       "flags": "VITE_NAV_ECHARTS_ENABLED=false, VITE_ALLOCATION_ECHARTS_ENABLED=false, VITE_SECURITY_ECHARTS_ENABLED=false",
-      "sha256": "d35e99567c1ae41860eb55acda3e22fa704f0fdcfd4603e114c25a1f59aea096",
+      "sha256": "4961173d40dfe341d3b15fd2b589844685319413a0e3c53f9b4bebc5a3a5a511",
       "files": 153,
       "bytes": 2477950
     },
@@ -183,8 +298,8 @@
     },
     {
       "file": "d8-rollback-dashboard.png",
-      "sha256": "ade5b7041814af75ece89f378af910129f89682897eba18153f202a25eeab5b6",
-      "bytes": 92912,
+      "sha256": "4063018fd8e817fb0064ccdfe524d0f502541735b596e81c101392fd0cc9d15c",
+      "bytes": 93102,
       "width": 1440,
       "height": 1000
     },
