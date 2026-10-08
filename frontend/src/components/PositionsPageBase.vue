@@ -7,7 +7,7 @@
 
       <v-alert v-if="positionsQuery.error.value || yearsQuery.error.value" type="error" class="mb-4">
         Unable to load positions or year options. The displayed data may be from the previous request.
-        <v-btn data-testid="positions-retry" :disabled="!context.canRead" @click="retryFailedResources">Retry</v-btn>
+        <v-btn data-testid="positions-retry" variant="text" color="white" :disabled="!context.canRead" @click="retryFailedResources">Retry</v-btn>
       </v-alert>
       <slot name="above-table" :loading="tableLoading" />
 

@@ -45,13 +45,34 @@ export async function runAgentBrowser({ args, context, initScript, log, session 
   ]
   let result
   try {
-    result = await execFileAsync(process.execPath, cliArgs, {
+    // The execFile timeout kills the agent-browser.js node wrapper, but its
+    // child CLI binary survives holding the stdio pipes, so the underlying
+    // promise can never settle (observed: a wedged daemon stalled one command
+    // indefinitely while every later command failed). Race a hard watchdog so
+    // a wedged daemon becomes a fast, attributable failure instead.
+    const exec = execFileAsync(process.execPath, cliArgs, {
       cwd: frontendRoot,
       encoding: 'utf8',
       maxBuffer: 10 * 1024 * 1024,
       timeout: 30_000,
       windowsHide: true,
     })
+    let settled = false
+    exec.catch(() => {})
+    let watchdogTimer = null
+    const watchdog = new Promise((resolveUnused, rejectWatchdog) => {
+      watchdogTimer = setTimeout(() => {
+        if (!settled) rejectWatchdog(new Error(`${context}: agent-browser command exceeded 45s (daemon wedge suspected)`))
+      }, 45_000)
+    })
+    try {
+      result = await Promise.race([exec.then((value) => { settled = true; return value }), watchdog])
+      settled = true
+    } finally {
+      // A completed command must not leave its 45s timer holding the process
+      // alive for up to 45 more seconds (thousands of commands per run).
+      clearTimeout(watchdogTimer)
+    }
   } catch (error) {
     await log?.({ args, context, stderr: error.stderr, stdout: error.stdout })
     if (error.stdout) {

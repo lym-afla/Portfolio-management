@@ -2,7 +2,7 @@
   <div>
     <v-alert v-if="pricesQuery.error.value || securitiesQuery.error.value || assetTypesQuery.error.value || accountsQuery.error.value" type="error" class="mb-4">
       Unable to load prices or filters. The displayed data may be from the previous request.
-      <v-btn data-testid="prices-retry" :disabled="!context.canRead" @click="retryFailedResources">Retry</v-btn>
+      <v-btn data-testid="prices-retry" variant="text" color="white" :disabled="!context.canRead" @click="retryFailedResources">Retry</v-btn>
     </v-alert>
     <WorkspaceSection
       heading-id="prices-section"

@@ -189,6 +189,19 @@ describe('/database landing', () => {
 })
 
 describe('/database/brokers', () => {
+  it('renders the error-alert Retry action in the readable text variant, not the invisible elevated one', async () => {
+    // The elevated default inside an error-toned alert rendered white text on
+    // a white background (computed contrast 1.0 - the label was invisible).
+    api.getBrokersTable.mockRejectedValueOnce(new Error('fixture table failure'))
+    const wrapper = await mountPage('/database/brokers')
+    await flushPromises()
+    const retry = wrapper.find('[data-testid="table-retry"]')
+    expect(retry.exists()).toBe(true)
+    expect(retry.text()).toBe('Retry')
+    expect(retry.classes()).toContain('v-btn--variant-text')
+    expect(retry.classes()).not.toContain('v-btn--variant-elevated')
+  })
+
   it('renders a section heading, primary Add Broker action and Search control', async () => {
     const wrapper = await mountPage('/database/brokers')
     await flushPromises()

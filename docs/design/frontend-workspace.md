@@ -312,3 +312,28 @@ Round 3 fixed horizontal clipping, but viewport containment proved to be not vis
 - **Renderer-copy cloning:** structuredClone(toRaw(...)) because prop reactivity wraps the result; the retained validated NavResult stays immune to Chart.js-side mutation (regression-pinned since C2).
 - **Reconciliation:** C2's once-per-episode mismatch suppression is untouched and regression-pinned in navIntegration.
 - **Unmet acceptance / not in scope:** approval of this pilot does **not** authorize default-on rollout (C5), the three solid allocation pies or security charts (C4), main merge or deployment; a real screen-reader audit (D8) and true render-timing measurements were not performed; the screenshots' visual review is the reviewer's.
+
+---
+
+# D8 — implemented financial workspace conventions (default-on acceptance)
+
+D8 executed the integrated default-on QA across every route and workflow family; the full acceptance record, ledger and capture set live in [frontend-final-qa.md](frontend-final-qa.md). This section records the workspace conventions as they are actually implemented, with the code paths that own them, so reviewers can navigate the integrated result. Nothing here authorizes backend, financial or API change.
+
+## Context, requests and rendering ownership (R/D/C)
+
+- **R (request/context) owns the committed context and every network read.** The shell renders the committed context strip (account · valuation date · reporting currency) from the context store; pages receive it read-only. The context bootstrap (`src/services/api/context.ts`, store `src/stores/portfolioContext.ts`) validates the backend response shapes strictly and is the only writer of committed values; pending (unsaved) form state stays local to its owning component and is never merged into the committed strip. Account/currency/date changes go through the context store's explicit mutation queue (`updateAccount` / `updateSettings`), whose payloads the backend confirms before the strip updates.
+- **D (presentation) components stay request-free.** `src/components/workspace/` (WorkspaceSection, WorkspacePage, WorkspaceActions, table toolbar) and the page components render props/events only; the D5-era rule that child presentation components must not acquire request ownership held throughout D8's route-by-route audit (single-heading ownership per `WorkspacePage`; the shell's legacy h1 appears only when no workspace page is mounted).
+- **C (charts) boundaries are the C2/C3/C4/C5 contracts:** every chart payload crosses `src/features/charts/contracts.ts` + `parseChartEnvelope.ts` (runtime validation, decimal strings stay strings, legacy payloads never downgrade a present-but-invalid v2 document), request ownership lives in `chartApi.ts` + the `usePortfolioRequest`-based composables, renderer selection is `rendererPolicy.ts` (absent flag = default-on ECharts, exact `'false'` = rollback, anything else conservatively off; even a requested gate renders ECharts only for a validated v2 result), and the ECharts/Chart.js renderers are lazy leaves (`EChartsNav.vue`, `EChartsSecurity.vue`, the lazy Chart.js security/allocation leaves behind `lazyChartRenderer`).
+
+## Display values
+
+Server-formatted display strings are rendered **verbatim** — no parsing, no reformatting, no second currency symbol. `$100.00`, `($25.00)`, `−2.40%` (Unicode minus), `N/R`, `N/A — not_available (solver_unavailable)`, bond `99.875% of nominal`, `8.000000000` quantities and comma-grouped totals arrive formatted and reach the DOM byte-identical (D3-era verbatim tests + D8's exact-value table assertions on the default-on charts). Chart tables (`src/features/charts/SecurityDataTable.vue`, the NAV pilot's exact-values table built from the validated document) are the accessible equivalents of their canvases and carry statuses/reasons/known-subtotals verbatim.
+
+## Page structure
+
+One `h1` per route owned by `WorkspacePage`; committed context visible in the app bar with the page's own quiet `workspace-meta` repetition where numbers need attribution; a single primary action per view (`WorkspaceActions` hierarchy: primary create, secondary import, overflow for the rest); section headings via `WorkspaceSection` with `heading-id` anchors; grouped tables under `positionsHeaders.js`/`positionsTableViews.ts` with key-based sticky identity (Type+Security), measured second-pin offsets, `<caption>`/`colgroup`/`headers=` semantics and footer Cash/TOTAL rows sharing base-row cell bindings. Table state is server-owned (server sort/page/search; the client never re-orders) with per-user persisted view models (`positionsTableView.v1.u<id>.<table>`), while database-family tables share the global in-memory `useTableSettings` session state as before.
+
+## D8 acceptance status
+
+- Default-on (unflagged) artifact: 90/90 route probes across five viewports, 12/12 long-name probes, 30/30 workflow executions (d4/d7/imports/settings/dialogs/charts/states), rollback spot matrix separate, delivery within the saved cutover budget — all in [frontend-final-qa.md](frontend-final-qa.md).
+- Zero application-code defects found; harness-side findings and fixes are recorded there. Screen-reader/AT work remains out of scope by owner amendment; C5b removal stays a separate decision.

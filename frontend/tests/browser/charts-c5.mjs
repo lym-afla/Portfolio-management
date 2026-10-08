@@ -27,8 +27,10 @@ const NAV_PATH = '/dashboard/api/get-nav-chart-data/'
 const BREAKDOWN_PATH = '/dashboard/api/get-breakdown/'
 
 // Any Chart.js runtime module inside a loaded asset's module graph.
-const CHARTJS_RUNTIME = /(node_modules\/chart\.js\/|node_modules\/vue-chartjs\/|node_modules\/chartjs-plugin-datalabels\/|node_modules\/chartjs-adapter-date-fns\/)/i
-const ECHARTS_RUNTIME = /node_modules\/(echarts|vue-echarts|zrender)\//i
+// Exported for the D8 final-QA case, which must assert the same
+// chart-runtime membership on its own default-on artifact.
+export const CHARTJS_RUNTIME = /(node_modules\/chart\.js\/|node_modules\/vue-chartjs\/|node_modules\/chartjs-plugin-datalabels\/|node_modules\/chartjs-adapter-date-fns\/)/i
+export const ECHARTS_RUNTIME = /node_modules\/(echarts|vue-echarts|zrender)\//i
 
 const evalProbe = async (run, expression) => {
   const data = await run(['eval', expression])
@@ -38,7 +40,7 @@ const evalProbe = async (run, expression) => {
 const waitFor = (run, fn, timeout = 12000) =>
   run(['wait', '--fn', fn, '--timeout', String(timeout)])
 
-const LOADED_MODULE_GRAPH = `(async () => {
+export const LOADED_MODULE_GRAPH = `(async () => {
   const membership = await fetch('/.vite/module-membership.json').then(response => response.json()).catch(() => ({}))
   const assets = [...new Set(performance.getEntriesByType('resource').map(entry => new URL(entry.name).pathname.slice(1)))]
   const modules = assets.flatMap((asset) => membership[asset] || [])

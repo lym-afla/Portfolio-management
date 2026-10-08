@@ -1,0 +1,455 @@
+{
+  "case": "final-qa-d8",
+  "matrices": {
+    "defaultOn": {
+      "routeProbes": 90,
+      "longNameProbes": 12,
+      "workflows": 37,
+      "failures": []
+    },
+    "rollback": {
+      "note": "spot checks here; the FULL rollback route matrix is the standard run-smoke run (its base artifact is built with all-false flags) and stays the rollback acceptance evidence",
+      "spotChecks": 3,
+      "failures": []
+    }
+  },
+  "workflows": [
+    {
+      "workflow": "d4-tables-desktop",
+      "result": "pass"
+    },
+    {
+      "workflow": "d4-transactions-desktop",
+      "result": "pass"
+    },
+    {
+      "workflow": "d4-viewport-desktop /open-positions",
+      "result": "pass"
+    },
+    {
+      "workflow": "d4-viewport-desktop /closed-positions",
+      "result": "pass"
+    },
+    {
+      "workflow": "d4-viewport-desktop /transactions",
+      "result": "pass"
+    },
+    {
+      "workflow": "d4-viewport-mobile /open-positions",
+      "result": "pass"
+    },
+    {
+      "workflow": "d4-viewport-mobile /closed-positions",
+      "result": "pass"
+    },
+    {
+      "workflow": "d4-viewport-mobile /transactions",
+      "result": "pass"
+    },
+    {
+      "workflow": "brokers-security-d7-desktop",
+      "result": "pass"
+    },
+    {
+      "workflow": "brokers-security-d7-mobile",
+      "result": "pass"
+    },
+    {
+      "workflow": "imports-d6-desktop",
+      "result": "pass"
+    },
+    {
+      "workflow": "imports-d6-mobile",
+      "result": "pass"
+    },
+    {
+      "workflow": "settings-account-desktop",
+      "result": "pass"
+    },
+    {
+      "workflow": "settings-account-mobile",
+      "result": "pass"
+    },
+    {
+      "workflow": "dialogs-desktop /transactions",
+      "result": "pass"
+    },
+    {
+      "workflow": "dialogs-keyboard-desktop /transactions",
+      "result": "pass"
+    },
+    {
+      "workflow": "dialogs-desktop /database/accounts",
+      "result": "pass"
+    },
+    {
+      "workflow": "dialogs-keyboard-desktop /database/accounts",
+      "result": "pass"
+    },
+    {
+      "workflow": "dialogs-desktop /database/brokers",
+      "result": "pass"
+    },
+    {
+      "workflow": "dialogs-keyboard-desktop /database/brokers",
+      "result": "pass"
+    },
+    {
+      "workflow": "dialogs-desktop /database/securities",
+      "result": "pass"
+    },
+    {
+      "workflow": "dialogs-keyboard-desktop /database/securities",
+      "result": "pass"
+    },
+    {
+      "workflow": "dialogs-desktop /database/prices",
+      "result": "pass"
+    },
+    {
+      "workflow": "dialogs-keyboard-desktop /database/prices",
+      "result": "pass"
+    },
+    {
+      "workflow": "dialogs-desktop /database/fx",
+      "result": "pass"
+    },
+    {
+      "workflow": "dialogs-keyboard-desktop /database/fx",
+      "result": "pass"
+    },
+    {
+      "workflow": "dialogs-desktop /dashboard",
+      "result": "pass"
+    },
+    {
+      "workflow": "dialogs-keyboard-desktop /dashboard",
+      "result": "pass"
+    },
+    {
+      "workflow": "dialogs-mobile /transactions",
+      "result": "pass"
+    },
+    {
+      "workflow": "dialogs-mobile /database/accounts",
+      "result": "pass"
+    },
+    {
+      "workflow": "dialogs-mobile /database/brokers",
+      "result": "pass"
+    },
+    {
+      "workflow": "dialogs-mobile /database/securities",
+      "result": "pass"
+    },
+    {
+      "workflow": "dialogs-mobile /database/prices",
+      "result": "pass"
+    },
+    {
+      "workflow": "dialogs-mobile /database/fx",
+      "result": "pass"
+    },
+    {
+      "workflow": "dialogs-mobile /dashboard",
+      "result": "pass"
+    },
+    {
+      "workflow": "mobile-page-controls",
+      "result": "pass"
+    },
+    {
+      "workflow": "chart-acceptance",
+      "result": "pass"
+    }
+  ],
+  "routeFailures": [],
+  "fixtureMismatches": [],
+  "delivery": {
+    "note": "gzip+raw JS/CSS over the observed per-route cold resource graph on the app-d8-default-on artifact. Loopback timings are not production latency evidence. The dashboard target is the saved C5a cutover target (~535 kB gzip); the 401 kB legacy budget is asserted by the rollback delivery case.",
+    "dashboard": {
+      "gzip": 483942,
+      "raw": 1613431,
+      "targetGzip": 535000,
+      "withinTarget": true
+    },
+    "login": {
+      "gzip": 236747,
+      "raw": 880529
+    },
+    "profile": {
+      "gzip": 236661,
+      "raw": 875171
+    },
+    "transactions": {
+      "gzip": 271320,
+      "raw": 988895
+    },
+    "securityDetail": {
+      "gzip": 463219,
+      "raw": 1560334
+    }
+  },
+  "artifacts": {
+    "defaultOn": {
+      "flags": "absent (default-on policy)",
+      "sha256": "fba0899685b30333565995f61a6f97467a30d88c9f69cfe8f35b746c2c4b3226",
+      "files": 153,
+      "bytes": 2478092
+    },
+    "rollback": {
+      "flags": "VITE_NAV_ECHARTS_ENABLED=false, VITE_ALLOCATION_ECHARTS_ENABLED=false, VITE_SECURITY_ECHARTS_ENABLED=false",
+      "sha256": "fcc9f9775aac09cbbeb33b417ac17d581477a683990dcfaf0a85dbd342969284",
+      "files": 153,
+      "bytes": 2478095
+    },
+    "envFlagKeysFound": []
+  },
+  "captures": [
+    {
+      "file": "d8-accounts-longname-desktop.png",
+      "sha256": "42637ca5f7cfe54fedaf8ca5b2e5b14d3419f6a37040284e3117e92acb788fee",
+      "bytes": 49654,
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "d8-allocation-ineligible.png",
+      "sha256": "5683235dd89e303bd6d675e21e4f4db0ca37245404e39e53e2d35180b0588755",
+      "bytes": 99628,
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "d8-brokers-desktop.png",
+      "sha256": "4a6dd8311165825cd6bf2a23f344ed2b85693a21f477dcbdd81206d2d2a09d92",
+      "bytes": 48037,
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "d8-brokers-error.png",
+      "sha256": "ac10b0da03faf0bd7f24daedfec14e76a14cf9daa9b737e70518c9da56f20665",
+      "bytes": 51093,
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "d8-brokers-filtered-empty.png",
+      "sha256": "f6bd8ac0bd546f2e70dfb31798ad51eb7b72e26cc3ecd8271d03a0b8fbc989ad",
+      "bytes": 46386,
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "d8-closed-positions-desktop.png",
+      "sha256": "c9c59466fc4ddf678df4fec63e2be6b34278324920c6c34e638c88e7c07a2f27",
+      "bytes": 51667,
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "d8-dashboard-desktop.png",
+      "sha256": "dc236825483261c9f23505de44faeaa848f075039a8883c6f27e8cf2c33f3c81",
+      "bytes": 88456,
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "d8-dashboard-mobile.png",
+      "sha256": "d1a5f18a44f5a01f08b0a767862b78778a3b07d85e3328ac8d9130b9fdbb8cf5",
+      "bytes": 36690,
+      "width": 390,
+      "height": 844
+    },
+    {
+      "file": "d8-dashboard-tablet-portrait.png",
+      "sha256": "a4b1b0163810db214f44b89c95a8d6c41913c20e3e473e6e5c40c45f21039d36",
+      "bytes": 62423,
+      "width": 768,
+      "height": 1024
+    },
+    {
+      "file": "d8-dashboard-tablet.png",
+      "sha256": "4e7a530da506ea032bfbef1363ec886d38a62213b0f2a9fb54b51e5712e57aef",
+      "bytes": 68588,
+      "width": 1024,
+      "height": 768
+    },
+    {
+      "file": "d8-fx-empty.png",
+      "sha256": "7adda3a560532d7d7ebca5de593022b5b9b0a2e3f86c2375d908b97bf8d1e20a",
+      "bytes": 49747,
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "d8-fx-filtered-empty.png",
+      "sha256": "be6aad67d1f5a4238342b68c575c3a4afe57920e4b76ad7b766e460d0b8d743a",
+      "bytes": 49981,
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "d8-fx-mobile.png",
+      "sha256": "54c48768bfeb63bc1f46dab5c4689633b24bf6ac99a4f7fd738fc06cf2922447",
+      "bytes": 32389,
+      "width": 390,
+      "height": 844
+    },
+    {
+      "file": "d8-native-zoom.png",
+      "sha256": "b17b248d775e1858189991199acc4a4a3862e0652efb379905691c276984baa5",
+      "bytes": 91435,
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "d8-nav-mobile-tooltip.png",
+      "sha256": "c5afd7a584db4c2fd225520e1981470d54a5f418b94c0c2aea3c12d5a3f7ed19",
+      "bytes": 50524,
+      "width": 500,
+      "height": 844
+    },
+    {
+      "file": "d8-nav-modern.png",
+      "sha256": "e747a41c730f1a7b4effd356ccd0edd0d11ae73dd1a4a90850810cc6a269ba1b",
+      "bytes": 103404,
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "d8-open-positions-desktop.png",
+      "sha256": "7397338e1276be4b84d74d5ef6a795a976a1b3b8333d0cfe8c43d40b5799d8f0",
+      "bytes": 96447,
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "d8-open-positions-longname-desktop.png",
+      "sha256": "06a2d227bcc8cd8866554edb5ab8f62b3293a1f5781b7b6348b0b692ca634fa4",
+      "bytes": 102663,
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "d8-profile-settings-desktop.png",
+      "sha256": "22611381f3e8ba19538d604813539a64296bb8f1c577d268d2644b3f87a362d2",
+      "bytes": 69912,
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "d8-rollback-dashboard.png",
+      "sha256": "2f2848f0d5801edddb492e7ec15dc3a041323ca59f312b241c8c8405b2e2c8c3",
+      "bytes": 93094,
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "d8-rollback-security.png",
+      "sha256": "c7bcca9e22660044d96fd11f15e91d6b0a5df5e32534fa4168d144a1fc70b5d6",
+      "bytes": 55922,
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "d8-securities-empty.png",
+      "sha256": "dd94a8bad86648a1077c869117c37c8df4afe5e71b4388084fe28fe8cf2c3aa0",
+      "bytes": 49188,
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "d8-security-bond.png",
+      "sha256": "a474cb3fa1aa491ddb03404744cca0609e3ff7d036c72921151717592644d79e",
+      "bytes": 78586,
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "d8-security-crypto.png",
+      "sha256": "a0996a766a30451106e7ec1192968754518d009355635d46a3373f3a6fe4f552",
+      "bytes": 73765,
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "d8-security-detail-desktop.png",
+      "sha256": "e4c808e087689afcfa86d8c09786b680de49add1adf644cdace303074a3ef403",
+      "bytes": 70835,
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "d8-security-stock.png",
+      "sha256": "a09eb98918f77a90e959f941d2a23a6475d0c3e63b4ed10bf36ac26b7315c3b3",
+      "bytes": 69821,
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "d8-settings-error.png",
+      "sha256": "1c5d9132f8ee26ecf0ef6efc663096ab209fbafddd963e4d87d1b9cca840e5c8",
+      "bytes": 69197,
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "d8-summary-desktop.png",
+      "sha256": "a498ec7030187ec2fd5a33153eb3ae8303092445e17f9181516b9b32c3739d14",
+      "bytes": 104624,
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "d8-summary-empty.png",
+      "sha256": "63c81496ea14302303d7709f35c855676b705185610bb121927a04a62c1ed61e",
+      "bytes": 54112,
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "d8-summary-longname-desktop.png",
+      "sha256": "a498ec7030187ec2fd5a33153eb3ae8303092445e17f9181516b9b32c3739d14",
+      "bytes": 104624,
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "d8-transactions-css-zoom200.png",
+      "sha256": "35309111d0358a9be0b7435f753e952714c91c1f0fe5e12df0092c350c1d16e2",
+      "bytes": 103652,
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "d8-transactions-desktop.png",
+      "sha256": "3dd7bd961aae0c2e36acd348742e1b504b02e272354b4332d070b0a661f88591",
+      "bytes": 68812,
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "d8-transactions-longname-desktop.png",
+      "sha256": "396315a55a207e035ac5408651f77046197f3e5b4c91ed53298fd083d0288b2b",
+      "bytes": 74812,
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "d8-transactions-longname-mobile.png",
+      "sha256": "78742dba94b4a419033fcdfb965cef0c5944318f183f1a610a90d6ea4852ee7c",
+      "bytes": 38064,
+      "width": 390,
+      "height": 844
+    },
+    {
+      "file": "d8-transactions-mobile.png",
+      "sha256": "4ecc6bd7b67150c8ac59b980cef93d948aa7fa73ef93249afe8cf54f2ce456c6",
+      "bytes": 31877,
+      "width": 390,
+      "height": 844
+    }
+  ]
+}

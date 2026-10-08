@@ -12,7 +12,7 @@ Updated 7 October 2026. This is the durable, human-facing status tracker for the
 ## Current checkpoint
 
 - Implementation branch: `codex/frontend-modernization`.
-- Verified remote and synchronized local code checkpoint: `9d369af7`, PR #60/C5a merged, reviewed through `6c701ec0`. D8 is next; all three chart families now default on for absent flags, with explicit-false rollback and lazy Chart.js compatibility.
+- Verified remote and synchronized local code checkpoint: `9d369af7`, PR #60/C5a merged, reviewed through `6c701ec0`. D8 has been executed on a dedicated branch and stops at a draft PR for review; all three chart families default on for absent flags, with explicit-false rollback and lazy Chart.js compatibility.
 - D6 is integrated through final proposal head `17a196c8` (implementation `67b02326`).
 - The earlier `9b32d3d9` checkpoint was 34 commits ahead of main. That historical count is not a completion measure or the current branch count.
 - Financial fixes [#46](https://github.com/lym-afla/Portfolio-management/pull/46), [#47](https://github.com/lym-afla/Portfolio-management/pull/47) and [#48](https://github.com/lym-afla/Portfolio-management/pull/48) are merged into the implementation branch. Their source branches were deleted by the user.
@@ -47,11 +47,11 @@ Updated 7 October 2026. This is the durable, human-facing status tracker for the
 | 21 | D7 | Broker/security workflow extraction | User-merged PR #58 at `13a2129d`, reviewed through `531a56cf`; see D7 record |
 | 22 | C4 | Three solid allocation pies and security histories | User-merged PR [#59](https://github.com/lym-afla/Portfolio-management/pull/59) at `671171be`, reviewed through `4feb48d4`; see [C4 record](#c4-implementation-record) |
 | 23 | C5 | ECharts cutover and Chart.js removal | C5a user-merged PR #60 at `9d369af7`, reviewed through `6c701ec0`; C5b remains pending release validation and separate removal approval |
-| 24 | D8 | All-page visual/keyboard/responsive/behavior QA and documentation | Handoff prepared; execute default-on integrated QA before C5b cleanup |
+| 24 | D8 | All-page visual/keyboard/responsive/behavior QA and documentation | Executed on `codex/frontend-final-qa-d8` (base `4033ce86`): default-on route/workflow QA green, draft PR into `codex/frontend-modernization` pending review; see [D8 record](#d8-implementation-record) |
 
 ## Next execution and boundaries
 
-Next: [D8 final QA handoff](2026-10-07-final-qa-d8-handoff.md) and [GLM prompt](2026-10-07-final-qa-d8-glm-prompt.md), on a dedicated `codex/frontend-final-qa-d8` worktree. Audit the actual unflagged default-on artifact across every route and workflow; retain the existing explicit-false browser matrix separately as rollback coverage. Fix bounded defects, inspect rendered evidence, update documentation and stop at a draft PR.
+D8 has been executed (see the [D8 record](#d8-implementation-record)) and stops at a draft PR into `codex/frontend-modernization` for owner review. After D8 review, the only remaining planned work is C5b - the Chart.js removal - which requires an owner-accepted release validation cycle and separate removal approval; D8's local synthetic QA explicitly does not satisfy that cycle.
 
 C5a is merged. Root closed all three review findings and independently passed 29 loader/policy/fallback tests. Final executor report: 1003 units, unflagged dashboard 483,948 gzip bytes, charts-c5/charts-c4/delivery/full 72-profile matrix and backend 1386/10 passing; see its evidence for the precise gate list. No application gates were rerun for this planning update.
 
@@ -227,3 +227,11 @@ PR #54's header account-label fix is user-merged at `610dff992d76fe4f9459f059c68
 ## Completion record template
 
 For each task record: baseline and final commit; exact files; RED/GREEN tests; full relevant gate results; review findings and fixes; numeric/compatibility impact; PR URL and approval/merge status; deferred acceptance; next task. A task is not done because its component file exists or a PR was opened.
+
+### D8 implementation record
+
+- Status: executed on branch `codex/frontend-final-qa-d8` in the dedicated worktree `D:` + path separator + `Developing` + path separator + `Portfolio-management-d8`, base `4033ce86` (the `origin/codex/frontend-modernization` tip: PR #60/C5a merged plus the D8 handoff documents). Draft PR into `codex/frontend-modernization`; not merged, no deployment, no release tag, no dependency removal, no backend change. Heads: `1a8a8b72` (harness + evidence), `3521a5e8` (summary-scope fix), `18b268dc` (gate results and docs).
+- What ran: a genuinely unflagged default-on artifact (all three `VITE_*_ECHARTS_ENABLED` keys absent, env-file scan asserted) audited across the full 18-route inventory at five viewports (90/90 probes), a 12-probe long-name pass, 30 workflow executions across seven isolated families (d4 tables/transactions, d7 brokers/security, d6 imports over the loopback WebSocket, settings-account preservation, all ten dialogs, integrated chart acceptance including both IRRs, three solid pies and both security histories with fallbacks, refresh semantics, the mobile tooltip and native 200% zoom, plus rendered states), three labeled rollback spot checks on the explicit all-false artifact, and a default-on delivery remeasure (dashboard 483,964 gzip bytes, within the saved ~535 kB cutover target; login/profile/transactions load no chart runtime). Zero application-code defects were found; all findings were harness-side and are recorded with their fixes.
+- Gates (actual exit codes, committed head `3521a5e8`): unit 1008/1008 (idle machine; two earlier attempts hit four load-flakes each in canvas-heavy chart specs after 23-minute suite durations - different files each time, green in every focused run), type-checks x3, api:types, lint (0 errors / 8 baseline warnings after fixing five new diagnostics in the new harness files), build, FULL rollback browser matrix (18 routes x 4 viewports, 735 fixture requests, zero mismatches), the default-on `final-qa-d8` matrix, `test:delivery`, and all sixteen focused cases (charts-c2/c3/c4/c5, brokers-security-d7, imports-d6, layout, context, dates, requests, recovery, dialogs, dialog-recovery, d4, d5, settings-account) - all exit 0. Backend `uv run python -m pytest`: 1386 passed / 10 skipped.
+- Evidence: 31 synthetic captures plus summary/artifacts/delivery JSONs under `docs/design/assets/frontend-final-qa/`; the acceptance record with the route ledger, harness findings and the owner review checklist is [frontend-final-qa.md](../../design/frontend-final-qa.md). The existing all-false browser matrix remains the rollback acceptance and ran green in the same gate sequence.
+- Boundaries honored: no Chart.js removal, no backend/financial/API change, no merge/deploy/release tag. A live release-validation cycle was NOT performed and C5b removal is NOT approved by this work; screen-reader/AT work remains out of scope per the owner amendment.

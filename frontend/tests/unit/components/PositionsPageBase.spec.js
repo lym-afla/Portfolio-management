@@ -45,6 +45,16 @@ beforeEach(() => {
 })
 
 describe('PositionsPageBase', () => {
+  it('renders the error-alert Retry action with the readable text-variant classes', async () => {
+    const fetchPositions = vi.fn().mockRejectedValue(new Error('fixture positions failure'))
+    const { wrapper } = makeWrapper({ fetchPositions })
+    await flushPromises()
+    const retry = wrapper.find('[data-testid="positions-retry"]')
+    expect(retry.exists()).toBe(true)
+    expect(retry.text()).toBe('Retry')
+    expect(retry.classes()).toContain('v-btn--variant-text')
+    expect(retry.classes()).not.toContain('v-btn--variant-elevated')
+  })
   it('rebases a saved relative range before the first query on route entry', async () => {
     const pinia = createPinia()
     configureContextFixture('2025-12-31')
@@ -212,6 +222,16 @@ describe('PositionsPageBase sticky-column and divider CSS (source assertions)', 
   // The compiled component does not carry its scoped style block, so the
   // sticky/divider CSS is asserted against the SFC source directly.
   const src = readFileSync('src/components/PositionsPageBase.vue', 'utf-8')
+
+  it('styles the error-alert Retry action as the readable text variant', () => {
+    // The elevated default inside an error-toned alert rendered white text on
+    // a white background (computed contrast 1.0). The retry action must use
+    // the text variant with an explicit white color on the alert.
+    const retryButton = src.match(/<v-btn[^>]*data-testid="positions-retry"[^>]*>/)
+    expect(retryButton).toBeTruthy()
+    expect(retryButton[0]).toContain('variant="text"')
+    expect(retryButton[0]).toContain('color="white"')
+  })
 
   it('sticks key-pinned identity columns with opaque backgrounds and a measured offset', () => {
     expect(src).toContain('position: sticky')

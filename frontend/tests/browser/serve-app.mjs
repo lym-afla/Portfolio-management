@@ -23,6 +23,10 @@ function listen(server) {
 
 function close(server) {
   return new Promise((resolvePromise, reject) => {
+    // A page-held WebSocket or keep-alive socket would stall close() forever
+    // (observed: an un-upgraded WS request left the raw socket open after the
+    // D8 case's last page load). Drop every connection explicitly.
+    try { server.closeAllConnections() } catch { /* Node without closeAllConnections */ }
     server.close((error) => (error ? reject(error) : resolvePromise()))
   })
 }
