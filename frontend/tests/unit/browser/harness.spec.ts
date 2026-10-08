@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 import {
   cleanupBrowserHarness,
@@ -7,6 +10,12 @@ import {
 import { parseCliResult } from '../../../tests/browser/protocol.mjs'
 import { resolveFixture } from '../../../tests/browser/fixtures.mjs'
 import { routes, viewports } from '../../../tests/browser/routes.mjs'
+import {
+  D8_FLAG_KEYS,
+  hashArtifact,
+  scanFlagEnvFiles,
+  withFlagEnvironment,
+} from '../../../tests/browser/artifact-flags.mjs'
 
 describe('browser protocol', () => {
   it('parses the installed agent-browser success envelope', () => {
@@ -170,5 +179,108 @@ describe('route matrix', () => {
       { name: 'mobile', width: 390, height: 844, zoom: 1 },
       { name: 'zoom-200', width: 1440, height: 1000, zoom: 2 },
     ])
+  })
+})
+
+describe('D8 release-flag artifact selection', () => {
+  it('targets the three real release-flag keys', () => {
+    expect(D8_FLAG_KEYS).toEqual([
+      'VITE_NAV_ECHARTS_ENABLED',
+      'VITE_ALLOCATION_ECHARTS_ENABLED',
+      'VITE_SECURITY_ECHARTS_ENABLED',
+    ])
+  })
+
+  it('restores the environment after a build, with absent keys genuinely deleted', async () => {
+    process.env.D8_SPEC_UNRELATED = 'untouched'
+    process.env.D8_SPEC_EXISTING = 'before'
+    try {
+      const seen = await withFlagEnvironment(
+        {
+          VITE_NAV_ECHARTS_ENABLED: null,
+          VITE_ALLOCATION_ECHARTS_ENABLED: 'false',
+          VITE_SECURITY_ECHARTS_ENABLED: 'true',
+          D8_SPEC_EXISTING: 'during',
+        },
+        async () => ({
+          navAbsent: process.env.VITE_NAV_ECHARTS_ENABLED === undefined,
+          allocation: process.env.VITE_ALLOCATION_ECHARTS_ENABLED,
+          security: process.env.VITE_SECURITY_ECHARTS_ENABLED,
+          existing: process.env.D8_SPEC_EXISTING,
+          unrelated: process.env.D8_SPEC_UNRELATED,
+        }),
+      )
+      expect(seen).toEqual({
+        navAbsent: true,
+        allocation: 'false',
+        security: 'true',
+        existing: 'during',
+        unrelated: 'untouched',
+      })
+      // A null flag must be ABSENT again afterwards, not an empty string —
+      // the default-on candidate is selected by genuine absence.
+      expect(process.env.VITE_NAV_ECHARTS_ENABLED).toBeUndefined()
+      expect(process.env.VITE_ALLOCATION_ECHARTS_ENABLED).toBeUndefined()
+      expect(process.env.VITE_SECURITY_ECHARTS_ENABLED).toBeUndefined()
+      expect(process.env.D8_SPEC_EXISTING).toBe('before')
+      expect(process.env.D8_SPEC_UNRELATED).toBe('untouched')
+    } finally {
+      delete process.env.D8_SPEC_UNRELATED
+      delete process.env.D8_SPEC_EXISTING
+    }
+  })
+
+  it('restores the environment even when the build fails', async () => {
+    process.env.VITE_NAV_ECHARTS_ENABLED = 'false'
+    try {
+      const failure = new Error('build failed')
+      await expect(
+        withFlagEnvironment({ VITE_NAV_ECHARTS_ENABLED: null }, async () => {
+          expect(process.env.VITE_NAV_ECHARTS_ENABLED).toBeUndefined()
+          throw failure
+        }),
+      ).rejects.toBe(failure)
+      expect(process.env.VITE_NAV_ECHARTS_ENABLED).toBe('false')
+    } finally {
+      delete process.env.VITE_NAV_ECHARTS_ENABLED
+    }
+  })
+
+  it('reports release flags defined in any env file and tolerates comments', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'd8-env-scan-'))
+    try {
+      await writeFile(
+        join(dir, '.env.local'),
+        '# comment\nVITE_API_URL=http://127.0.0.1:8000\nVITE_NAV_ECHARTS_ENABLED="false"\n',
+        'utf8',
+      )
+      await writeFile(join(dir, '.env'), 'VITE_ALLOCATION_ECHARTS_ENABLED=false\n', 'utf8')
+      const scan = await scanFlagEnvFiles(dir)
+      expect(scan.flagKeysFound).toEqual([
+        { file: '.env', key: 'VITE_ALLOCATION_ECHARTS_ENABLED', value: 'false' },
+        { file: '.env.local', key: 'VITE_NAV_ECHARTS_ENABLED', value: 'false' },
+      ])
+      expect(scan.files.map((file) => file.file).sort()).toEqual(['.env', '.env.local'])
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('hashes an artifact deterministically and reacts to content changes', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'd8-hash-'))
+    try {
+      await writeFile(join(dir, 'a.txt'), 'alpha', 'utf8')
+      await writeFile(join(dir, 'sub.txt'), 'beta', 'utf8')
+      const first = await hashArtifact(dir)
+      const second = await hashArtifact(dir)
+      expect(second).toEqual(first)
+      expect(first.files).toBe(2)
+      expect(first.bytes).toBe('alpha'.length + 'beta'.length)
+      await writeFile(join(dir, 'a.txt'), 'gamma', 'utf8')
+      const changed = await hashArtifact(dir)
+      expect(changed.sha256).not.toBe(first.sha256)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
   })
 })

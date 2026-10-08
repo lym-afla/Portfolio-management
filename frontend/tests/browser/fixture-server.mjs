@@ -14,21 +14,42 @@ import {
   d4Transactions,
 } from './d4-datasets.mjs'
 
-function listen(server) {
+function listen(server, port) {
   return new Promise((resolve, reject) => {
     server.once('error', reject)
-    server.listen(0, '127.0.0.1', () => resolve())
+    server.listen(port ?? 0, '127.0.0.1', () => resolve())
   })
 }
 
 function close(server) {
   return new Promise((resolve, reject) => {
+    // A page-held WebSocket or keep-alive socket would stall close() forever
+    // (observed: an un-upgraded WS request left the raw socket open after the
+    // D8 case's last page load). Drop every connection explicitly.
+    try { server.closeAllConnections() } catch { }
     server.close((error) => (error ? reject(error) : resolve()))
   })
 }
 
-export async function startFixtureServer({ longAccount = false, contextFailures = false, dateFlow = false, requestFlow = false, recoveryFlow = false, d4Flow = false, chartsC2Flow = false, chartsC3Flow = false, chartsC4Flow = false, settingsAccountFlow = false, d5States = false, importsD6Flow = false, brokersSecurityD7Flow = false } = {}) {
+export async function startFixtureServer({ longAccount = false, contextFailures = false, dateFlow = false, requestFlow = false, recoveryFlow = false, d4Flow = false, chartsC2Flow = false, chartsC3Flow = false, chartsC4Flow = false, settingsAccountFlow = false, d5States = false, importsD6Flow = false, brokersSecurityD7Flow = false, port } = {}) {
   const importsWs = importsD6Flow ? createImportsWs() : null
+  // D8 final-QA: phase-scoped fixture modes. The app under test bakes ONE
+  // fixture origin at build time, so every QA phase shares this server and
+  // flips the special flows per phase through setFixtureModes. Initial
+  // values preserve the original per-case behavior exactly; several flows
+  // are mutually exclusive on the same endpoints (d4 vs settings-account on
+  // the settings payloads; any non-all selection context vs the C2/C4
+  // chart envelopes), so only one special flow is active at a time.
+  const activeModes = {
+    longAccount,
+    d4Flow,
+    chartsC2Flow,
+    chartsC3Flow,
+    chartsC4Flow,
+    settingsAccountFlow,
+    importsD6Flow,
+    brokersSecurityD7Flow,
+  }
   let releaseMutation
   let pendingMutation = false
   let currentDate = '2026-09-08'
@@ -361,7 +382,7 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
     deletes5: 0,
     addAttempts: 0,
   }
-  const baseNavFixture = () => structuredClone(resolveFixture('GET', '/dashboard/api/get-nav-chart-data/', { longAccount }).body)
+  const baseNavFixture = () => structuredClone(resolveFixture('GET', '/dashboard/api/get-nav-chart-data/', { longAccount: activeModes.longAccount }).body)
   const withEffectiveDate = (envelope, effectiveDate) => {
     envelope.chartV2.context.effectiveDate = effectiveDate
     return envelope
@@ -371,7 +392,7 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
     '/dashboard/api/get-breakdown/': { assetType: { data: { Stocks: '100.00' }, percentage: { Stocks: '100%' } }, assetClass: { data: { Equity: '100.00' }, percentage: { Equity: '100%' } }, currency: { data: { USD: '100.00' }, percentage: { USD: '100%' } }, totalNAV: '$100.00' },
     '/dashboard/api/get-summary-over-time/': { lines: [{ name: 'EoP NAV', data: { YTD: '$100.00', 'All-time': '$100.00' } }], years: [], currentYear: 2026 },
     '/dashboard/api/get-nav-chart-data/': (() => {
-      const envelope = structuredClone(resolveFixture('GET', '/dashboard/api/get-nav-chart-data/', { longAccount }).body)
+      const envelope = structuredClone(resolveFixture('GET', '/dashboard/api/get-nav-chart-data/', { longAccount: activeModes.longAccount }).body)
       // Single-point variant matching the recovery widget's one label.
       envelope.labels = ['2026-09-08']
       envelope.datasets = envelope.datasets.map((dataset) => ({ ...dataset, data: dataset.data.slice(0, 1) }))
@@ -429,7 +450,7 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
 
       // ---- D6 imports flow: import-specific lookup payloads plus the
       // analyze_file envelope; everything else falls through to fixtures. --
-      if (importsD6Flow && fixtureMethod === 'GET' && url.pathname === '/database/api/brokers/') {
+      if (activeModes.importsD6Flow && fixtureMethod === 'GET' && url.pathname === '/database/api/brokers/') {
         response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
         response.end(JSON.stringify([
           { id: 11, name: 'Tinkoff' },
@@ -438,7 +459,7 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
         requests.push({ method: fixtureMethod, path: url.pathname })
         return
       }
-      if (importsD6Flow && fixtureMethod === 'GET' && url.pathname === '/database/api/accounts/') {
+      if (activeModes.importsD6Flow && fixtureMethod === 'GET' && url.pathname === '/database/api/accounts/') {
         response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
         response.end(JSON.stringify([
           { id: 3, name: 'Tinkoff Main', broker: { text: 'Tinkoff' } },
@@ -447,7 +468,7 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
         requests.push({ method: fixtureMethod, path: url.pathname })
         return
       }
-      if (importsD6Flow && fixtureMethod === 'GET' && url.pathname === '/database/api/get-securities/') {
+      if (activeModes.importsD6Flow && fixtureMethod === 'GET' && url.pathname === '/database/api/get-securities/') {
         response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
         response.end(JSON.stringify([
           { id: 31, name: 'ACME Corp.' },
@@ -456,7 +477,7 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
         requests.push({ method: fixtureMethod, path: url.pathname })
         return
       }
-      if (importsD6Flow && fixtureMethod === 'POST' && url.pathname === '/transactions/api/analyze_file/') {
+      if (activeModes.importsD6Flow && fixtureMethod === 'POST' && url.pathname === '/transactions/api/analyze_file/') {
         // Multipart body: consumed but not parsed (shape asserted by the
         // backend contract, not here).
         for await (const chunk of request) void chunk
@@ -473,7 +494,7 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
 
       // ---- C2/C3 charts flow: scenario-driven NAV envelopes with held reads.
       // Only real GETs: CORS preflights keep the generic 204 path.
-      if ((chartsC2Flow || chartsC3Flow) && requestedMethod === 'GET' && fixtureMethod === 'GET' && url.pathname === '/dashboard/api/get-nav-chart-data/') {
+      if ((activeModes.chartsC2Flow || activeModes.chartsC3Flow) && requestedMethod === 'GET' && fixtureMethod === 'GET' && url.pathname === '/dashboard/api/get-nav-chart-data/') {
         await readBody()
         charts.navRequests += 1
         requests.push({ method: fixtureMethod, actualMethod: requestedMethod, path: url.pathname, chartsScenario: charts.scenario })
@@ -529,7 +550,7 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
       // ---- C4 charts flow: scenario-driven breakdown and security-history
       // envelopes with recorded request counts. Everything else falls
       // through to the shared fixtures.
-      if (chartsC4Flow && requestedMethod === 'OPTIONS') {
+      if (activeModes.chartsC4Flow && requestedMethod === 'OPTIONS') {
         // CORS preflights for routes without a base fixture (bond/crypto
         // resources) must still answer 204, like the d4 flow.
         requests.push({ method: 'OPTIONS', path: url.pathname })
@@ -537,7 +558,7 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
         response.end()
         return
       }
-      if (chartsC4Flow && requestedMethod === 'GET' && fixtureMethod === 'GET' && url.pathname === '/dashboard/api/get-breakdown/') {
+      if (activeModes.chartsC4Flow && requestedMethod === 'GET' && fixtureMethod === 'GET' && url.pathname === '/dashboard/api/get-breakdown/') {
         await readBody()
         chartsC4.breakdownRequests += 1
         requests.push({ method: fixtureMethod, actualMethod: requestedMethod, path: url.pathname, c4Scenario: chartsC4.breakdownScenario })
@@ -545,7 +566,7 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
         response.end(JSON.stringify(c4BreakdownEnvelope(chartsC4.breakdownScenario)))
         return
       }
-      if (chartsC4Flow && requestedMethod === 'GET' && fixtureMethod === 'GET' && /^\/database\/api\/securities\/(2|3)\/$/.test(url.pathname)) {
+      if (activeModes.chartsC4Flow && requestedMethod === 'GET' && fixtureMethod === 'GET' && /^\/database\/api\/securities\/(2|3)\/$/.test(url.pathname)) {
         // Bond and crypto detail rows for the C4 unit-axis pages (the shared
         // fixture set only carries security 1).
         const securityId = Number(url.pathname.match(/securities\/(\d+)\//)[1])
@@ -567,13 +588,13 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
             }))
         return
       }
-      if (chartsC4Flow && requestedMethod === 'GET' && fixtureMethod === 'GET' && /^\/database\/api\/securities\/(2|3)\/transactions\/$/.test(url.pathname)) {
+      if (activeModes.chartsC4Flow && requestedMethod === 'GET' && fixtureMethod === 'GET' && /^\/database\/api\/securities\/(2|3)\/transactions\/$/.test(url.pathname)) {
         requests.push({ method: fixtureMethod, actualMethod: requestedMethod, path: url.pathname, query: Object.fromEntries(url.searchParams) })
         response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
         response.end(JSON.stringify({ transactions: [], total_items: 0, current_page: 1, total_pages: 1 }))
         return
       }
-      if (chartsC4Flow && requestedMethod === 'GET' && fixtureMethod === 'GET' && /\/database\/api\/securities\/\d+\/(price|position)-history\/$/.test(url.pathname)) {
+      if (activeModes.chartsC4Flow && requestedMethod === 'GET' && fixtureMethod === 'GET' && /\/database\/api\/securities\/\d+\/(price|position)-history\/$/.test(url.pathname)) {
         requests.push({ method: fixtureMethod, actualMethod: requestedMethod, path: url.pathname, query: Object.fromEntries(url.searchParams) })
         const kind = url.pathname.endsWith('price-history/') ? 'price' : 'position'
         const securityId = Number(url.pathname.match(/securities\/(\d+)\//)[1])
@@ -584,13 +605,13 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
 
       // ---- D4 flow: server-owned pages, held/failing details, recorded
       // mutations and a mutable reporting currency. ------------------------
-      if (d4Flow && requestedMethod === 'OPTIONS') {
+      if (activeModes.d4Flow && requestedMethod === 'OPTIONS') {
         requests.push({ method: 'OPTIONS', path: url.pathname })
         response.writeHead(204)
         response.end()
         return
       }
-      if (d4Flow) {
+      if (activeModes.d4Flow) {
         if (fixtureMethod === 'POST' && ['/open_positions/api/get_open_positions_table/', '/closed_positions/api/get_closed_positions_table/'].includes(url.pathname)) {
           const body = await readBody()
           const isOpen = url.pathname.includes('open')
@@ -704,7 +725,7 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
           return
         }
         if (fixtureMethod === 'GET' && url.pathname === '/users/api/user_settings_choices/') {
-          const fixture = resolveFixture(fixtureMethod, url.pathname, { longAccount })
+          const fixture = resolveFixture(fixtureMethod, url.pathname, { longAccount: activeModes.longAccount })
           // The context strip's Reporting currency select is driven by these
           // choices; the D4 currency-reactivity flow needs a second option.
           fixture.body.currency_choices = [['USD', 'US Dollar'], ['EUR', 'Euro']]
@@ -714,7 +735,7 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
           return
         }
         if (fixtureMethod === 'GET' && ['/users/api/dashboard_settings/', '/users/api/user_settings/', '/users/api/profile/'].includes(url.pathname)) {
-          const fixture = resolveFixture(fixtureMethod, url.pathname, { longAccount })
+          const fixture = resolveFixture(fixtureMethod, url.pathname, { longAccount: activeModes.longAccount })
           if (url.pathname.includes('dashboard_settings')) {
             // The context strip's Reporting currency select binds to these
             // choices; expose EUR for the D4 currency-reactivity flow.
@@ -748,7 +769,7 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
       // ---- Settings account-preservation flow: saved identity missing from
       // the choices, stateful confirmed mutations, recorded write bodies and
       // queued rejections. ------------------------------------------------
-      if (settingsAccountFlow && requestedMethod === 'OPTIONS') {
+      if (activeModes.settingsAccountFlow && requestedMethod === 'OPTIONS') {
         requests.push({ method: 'OPTIONS', path: url.pathname })
         response.writeHead(204)
         response.end()
@@ -780,15 +801,15 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
         const filter = d5State.filterLists[url.pathname]
         if (filter) {
           const body = await readBody()
-          const fixture = resolveFixture(fixtureMethod, url.pathname, { longAccount })
+          const fixture = resolveFixture(fixtureMethod, url.pathname, { longAccount: activeModes.longAccount })
           filter(body, fixture)
           response.writeHead(fixture.status, { 'Content-Type': 'application/json; charset=utf-8' })
           response.end(JSON.stringify(fixture.body))
           return
         }
       }
-      if (settingsAccountFlow && fixtureMethod === 'GET' && url.pathname === '/users/api/user_settings/') {
-        const fixture = resolveFixture(fixtureMethod, url.pathname, { longAccount })
+      if (activeModes.settingsAccountFlow && fixtureMethod === 'GET' && url.pathname === '/users/api/user_settings/') {
+        const fixture = resolveFixture(fixtureMethod, url.pathname, { longAccount: activeModes.longAccount })
         fixture.body.selected_account_type = settingsAccount.selection.type
         fixture.body.selected_account_id = settingsAccount.selection.id
         requests.push({ method: fixtureMethod, actualMethod: requestedMethod, path: url.pathname })
@@ -796,16 +817,16 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
         response.end(JSON.stringify(fixture.body))
         return
       }
-      if (settingsAccountFlow && fixtureMethod === 'GET' && url.pathname === '/users/api/dashboard_settings/') {
-        const fixture = resolveFixture(fixtureMethod, url.pathname, { longAccount })
+      if (activeModes.settingsAccountFlow && fixtureMethod === 'GET' && url.pathname === '/users/api/dashboard_settings/') {
+        const fixture = resolveFixture(fixtureMethod, url.pathname, { longAccount: activeModes.longAccount })
         fixture.body.settings = { ...settingsAccount.dash }
         requests.push({ method: fixtureMethod, actualMethod: requestedMethod, path: url.pathname })
         response.writeHead(fixture.status, { 'Content-Type': 'application/json; charset=utf-8' })
         response.end(JSON.stringify(fixture.body))
         return
       }
-      if (settingsAccountFlow && fixtureMethod === 'GET' && url.pathname === '/users/api/user_settings_choices/') {
-        const fixture = resolveFixture(fixtureMethod, url.pathname, { longAccount })
+      if (activeModes.settingsAccountFlow && fixtureMethod === 'GET' && url.pathname === '/users/api/user_settings_choices/') {
+        const fixture = resolveFixture(fixtureMethod, url.pathname, { longAccount: activeModes.longAccount })
         requests.push({ method: fixtureMethod, actualMethod: requestedMethod, path: url.pathname })
         if (settingsAccount.holdChoices) {
           settingsAccount.holdChoices = false
@@ -816,7 +837,7 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
         response.end(JSON.stringify(fixture.body))
         return
       }
-      if (settingsAccountFlow && fixtureMethod === 'POST' && url.pathname === '/users/api/user_settings/') {
+      if (activeModes.settingsAccountFlow && fixtureMethod === 'POST' && url.pathname === '/users/api/user_settings/') {
         const body = await readBody()
         settingsAccount.profileWrites.push(body)
         requests.push({ method: fixtureMethod, actualMethod: requestedMethod, path: url.pathname })
@@ -828,7 +849,7 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
           : { success: true }))
         return
       }
-      if (settingsAccountFlow && fixtureMethod === 'POST' && url.pathname === '/users/api/update_user_data_for_new_account/') {
+      if (activeModes.settingsAccountFlow && fixtureMethod === 'POST' && url.pathname === '/users/api/update_user_data_for_new_account/') {
         const body = await readBody()
         settingsAccount.accountWrites.push(body)
         requests.push({ method: fixtureMethod, actualMethod: requestedMethod, path: url.pathname })
@@ -846,7 +867,7 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
         }
         return
       }
-      if (settingsAccountFlow && fixtureMethod === 'POST' && url.pathname === '/users/api/update_dashboard_settings/') {
+      if (activeModes.settingsAccountFlow && fixtureMethod === 'POST' && url.pathname === '/users/api/update_dashboard_settings/') {
         const body = await readBody()
         settingsAccount.dashboardWrites.push(body)
         requests.push({ method: fixtureMethod, actualMethod: requestedMethod, path: url.pathname })
@@ -862,13 +883,13 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
       // ---- D7 broker/security flow: backend-faithful token endpoints with
       // recorded (never logged) write bodies, plus populated bond/crypto
       // security resources with a failure switch. -------------------------
-      if (brokersSecurityD7Flow && requestedMethod === 'OPTIONS') {
+      if (activeModes.brokersSecurityD7Flow && requestedMethod === 'OPTIONS') {
         requests.push({ method: 'OPTIONS', path: url.pathname })
         response.writeHead(204)
         response.end()
         return
       }
-      if (brokersSecurityD7Flow && fixtureMethod === 'GET' && url.pathname === '/database/api/brokers/') {
+      if (activeModes.brokersSecurityD7Flow && fixtureMethod === 'GET' && url.pathname === '/database/api/brokers/') {
         response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
         response.end(JSON.stringify([
           { id: 1, name: 'Tinkoff' },
@@ -880,13 +901,13 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
         requests.push({ method: fixtureMethod, path: url.pathname })
         return
       }
-      if (brokersSecurityD7Flow && fixtureMethod === 'GET' && url.pathname === '/users/api/broker_tokens/') {
+      if (activeModes.brokersSecurityD7Flow && fixtureMethod === 'GET' && url.pathname === '/users/api/broker_tokens/') {
         response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
         response.end(JSON.stringify(brokersSecurityD7.tokens))
         requests.push({ method: fixtureMethod, path: url.pathname })
         return
       }
-      if (brokersSecurityD7Flow && fixtureMethod === 'POST' && url.pathname === '/users/api/tinkoff-tokens/save_read_only_token/') {
+      if (activeModes.brokersSecurityD7Flow && fixtureMethod === 'POST' && url.pathname === '/users/api/tinkoff-tokens/save_read_only_token/') {
         const body = await readBody()
         brokersSecurityD7.saveBodies.push({ endpoint: 'tinkoff', body })
         requests.push({ method: fixtureMethod, path: url.pathname })
@@ -903,7 +924,7 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
         }
         return
       }
-      if (brokersSecurityD7Flow && fixtureMethod === 'POST' && ['/users/api/ib-tokens/', '/users/api/bybit-tokens/', '/users/api/okx-tokens/'].includes(url.pathname)) {
+      if (activeModes.brokersSecurityD7Flow && fixtureMethod === 'POST' && ['/users/api/ib-tokens/', '/users/api/bybit-tokens/', '/users/api/okx-tokens/'].includes(url.pathname)) {
         const body = await readBody()
         brokersSecurityD7.saveBodies.push({ endpoint: url.pathname, body })
         requests.push({ method: fixtureMethod, path: url.pathname })
@@ -911,7 +932,7 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
         response.end(JSON.stringify({ id: 91, message: 'Token saved successfully' }))
         return
       }
-      if (brokersSecurityD7Flow && fixtureMethod === 'POST' && /^\/users\/api\/(tinkoff|ib)-tokens\/\d+\/test_connection\//.test(url.pathname)) {
+      if (activeModes.brokersSecurityD7Flow && fixtureMethod === 'POST' && /^\/users\/api\/(tinkoff|ib)-tokens\/\d+\/test_connection\//.test(url.pathname)) {
         await readBody()
         brokersSecurityD7.tests.push(url.pathname)
         requests.push({ method: fixtureMethod, path: url.pathname })
@@ -919,7 +940,7 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
         response.end(JSON.stringify({ valid: true, message: 'Token is valid', token: { id: 11, is_active: true } }))
         return
       }
-      if (brokersSecurityD7Flow && fixtureMethod === 'POST' && url.pathname === '/users/api/revoke_token/') {
+      if (activeModes.brokersSecurityD7Flow && fixtureMethod === 'POST' && url.pathname === '/users/api/revoke_token/') {
         const body = await readBody()
         brokersSecurityD7.revokes.push(body)
         requests.push({ method: fixtureMethod, path: url.pathname })
@@ -927,7 +948,7 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
         response.end(JSON.stringify({ message: 'Token revoked successfully' }))
         return
       }
-      if (brokersSecurityD7Flow && fixtureMethod === 'DELETE' && /^\/users\/api\/(tinkoff|ib|bybit|okx)-tokens\/\d+\/$/.test(url.pathname)) {
+      if (activeModes.brokersSecurityD7Flow && fixtureMethod === 'DELETE' && /^\/users\/api\/(tinkoff|ib|bybit|okx)-tokens\/\d+\/$/.test(url.pathname)) {
         const match = url.pathname.match(/^\/users\/api\/(?<provider>[a-z]+)-tokens\/(?<id>\d+)\/$/)
         const provider = `${match.groups.provider}_tokens`
         const id = Number(match.groups.id)
@@ -946,8 +967,8 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
         response.end()
         return
       }
-      if (brokersSecurityD7Flow && fixtureMethod === 'GET' && url.pathname === '/users/api/get_account_choices/') {
-        const fixture = resolveFixture(fixtureMethod, url.pathname, { longAccount })
+      if (activeModes.brokersSecurityD7Flow && fixtureMethod === 'GET' && url.pathname === '/users/api/get_account_choices/') {
+        const fixture = resolveFixture(fixtureMethod, url.pathname, { longAccount: activeModes.longAccount })
         fixture.body.options = [
           ['All accounts', { type: 'all', id: null }],
           ['Your Accounts', [
@@ -959,7 +980,7 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
         response.end(JSON.stringify(fixture.body))
         return
       }
-      if (brokersSecurityD7Flow && fixtureMethod === 'GET' && url.pathname.startsWith('/database/api/securities/')) {
+      if (activeModes.brokersSecurityD7Flow && fixtureMethod === 'GET' && url.pathname.startsWith('/database/api/securities/')) {
         brokersSecurityD7.securityRequests.push({ path: url.pathname, query: Object.fromEntries(url.searchParams) })
         requests.push({ method: fixtureMethod, actualMethod: requestedMethod, path: url.pathname })
         const send = (status, body) => {
@@ -1094,7 +1115,7 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
           ? { status: 200, body: {} }
           : dateRefreshPost
             ? { status: 200, body: { access: 'fixture-new-access-token', refresh: 'fixture-new-refresh-token', effective_current_date: currentDate } }
-            : resolveFixture(fixtureMethod, url.pathname, { longAccount: longAccount || contextFailures })
+            : resolveFixture(fixtureMethod, url.pathname, { longAccount: activeModes.longAccount || contextFailures })
       if (contextFailures && fixtureMethod === 'GET' && url.pathname === '/users/api/get_account_choices/') {
         // Append the newly available account inside the backend-faithful
         // "Your Accounts" section (the backend never emits top-level pairs).
@@ -1166,7 +1187,7 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
   server.on('upgrade', (request, socket) => {
     const url = new URL(request.url, 'http://127.0.0.1')
     try {
-      if (importsD6Flow && url.pathname === '/ws/transactions/') {
+      if (activeModes.importsD6Flow && url.pathname === '/ws/transactions/') {
         if (importsWs.state.rejectUpgrades) {
           // Deliberate failed-connect scenario: not a fixture mismatch.
           requests.push({ method: 'GET', path: url.pathname, rejected: true })
@@ -1177,7 +1198,7 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
         requests.push({ method: 'GET', path: url.pathname })
         return
       }
-      resolveFixture('GET', url.pathname, { longAccount })
+      resolveFixture('GET', url.pathname, { longAccount: activeModes.longAccount })
       const key = request.headers['sec-websocket-key']
       if (!key) {
         throw new Error('Missing Sec-WebSocket-Key')
@@ -1200,7 +1221,7 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
     }
   })
 
-  await listen(server)
+  await listen(server, port)
   const address = server.address()
 
   return {
@@ -1216,6 +1237,11 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
     settingsAccount,
     d5State,
     setD5State: (mode) => { d5State.mode = mode },
+    setFixtureModes: (overrides) => {
+      for (const [key, value] of Object.entries(overrides ?? {})) {
+        if (key in activeModes) activeModes[key] = Boolean(value)
+      }
+    },
     holdSettingsChoices: () => { settingsAccount.holdChoices = true },
     queueProfileRejection: () => { settingsAccount.rejectProfileSave = true },
     queueContextRejection: () => { settingsAccount.rejectContextMutation = true },

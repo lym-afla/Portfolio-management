@@ -12,6 +12,7 @@ import {
   runBrowserHarnessLifecycle,
 } from './lifecycle.mjs'
 import { runAgentBrowser } from './protocol.mjs'
+import { runRoute, routeSlug } from './route-probe.mjs'
 import { assertFocusedLayoutFlow, assertLayoutGeometry, assertPositionsToolbarFlow } from './layout.mjs'
 import { assertContextFailureFlow } from './context.mjs'
 import { assertMountedDateFlow } from './dates.mjs'
@@ -28,10 +29,11 @@ import { assertD5FamilyProbesFlow, assertD5NativeZoomFlow, assertD5StatesFlow, a
 import { assertSettingsAccountFlow } from './settings-account.mjs'
 import { assertImportsD6Flow } from './imports-d6.mjs'
 import { assertBrokersSecurityD7Flow } from './brokers-security-d7.mjs'
+import { runFinalQaD8Flow } from './final-qa-d8.mjs'
 
 const caseIndex = process.argv.indexOf('--case')
 const selectedCase = caseIndex < 0 ? null : process.argv[caseIndex + 1]
-if (selectedCase !== null && !['layout', 'context', 'dates', 'requests', 'recovery', 'delivery', 'dialogs', 'dialog-recovery', 'd4', 'charts-c2', 'charts-c3', 'charts-c4', 'charts-c5', 'd5', 'settings-account', 'imports-d6', 'brokers-security-d7'].includes(selectedCase)) {
+if (selectedCase !== null && !['layout', 'context', 'dates', 'requests', 'recovery', 'delivery', 'dialogs', 'dialog-recovery', 'd4', 'charts-c2', 'charts-c3', 'charts-c4', 'charts-c5', 'd5', 'settings-account', 'imports-d6', 'brokers-security-d7', 'final-qa-d8'].includes(selectedCase)) {
   throw new Error(`Unknown browser case: ${selectedCase || '(missing)'}`)
 }
 
@@ -47,94 +49,16 @@ async function log(entry) {
   await appendFile(browserLog, `${JSON.stringify(entry)}\n`, 'utf8')
 }
 
-function routeSlug(routePath) {
-  return routePath === '/' ? 'root' : routePath.slice(1).replaceAll('/', '-')
-}
-
-async function runRoute({ appOrigin, authenticated, route, session, viewport }) {
-  const context = `${viewport.name} ${route.path}`
-  const initScript = authenticated ? authInit : undefined
-  await runAgentBrowser({ args: ['console', '--clear'], context: `${context} clear console`, initScript, log, session })
-  await runAgentBrowser({
-    args: ['errors', '--clear'],
-    context: `${context} clear errors`,
-    initScript,
-    log,
-    session,
-  })
-  await runAgentBrowser({
-    args: ['open', `${appOrigin}${route.path}`],
-    context: `${context} open`,
-    initScript,
-    log,
-    session,
-  })
-  await runAgentBrowser({
-    args: ['wait', '250'],
-    context: `${context} settle`,
-    initScript,
-    log,
-    session,
-  })
-
-  if (viewport.zoom !== 1) {
-    await runAgentBrowser({
-      args: ['eval', `document.documentElement.style.zoom = '${viewport.zoom}'`],
-      context: `${context} apply CSS zoom`,
-      initScript,
-      log,
-      session,
-    })
-  }
-
-  const data = await runAgentBrowser({
-    args: [
-      'eval',
-      `({ path: location.pathname, appChildren: document.querySelector('#app')?.childElementCount ?? 0, bodyTextLength: document.body.innerText.length, zoom: document.documentElement.style.zoom || '1' })`,
-    ],
-    context: `${context} probe`,
-    initScript,
-    log,
-    session,
-  })
-  const expectedPath = route.expectedPath || route.path
-  const probe = data.result
-
-  if (
-    probe.path !== expectedPath ||
-    probe.appChildren < 1 ||
-    probe.bodyTextLength < 1 ||
-    String(probe.zoom) !== String(viewport.zoom)
-  ) {
-    throw new Error(`${context}: route probe failed: ${JSON.stringify({ expectedPath, probe })}`)
-  }
-
-  let geometry
-  if (authenticated) {
-    geometry = await assertLayoutGeometry({ context, initScript, log, session })
-  }
-
-  const errorData = await runAgentBrowser({
-    args: ['errors'],
-    context: `${context} page errors`,
-    initScript,
-    log,
-    session,
-  })
-  if (errorData.errors.length > 0) {
-    throw new Error(`${context}: page errors: ${JSON.stringify(errorData.errors)}`)
-  }
-  const consoleData = await runAgentBrowser({ args: ['console'], context: `${context} UI registration`, initScript, log, session })
-  if (/Failed to resolve component|Failed to resolve directive|Unknown icon:/.test(JSON.stringify(consoleData))) {
-    throw new Error(`${context}: unresolved UI registration: ${JSON.stringify(consoleData)}`)
-  }
-
-  await log({ authenticated, context, geometry, probe, status: 'passed' })
-  console.log(`PASS ${context}`)
-  return { context, geometry, probe }
-}
-
 async function main() {
+  if (selectedCase === 'final-qa-d8') {
+    // D8 integrated default-on QA owns its entire pipeline: it builds its own
+    // default-on AND rollback artifacts, drives its own fixture/app servers
+    // per phase, and writes its own labeled summary. The base path below stays
+    // the full rollback route matrix (built with explicit all-false flags).
+    await runFinalQaD8Flow({ frontendRoot, browserDir, artifactsDir, screenshotsDir, browserLog })
+    return
+  }
+
   await mkdir(artifactsDir, { recursive: true })
   await rm(builtAppDir, { force: true, recursive: true })
   await rm(screenshotsDir, { force: true, recursive: true })
@@ -220,6 +144,7 @@ async function main() {
               route,
               session,
               viewport,
+              log,
             })
             if (selectedCase === 'dialog-recovery') await assertDialogChunkRecovery({ context: `${viewport.name} dialog download recovery`, initScript, log, session })
             if (selectedCase === 'dialogs') {

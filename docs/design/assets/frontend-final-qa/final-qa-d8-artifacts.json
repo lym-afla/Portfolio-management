@@ -1,0 +1,43 @@
+{
+  "defaultOn": {
+    "dir": "tests/browser/artifacts/app-d8-default-on",
+    "flags": "absent (default-on policy)",
+    "hash": {
+      "sha256": "765f6ebb1d8b3da34fd6d757a57c5b78bcda53ec6cf27645d488fe819d9b99a6",
+      "files": 153,
+      "bytes": 2477947
+    }
+  },
+  "rollback": {
+    "dir": "tests/browser/artifacts/app-d8-rollback",
+    "flags": "VITE_NAV_ECHARTS_ENABLED=false, VITE_ALLOCATION_ECHARTS_ENABLED=false, VITE_SECURITY_ECHARTS_ENABLED=false",
+    "hash": {
+      "sha256": "d35e99567c1ae41860eb55acda3e22fa704f0fdcfd4603e114c25a1f59aea096",
+      "files": 153,
+      "bytes": 2477950
+    }
+  },
+  "envScan": {
+    "files": [
+      {
+        "file": ".env.development",
+        "keys": [
+          "VITE_API_URL"
+        ],
+        "flags": {
+          "VITE_API_URL": "http://127.0.0.1:8000"
+        }
+      },
+      {
+        "file": ".env.example",
+        "keys": [
+          "VITE_API_URL"
+        ],
+        "flags": {
+          "VITE_API_URL": "http://127.0.0.1:8000"
+        }
+      }
+    ],
+    "flagKeysFound": []
+  }
+}
