@@ -1,25 +1,25 @@
 {
   "note": "gzip+raw JS/CSS over the observed per-route cold resource graph on the app-d8-default-on artifact. Loopback timings are not production latency evidence. The dashboard target is the saved C5a cutover target (~535 kB gzip); the 401 kB legacy budget is asserted by the rollback delivery case.",
   "dashboard": {
-    "gzip": 483965,
+    "gzip": 483942,
     "raw": 1613431,
     "targetGzip": 535000,
     "withinTarget": true
   },
   "login": {
-    "gzip": 236763,
+    "gzip": 236747,
     "raw": 880529
   },
   "profile": {
-    "gzip": 236678,
+    "gzip": 236661,
     "raw": 875171
   },
   "transactions": {
-    "gzip": 271343,
+    "gzip": 271320,
     "raw": 988895
   },
   "securityDetail": {
-    "gzip": 463240,
+    "gzip": 463219,
     "raw": 1560334
   }
 }

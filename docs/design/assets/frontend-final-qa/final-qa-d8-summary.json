@@ -168,40 +168,40 @@
   "delivery": {
     "note": "gzip+raw JS/CSS over the observed per-route cold resource graph on the app-d8-default-on artifact. Loopback timings are not production latency evidence. The dashboard target is the saved C5a cutover target (~535 kB gzip); the 401 kB legacy budget is asserted by the rollback delivery case.",
     "dashboard": {
-      "gzip": 483965,
+      "gzip": 483942,
       "raw": 1613431,
       "targetGzip": 535000,
       "withinTarget": true
     },
     "login": {
-      "gzip": 236763,
+      "gzip": 236747,
       "raw": 880529
     },
     "profile": {
-      "gzip": 236678,
+      "gzip": 236661,
       "raw": 875171
     },
     "transactions": {
-      "gzip": 271343,
+      "gzip": 271320,
       "raw": 988895
     },
     "securityDetail": {
-      "gzip": 463240,
+      "gzip": 463219,
       "raw": 1560334
     }
   },
   "artifacts": {
     "defaultOn": {
       "flags": "absent (default-on policy)",
-      "sha256": "6d23c76714189a2c11e1dc0808cf178fcfaa1dbe611e830b9c224c46e53938b2",
+      "sha256": "fba0899685b30333565995f61a6f97467a30d88c9f69cfe8f35b746c2c4b3226",
       "files": 153,
-      "bytes": 2477947
+      "bytes": 2478092
     },
     "rollback": {
       "flags": "VITE_NAV_ECHARTS_ENABLED=false, VITE_ALLOCATION_ECHARTS_ENABLED=false, VITE_SECURITY_ECHARTS_ENABLED=false",
-      "sha256": "e08ef008b64128eccb72e1bb6c924c2ccb1f9812488c8aedc3ca2b8298076896",
+      "sha256": "fcc9f9775aac09cbbeb33b417ac17d581477a683990dcfaf0a85dbd342969284",
       "files": 153,
-      "bytes": 2477950
+      "bytes": 2478095
     },
     "envFlagKeysFound": []
   },
@@ -229,8 +229,8 @@
     },
     {
       "file": "d8-brokers-error.png",
-      "sha256": "ff9d33ac7ddeddcbaddf1217d3d2d23bbda4f6af269fe4c88eb4620850f3aec6",
-      "bytes": 50453,
+      "sha256": "ac10b0da03faf0bd7f24daedfec14e76a14cf9daa9b737e70518c9da56f20665",
+      "bytes": 51093,
       "width": 1440,
       "height": 1000
     },
@@ -341,8 +341,8 @@
     },
     {
       "file": "d8-rollback-dashboard.png",
-      "sha256": "b31374dfaf39ef1764e395de61a17e456b675e2672cc3409fcbecc44a9f6bdec",
-      "bytes": 92903,
+      "sha256": "2f2848f0d5801edddb492e7ec15dc3a041323ca59f312b241c8c8405b2e2c8c3",
+      "bytes": 93094,
       "width": 1440,
       "height": 1000
     },

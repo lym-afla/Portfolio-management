@@ -594,6 +594,34 @@ async function assertD8RenderedStates({ appOrigin, fixtureServer, frontendRoot, 
   await shoot('d8-fx-empty.png', '/database/fx')
 
   // --- ERROR state (every family with a retry surface + settings) -----------
+  // Readability regression for the alert Retry actions: the elevated default
+  // rendered white text on its own white background (computed contrast 1.0).
+  const assertRetryReadable = async (testId) => {
+    const style = await evalProbe(run, `(() => {
+      const btn = document.querySelector('[data-testid="${testId}"]')
+      if (!btn) return { missing: true }
+      const lum = (rgbStr) => {
+        const parts = rgbStr.match(/\\d+(\\.\\d+)?/g).map(Number)
+        const ch = [parts[0], parts[1], parts[2]].map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4) })
+        return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2]
+      }
+      const contrast = (a, b) => { const l1 = lum(a); const l2 = lum(b); return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05) }
+      const cs = getComputedStyle(btn)
+      const alert = btn.closest('.v-alert')
+      const alertBg = alert ? getComputedStyle(alert).backgroundColor : 'rgb(255, 255, 255)'
+      return {
+        variantText: btn.className.includes('v-btn--variant-text'),
+        label: (btn.querySelector('.v-btn__content') ?? btn).textContent.trim(),
+        contrastVsOwnBg: Number(contrast(cs.color, cs.backgroundColor).toFixed(2)),
+        contrastVsAlertBg: Number(contrast(cs.color, alertBg).toFixed(2)),
+      }
+    })()`)
+    assert.equal(style.missing, undefined, `rendered readability: ${testId} rendered`)
+    assert.equal(style.label, 'Retry', `rendered readability: ${testId} label intact`)
+    assert.equal(style.variantText, true, `rendered readability: ${testId} uses the text variant`)
+    assert.ok(style.contrastVsOwnBg >= 4.5, `rendered readability: ${testId} label readable against its own background (contrast ${style.contrastVsOwnBg})`)
+    assert.ok(style.contrastVsAlertBg >= 4.5, `rendered readability: ${testId} label readable against the alert background (contrast ${style.contrastVsAlertBg})`)
+  }
   fixtureServer.setD5State('error')
   await open('/summary')
   await waitFor(run, `document.body.innerText.includes('Unable to load part of the summary')`, 8000).catch(() => {})
@@ -605,11 +633,13 @@ async function assertD8RenderedStates({ appOrigin, fixtureServer, frontendRoot, 
     probe = await textOf('main')
     assert.ok(probe.includes('Unable to load this table'), `error: ${route} renders the retry state`)
     if (route === '/database/brokers') await shoot('d8-brokers-error.png', route)
+    await assertRetryReadable('table-retry')
   }
   await open('/database/prices')
   await waitFor(run, `document.body.innerText.includes('Unable to load prices or filters')`, 8000).catch(() => {})
   probe = await textOf('main')
   assert.ok(probe.includes('Unable to load prices or filters'), 'prices error state')
+  await assertRetryReadable('prices-retry')
   await open('/database/fx')
   await waitFor(run, `document.body.innerText.includes('Unable to load exchange rates')`, 8000).catch(() => {})
   probe = await textOf('main')
