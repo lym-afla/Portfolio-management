@@ -59,7 +59,7 @@ Updated 7 October 2026. This is the durable, human-facing status tracker for the
 
 ## Next execution and boundaries
 
-D8 has been executed (see the [D8 record](#d8-implementation-record)) and stops at a draft PR into `codex/frontend-modernization` for owner review. After D8 review, the only remaining planned work is C5b - the Chart.js removal - which requires an owner-accepted release validation cycle and separate removal approval; D8's local synthetic QA explicitly does not satisfy that cycle.
+D8 has been executed (see the [D8 record](#d8-implementation-record)). A local real-data release-validation run was prepared and executed on a disposable database copy (11/11 read-only checks; [record](../../design/release-validation-c5b.md)), and the owner's real-data annotations became a correction phase: **phase A (Tasks 1-2) executed** on `codex/release-validation-functional-fixes` (base `f32e7d09`) — the valuation-date calendar commit and NAV request-end clamp, the backend NAV inception floor (protected, needs-approval), and the typed year-options adapter matching the real backend wire ([ledger](../../design/release-validation-functional-fixes.md)); Task 3 (price-import accounts, progress readability) is pending in this pass. C5b - the Chart.js removal - still requires the owner's accepted release validation cycle and separate removal approval.
 
 C5a is merged. Root closed all three review findings and independently passed 29 loader/policy/fallback tests. Final executor report: 1003 units, unflagged dashboard 483,948 gzip bytes, charts-c5/charts-c4/delivery/full 72-profile matrix and backend 1386/10 passing; see its evidence for the precise gate list. No application gates were rerun for this planning update.
 
