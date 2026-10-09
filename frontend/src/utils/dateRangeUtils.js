@@ -44,7 +44,10 @@ export function calculateDateRange(
       break
     case 'custom':
       fromDate = customFrom ? parseISO(customFrom) : null
-      toDate = customTo ? parseISO(customTo) : effectiveDate
+      // The valuation date bounds the charted range: a persisted custom To
+      // later than the committed effective date must clamp to it, or the
+      // request samples periods after the effective date.
+      toDate = customTo && parseISO(customTo) < effectiveDate ? parseISO(customTo) : effectiveDate
       break
   }
 

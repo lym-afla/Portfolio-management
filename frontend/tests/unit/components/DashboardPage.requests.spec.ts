@@ -1,6 +1,6 @@
 import { beforeEach, expect, it, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
-import { createPinia } from 'pinia'
+import { createPinia, setActivePinia } from 'pinia'
 import { createVuetify } from 'vuetify'
 import * as components from 'vuetify/components'
 import * as directives from 'vuetify/directives'
@@ -40,8 +40,7 @@ const fixtures = {
   fetchNavChart: legacyOnlyResult(),
 }
 const vuetify = createVuetify({ components, directives })
-async function mountDashboardWithRealStores() {
-  const pinia = createPinia()
+async function mountDashboardWithRealStores(pinia = createPinia()) {
   await usePortfolioContextStore(pinia).reconcileContext()
   const wrapper = mount(DashboardPage, {
     global: {
@@ -163,4 +162,22 @@ it.each(['ytd', 'custom', 'all_time'])('invalidates old context content and rede
   expect(wrapper.text()).not.toContain('old context NAV')
   expect(api.getDashboardSummary).toHaveBeenCalledTimes(3)
   wrapper.unmount()
+})
+
+// Task 1 (real-data corrections): the NAV request end is clamped to the
+// committed valuation date — a persisted custom To later than the effective
+// date must never sample periods after it.
+it('clamps the NAV request end to the committed valuation date', async () => {
+  const pinia = createPinia()
+  setActivePinia(pinia)
+  const { useAppStore: useAppStoreInner } = await import('@/stores/app')
+  const appStore = useAppStoreInner()
+  appStore.updateNavChartParams({ dateRange: 'custom', dateFrom: '2024-01-01', dateTo: '2026-12-31' })
+  chartApi.fetchNavChart.mockResolvedValue(legacyOnlyResult(['2026-09-08']))
+  await mountDashboardWithRealStores(pinia)
+  await flushPromises()
+  expect(chartApi.fetchNavChart).toHaveBeenCalled()
+  const query = chartApi.fetchNavChart.mock.calls[0][0]
+  expect(query.toDate).toBe('2026-09-08')
+  expect(query.fromDate).toBe('2024-01-01')
 })

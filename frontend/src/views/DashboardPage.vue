@@ -298,13 +298,19 @@ function fetchNAVChartData(params: NavChartParams = navChartInitialParams.value)
     return Promise.resolve({ status: 'discarded' } as NavRunResult)
   }
   // The guards above make this refinement total; the backend treats an
-  // absent end date as the effective date.
+  // absent end date as the effective date. The request end is clamped to the
+  // committed valuation date: a persisted custom To later than the effective
+  // date must never sample periods after it.
+  const requestEnd =
+    params.dateTo && params.dateTo < committed.effectiveCurrentDate
+      ? params.dateTo
+      : committed.effectiveCurrentDate
   const query: NavQuery = {
     context: requireReadyChartContext(committed),
     mode: params.breakdown as NavMode,
     frequency: params.frequency as Frequency,
     fromDate: params.dateFrom,
-    toDate: params.dateTo ?? committed.effectiveCurrentDate,
+    toDate: requestEnd,
   }
   return navChartQuery.run(query)
 }
