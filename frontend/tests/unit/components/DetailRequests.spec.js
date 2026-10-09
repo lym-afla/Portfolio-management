@@ -21,8 +21,10 @@ vi.mock('vue-router', () => ({
   useRoute: () => route, useRouter: () => ({ push: vi.fn() }),
   createRouter: () => ({ beforeEach() {}, afterEach() {}, onError() {} }), createWebHistory: () => ({}),
 }))
-vi.mock('@/services/api', () => ({
+vi.mock('@/services/api', async (importOriginal) => ({
+  ...(await importOriginal()),
   ...mocks, getPriceDetails: vi.fn(), deletePrice: vi.fn(),
+  calendarYearOptions: (await importOriginal()).calendarYearOptions,
 }))
 // C4: the two history resources negotiate chart contract v2 through the
 // shared chart transport. The bridge forwards each negotiated request to the
@@ -40,7 +42,7 @@ beforeEach(() => {
   route = reactive({ params: { id: 1 } })
   configureContextFixture('2026-09-08')
   mocks.getAccountChoices.mockResolvedValue({ options: [] })
-  mocks.getYearOptions.mockResolvedValue([2026])
+  mocks.getYearOptions.mockResolvedValue([{ text: '2026', value: '2026' }])
   mocks.getSecurityDetail.mockResolvedValue({ id: 1, name: 'One', currency: 'USD' })
   mocks.getSecurityPriceHistory.mockResolvedValue([])
   mocks.getSecurityPositionHistory.mockResolvedValue([])

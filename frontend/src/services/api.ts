@@ -1,7 +1,7 @@
 export { getOpenPositions, getClosedPositions } from '@/services/api/portfolio'
 export { getDashboardSummary } from '@/services/api/dashboard'
 export { getTransactions } from '@/services/api/transactions'
-export { getAccountsTable, getBrokersTable, getPrices, getSecuritiesForDatabase, getFXData, getYearOptions } from '@/services/api/database'
+export { getAccountsTable, getBrokersTable, getPrices, getSecuritiesForDatabase, getFXData, getYearOptions, calendarYearOptions } from '@/services/api/database'
 
 import axiosInstance, { refreshSessionToken } from '@/config/axiosConfig'
 import { usePortfolioContextStore } from '@/stores/portfolioContext'

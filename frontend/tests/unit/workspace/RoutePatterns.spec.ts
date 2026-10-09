@@ -18,7 +18,11 @@ const api = vi.hoisted(() => ({
   getPortfolioBreakdownSummary: vi.fn(),
   getYearOptions: vi.fn(),
 }))
-vi.mock('@/services/api', () => api)
+vi.mock('@/services/api', async (importOriginal) => ({
+  ...((await importOriginal()) as Record<string, unknown>),
+  ...api,
+  calendarYearOptions: (await importOriginal()).calendarYearOptions,
+}))
 
 const vuetify = createVuetify({ components, directives })
 
@@ -97,7 +101,7 @@ beforeEach(() => {
     performanceFixture(() => '$10,000.00'),
   )
   api.getPortfolioBreakdownSummary.mockResolvedValue(breakdownFixture)
-  api.getYearOptions.mockResolvedValue([2026])
+  api.getYearOptions.mockResolvedValue([{ text: '2026', value: '2026' }])
 })
 
 describe('/summary route patterns', () => {

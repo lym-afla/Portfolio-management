@@ -155,10 +155,20 @@ describe('typed API transport', () => {
     expect(() => decodeSecuritiesTable({ ...page, securities: [{ ...security, currency: undefined }] })).toThrow('Invalid securities table response')
     expect(() => decodeAccountsTable({ ...page, totals: {}, accounts: 'missing' })).toThrow('Invalid accounts table response')
   })
-  it('keeps year values numeric', async () => {
-    http.get.mockResolvedValue({ data: { table_years: [2024, 2025] } })
-    expect(await getYearOptions()).toEqual([2024, 2025])
-    http.get.mockResolvedValue({ data: { table_years: [{ text: '2025', value: 2025 }] } })
+  it('adapts the real year wire (years, divider, special ranges)', async () => {
+    // The backend emits {text, value} strings, a divider and the special
+    // All-time/YTD ranges (common/views.py get_year_options_api).
+    http.get.mockResolvedValue({ data: { table_years: [
+      { text: '2024', value: '2024' }, { text: '2025', value: '2025' },
+      { divider: true },
+      { text: 'All-time', value: 'all_time' }, { text: '2025YTD', value: 'ytd' },
+    ] } })
+    expect(await getYearOptions()).toEqual([
+      { text: '2024', value: '2024' }, { text: '2025', value: '2025' },
+      { divider: true, text: '', value: '' },
+      { text: 'All-time', value: 'all_time' }, { text: '2025YTD', value: 'ytd' },
+    ])
+    http.get.mockResolvedValue({ data: { table_years: [{ text: '2025' }] } })
     await expect(getYearOptions()).rejects.toThrow('Invalid year options response')
   })
   it('accepts the confirmed all-account selection with a null ID', async () => {
