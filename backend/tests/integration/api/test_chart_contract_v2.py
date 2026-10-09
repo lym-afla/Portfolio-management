@@ -123,7 +123,7 @@ class TestNavInceptionFloor:
         assert end_dates, "no periods sampled"
         assert min(end_dates) >= "2019-06-30"
         metrics = {s["metric"] for s in doc["series"]}
-        assert {"metric:nav", "metric:irr_inception", "metric:irr_interval"} <= metrics
+        assert {"nav", "irr_inception", "irr_interval"} <= metrics
 
     def test_all_time_uses_canonical_inception(self, user, account, monkeypatch):
         self._seed_inception(user, account)
@@ -152,7 +152,7 @@ class TestNavInceptionFloor:
         )
         response = call_nav_chart(user, date_from="2019-06-30", date_to="2026-06-30", contract=2)
         doc = response.data["chartV2"]
-        nav = series_by_metric(doc["series"])["metric:nav"]
+        nav = next(s for s in doc["series"] if s["metric"] == "nav")
         assert nav["points"][0]["value"] == "0"
         assert nav["points"][1]["value"] == "5000000"
 
@@ -506,12 +506,15 @@ class TestNavContractV2:
             date(2026, 1, 31): Decimal("90000"),
             date(2026, 2, 28): Decimal("110000"),
         }
+        # The seeded cash-in predates the requested window: with the Task-1
+        # inception floor, the scope's canonical inception must precede the
+        # requested From for the requested pre-inception sample to exist.
         Transactions.objects.create(
             investor=user,
             account=account,
             type="Cash in",
             currency="USD",
-            date=datetime(2026, 2, 5, 12, tzinfo=timezone.utc),
+            date=datetime(2026, 1, 5, 12, tzinfo=timezone.utc),
             cash_flow=Decimal("100"),
         )
 
@@ -545,8 +548,10 @@ class TestNavContractV2:
         # (sample 0 via its own terminal value, sample 1 via the opening).
         assert series["return"]["points"][0]["status"] == "partial"
         assert series["return"]["points"][1]["status"] == "partial"
-        # The cash-flow storage scale (9dp) carries through the subtraction.
-        assert series["return"]["points"][1]["knownSubtotal"] == "19900.000000000"
+        # The seeded cash-in sits inside the FIRST sample's interval, so the
+        # Feb return carries no in-interval contribution: the known subtotal
+        # is the opening partial value alone.
+        assert series["return"]["points"][1]["knownSubtotal"] == "20000"
         assert series["return"]["points"][1]["reason"] == "missing_price"
 
         # Since-inception IRR depends only on the terminal value.
