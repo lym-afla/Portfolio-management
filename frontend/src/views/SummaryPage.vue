@@ -315,6 +315,7 @@ import {
 import {
   getAccountPerformanceSummary,
   getYearOptions,
+  calendarYearOptions,
   getPortfolioBreakdownSummary,
 } from '@/services/api'
 
@@ -350,7 +351,14 @@ const portfolioBreakdownData = computed(() => breakdownQuery.data.value ?? empty
 const years = computed(() => performanceQuery.data.value?.total_context.years ?? [])
 const currentYear = new Date().getFullYear()
 const selectedYear = ref(currentYear.toString())
-const yearOptions = computed(() => yearsQuery.data.value ?? [])
+// Keep the selection inside the offered ranges: when the default year is not
+// offered (e.g. no data for the current year yet), select the newest offered
+// year instead of leaving an empty, misleading selection.
+watch(yearOptions, (options) => {
+  const offered = options.some((option) => String(option.value) === selectedYear.value)
+  if (!offered && options.length > 0) selectedYear.value = String(options[options.length - 1].value)
+})
+const yearOptions = computed(() => calendarYearOptions(yearsQuery.data.value ?? []))
 
 // View state is presentation-only: switching modes or periods never issues
 // a request; the queries above stay bound to context/refresh/year changes.
