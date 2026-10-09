@@ -95,6 +95,68 @@ def call_position_history(user, security_id, contract=None, period="All", effect
     return database_views.api_get_security_position_history(request, security_id)
 
 
+class TestNavInceptionFloor:
+    """Task 1 (real-data corrections): the authoritative effective start is
+    the LATER of the requested From and the selected scope's canonical
+    inception (earliest transaction date). All-time uses that inception. An
+    inception after the effective end is an honest empty outcome.
+    Zero-valued observations after inception are retained."""
+
+    def _seed_inception(self, user, account):
+        Transactions.objects.create(
+            investor=user,
+            account=account,
+            type="Cash in",
+            currency="USD",
+            date=datetime(2019, 6, 30, 12, tzinfo=timezone.utc),
+            cash_flow=Decimal("100000"),
+        )
+
+    def test_requested_from_before_inception_floors_at_canonical_inception(self, user, account, monkeypatch):
+        self._seed_inception(user, account)
+        pin_chart(monkeypatch, {})
+        response = call_nav_chart(user, date_from="2000-01-31", date_to="2026-06-30", contract=2)
+        assert response.status_code == 200
+        doc = response.data["chartV2"]
+        assert doc["outcome"] == "ready"
+        end_dates = [p["endDate"] for p in doc["periods"]]
+        assert end_dates, "no periods sampled"
+        assert min(end_dates) >= "2019-06-30"
+        metrics = {s["metric"] for s in doc["series"]}
+        assert {"nav", "irr_inception", "irr_interval"} <= metrics
+
+    def test_all_time_uses_canonical_inception(self, user, account, monkeypatch):
+        self._seed_inception(user, account)
+        pin_chart(monkeypatch, {})
+        response = call_nav_chart(user, date_from=None, date_to="2026-06-30", contract=2)
+        assert response.status_code == 200
+        doc = response.data["chartV2"]
+        end_dates = [p["endDate"] for p in doc["periods"]]
+        assert end_dates, "no periods sampled"
+        assert min(end_dates) >= "2019-06-30"
+
+    def test_inception_after_effective_end_is_honest_empty(self, user, account):
+        self._seed_inception(user, account)  # canonical inception 2019-06-30
+        response = call_nav_chart(user, date_from="2019-01-31", date_to="2019-05-31", contract=2)
+        assert response.status_code == 200
+        body = response.data
+        assert body.get("empty") is True
+        assert body["chartV2"]["outcome"] == "empty"
+
+    def test_zero_valued_observations_after_inception_are_retained(self, user, account, monkeypatch):
+        self._seed_inception(user, account)
+        sample_dates = charts._chart_dates(date(2019, 6, 30), date(2026, 6, 30), "M")
+        pin_chart(
+            monkeypatch,
+            {sample_dates[0]: Decimal("0"), sample_dates[1]: Decimal("5000000")},
+        )
+        response = call_nav_chart(user, date_from="2019-06-30", date_to="2026-06-30", contract=2)
+        doc = response.data["chartV2"]
+        nav = next(s for s in doc["series"] if s["metric"] == "nav")
+        assert nav["points"][0]["value"] == "0"
+        assert nav["points"][1]["value"] == "5000000"
+
+
 def series_by_metric(doc):
     return {s["metric"]: s for s in doc["series"]}
 
@@ -444,12 +506,15 @@ class TestNavContractV2:
             date(2026, 1, 31): Decimal("90000"),
             date(2026, 2, 28): Decimal("110000"),
         }
+        # The seeded cash-in predates the requested window: with the Task-1
+        # inception floor, the scope's canonical inception must precede the
+        # requested From for the requested pre-inception sample to exist.
         Transactions.objects.create(
             investor=user,
             account=account,
             type="Cash in",
             currency="USD",
-            date=datetime(2026, 2, 5, 12, tzinfo=timezone.utc),
+            date=datetime(2026, 1, 5, 12, tzinfo=timezone.utc),
             cash_flow=Decimal("100"),
         )
 
@@ -483,8 +548,10 @@ class TestNavContractV2:
         # (sample 0 via its own terminal value, sample 1 via the opening).
         assert series["return"]["points"][0]["status"] == "partial"
         assert series["return"]["points"][1]["status"] == "partial"
-        # The cash-flow storage scale (9dp) carries through the subtraction.
-        assert series["return"]["points"][1]["knownSubtotal"] == "19900.000000000"
+        # The seeded cash-in sits inside the FIRST sample's interval, so the
+        # Feb return carries no in-interval contribution: the known subtotal
+        # is the opening partial value alone.
+        assert series["return"]["points"][1]["knownSubtotal"] == "20000"
         assert series["return"]["points"][1]["reason"] == "missing_price"
 
         # Since-inception IRR depends only on the terminal value.

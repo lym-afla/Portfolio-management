@@ -453,10 +453,20 @@ def get_nav_chart_data(
             collector.periods = []
             chart_v2.update(collector.finish())
 
-    # Only get earliest date if from_date is None
+    # Authoritative effective start (real-data corrections): the later of the
+    # requested From and the selected scope's canonical inception (earliest
+    # transaction date). All-time uses that inception; a requested From before
+    # it is floored at it, so the chart never samples pre-inception zero
+    # periods and the IRR base is the scope's real first cash flow. An
+    # inception after the effective end falls through to the honest empty
+    # state below. Zero-valued observations AFTER inception are retained.
+    inception_date = _get_earliest_date_for_accounts(user_id, account_ids)
+    if isinstance(inception_date, datetime):
+        # Transactions.date is a datetime column; the chart window works in
+        # calendar dates (Min() above returns a datetime).
+        inception_date = inception_date.date()
     if from_date is None:
-        earliest_date = _get_earliest_date_for_accounts(user_id, account_ids)
-        if not earliest_date:
+        if not inception_date:
             _v2_finalize_empty()
             return {
                 "labels": [],
@@ -464,7 +474,9 @@ def get_nav_chart_data(
                 "currency": currency + "k",
                 "empty": True,
             }
-        from_date = earliest_date
+        from_date = inception_date
+    elif inception_date and from_date < inception_date:
+        from_date = inception_date
 
     # Validate dates
     if not from_date or not to_date or from_date > to_date:

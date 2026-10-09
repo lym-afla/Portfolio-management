@@ -96,11 +96,34 @@ export async function getFXData(query: FxQuery, options?: RequestOptions): Promi
   return decodeFxTable(await apiPost('/database/api/fx/list_fx/',
     { startDate, endDate, page, itemsPerPage, sortBy, search }, options))
 }
-export async function getYearOptions(options?: RequestOptions): Promise<number[]> {
+// The real backend wire (common/views.py get_year_options_api): numeric
+// years as {text, value} strings, a {divider: true} separator, and the
+// special ranges All-time/'ytd' — a mixed list, not an integer array.
+export interface YearOption {
+  text: string
+  value: string
+  divider?: boolean
+}
+
+export async function getYearOptions(options?: RequestOptions): Promise<YearOption[]> {
   const response = await apiGet('/api/get-year-options/', options)
-  if (!isRecord(response) || !Array.isArray(response.table_years) ||
-      !response.table_years.every((year) => Number.isInteger(year))) {
+  if (!isRecord(response) || !Array.isArray(response.table_years)) {
     throw new ApiError('Invalid year options response')
   }
-  return response.table_years as number[]
+  return response.table_years.map((entry) => {
+    if (isRecord(entry) && entry.divider === true) {
+      return { divider: true, text: '', value: '' }
+    }
+    if (isRecord(entry) && typeof entry.text === 'string' && typeof entry.value === 'string') {
+      return { text: entry.text, value: entry.value }
+    }
+    throw new ApiError('Invalid year options response')
+  })
+}
+
+/** Summary's breakdown selector: only the calendar years its endpoint takes. */
+export function calendarYearOptions(options: YearOption[]): YearOption[] {
+  return options
+    .filter((option) => !option.divider && /^\d{4}$/.test(option.value))
+    .map((option) => ({ text: option.text, value: option.value }))
 }

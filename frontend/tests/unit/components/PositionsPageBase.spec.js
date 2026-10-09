@@ -15,7 +15,15 @@ vi.mock('@/services/api', () => ({
     date: '2026-08-18',
     effective_current_date: '2026-08-18',
   }),
-  getYearOptions: vi.fn().mockResolvedValue([2026, 2025]),
+  // The typed wire the adapter returns (Task 2): numeric years as text/value,
+  // the divider, and the backend's All-time/YTD ranges.
+  getYearOptions: vi.fn().mockResolvedValue([
+    { text: '2026', value: '2026' },
+    { text: '2025', value: '2025' },
+    { divider: true },
+    { text: 'All-time', value: 'all_time' },
+    { text: '2026YTD', value: 'ytd' },
+  ]),
 }))
 
 // Tests disable vite-plugin-vuetify's auto-import transform, so Vuetify
@@ -45,6 +53,20 @@ beforeEach(() => {
 })
 
 describe('PositionsPageBase', () => {
+  it('adapts the real backend year wire without surfacing a year-options failure', async () => {
+    const { wrapper } = makeWrapper()
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('Unable to load positions or year options')
+    const yearSelect = wrapper.find('.positions-year-select')
+    expect(yearSelect.exists()).toBe(true)
+    // The offered values stay inside the timespan vocabulary the query
+    // builder understands: the backend's own specials plus calendar years.
+    const options = wrapper.vm.yearOptions
+    expect(options.some((option) => option.value === 'ytd' && option.text === 'YTD')).toBe(true)
+    expect(options.some((option) => option.value === 'all_time' && option.text === 'All time')).toBe(true)
+    expect(options.some((option) => option.value === 2026 && option.text === '2026')).toBe(true)
+  })
+
   it('renders the error-alert Retry action with the readable text-variant classes', async () => {
     const fetchPositions = vi.fn().mockRejectedValue(new Error('fixture positions failure'))
     const { wrapper } = makeWrapper({ fetchPositions })
@@ -109,14 +131,18 @@ describe('PositionsPageBase', () => {
     expect(fetchPositions).toHaveBeenCalledWith(expect.objectContaining({ dateFrom: '2025-01-01', dateTo: '2025-12-31', page: 1 }), expect.objectContaining({ signal: expect.any(AbortSignal) }))
     wrapper.unmount()
   })
-  it('adapts numeric backend years into selector items', async () => {
+  it('adapts the real year wire into selector items (server order, divider, specials)', async () => {
     const { wrapper } = makeWrapper()
     await flushPromises()
+    // The backend list is authoritative: numeric years keep numeric values
+    // for the query builder; the specials map onto the timespan values the
+    // query builder understands; the divider passes through for rendering.
     expect(wrapper.vm.yearOptions).toEqual([
-      { text: 'YTD', value: 'ytd' },
-      { text: 'All time', value: 'all_time' },
       { text: '2026', value: 2026 },
       { text: '2025', value: 2025 },
+      { divider: true, text: '', value: '' },
+      { text: 'All time', value: 'all_time' },
+      { text: 'YTD', value: 'ytd' },
     ])
   })
 
