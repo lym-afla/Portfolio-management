@@ -1,5 +1,13 @@
 # Frontend modernization progress
 
+## Current handoff — 9 October 2026
+
+PR #61/D8 is merged into modernization; verified remote checkpoint `52545377`. The real-data validation exposed additional owner findings, so release acceptance and C5b removal remain pending. Earlier checkpoints below are historical.
+
+- [Correction plan](2026-10-09-release-validation-fixes.md): planned, not implemented; covers functional defects, shell/tables, chart/security presentation and owner-selected dashboard summary.
+- [GLM phase A prompt](2026-10-09-release-validation-fixes-glm-prompt.md): next assignment is Tasks 1–3 only, in a dedicated worktree and bounded draft PRs. Later presentation phases follow separately.
+- The previous 11/11 claim covers partial display parity, not all owner acceptance scenarios. Retain Chart.js until corrections and renewed real-data acceptance are complete and removal is separately approved.
+
 ## Scope amendment — 5 October 2026
 
 The owner has removed dedicated screen-reader support work and real assistive-technology audits (NVDA, JAWS, VoiceOver or equivalent) from the modernization scope. They are not acceptance criteria, release blockers or deferred D8 work. This amendment supersedes earlier screen-reader requirements and historical references assigning their audit to D8, including prior handoffs and evidence records. Past statements that no such audit was performed remain historically accurate; do not present them as outstanding acceptance gaps.
