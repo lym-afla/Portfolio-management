@@ -38,7 +38,7 @@ const formStructure = {
     { id: 11, name: 'Long-term account' },
   ],
   frequency_choices: [
-    { value: 'D', text: 'Daily' },
+    { value: 'weekly', text: 'Weekly' },
   ],
 }
 
@@ -89,7 +89,7 @@ describe('PriceImportDialog account payload', () => {
     const vAutocompletes = selects(wrapper)
     expect(vAutocompletes.length).toBeGreaterThanOrEqual(2)
     const vSelects = wrapper.findAllComponents({ name: 'VSelect' })
-    await vSelects[0].setValue('D')
+    await vSelects[0].setValue('weekly')
     await vAutocompletes[0].setValue([42])
     await vAutocompletes[1].setValue([7, 11])
     // Range mode uses date pickers bound to the vee-validate date fields.
@@ -113,7 +113,7 @@ describe('PriceImportDialog account payload', () => {
     const wrapper = await mountDialog()
     const vAutocompletes = selects(wrapper)
     const vSelects = wrapper.findAllComponents({ name: 'VSelect' })
-    await vSelects[0].setValue('D')
+    await vSelects[0].setValue('weekly')
     const pickers = wrapper.findAllComponents({ name: 'VDatePicker' })
     await vAutocompletes[0].setValue([42])
     await vAutocompletes[1].setValue([7])
