@@ -1126,6 +1126,12 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
         choicesTarget.push(['Second', { type: 'account', id: 9, display_name: 'Second synthetic account' }])
       }
       if (dateFlow && fixtureMethod === 'GET' && url.pathname === '/users/api/dashboard_settings/') fixture.body.settings.table_date = currentDate
+      if (dateFlow && fixtureMethod === 'GET' && url.pathname === '/dashboard/api/get-nav-chart-data/') {
+        // The committed valuation date is part of the chartV2 request
+        // context; the hardened client validation rejects envelopes whose
+        // context still carries the original date.
+        fixture.body.chartV2.context.effectiveDate = currentDate
+      }
       if (recoveryFlow && fixtureMethod === 'GET' && recoveryPayloads[url.pathname]) {
         fixture.status = recoveredWidgets.has(url.pathname) ? 200 : 503
         fixture.body = recoveredWidgets.has(url.pathname) ? recoveryPayloads[url.pathname] : { detail: 'Synthetic widget unavailable' }

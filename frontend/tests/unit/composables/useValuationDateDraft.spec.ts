@@ -1,6 +1,8 @@
 // Task 1 (real-data corrections): the header valuation date commits through
-// the shared context-change owner exactly once per accepted change — from the
-// calendar picker (update:model-value) or from typing plus blur/Enter.
+// the shared context-change owner exactly once per accepted change. Native
+// date inputs fire `change` on every segment edit, so keyboard interaction
+// arms a guard: typed intermediate dates defer to the blur/Enter commit,
+// while a calendar-picker selection (no keydown) commits immediately.
 // Invalid or incomplete drafts never commit; a rejected update restores the
 // committed date.
 import { describe, expect, it, vi } from 'vitest'
@@ -43,6 +45,37 @@ describe('useValuationDateDraft', () => {
     expect(committedDate).toBe('2024-06-30')
     expect(harness.requestContextChange).toHaveBeenCalledTimes(1)
     expect(harness.requestContextChange).toHaveBeenCalledWith({ effectiveCurrentDate: '2024-06-30' })
+  })
+
+  it('commits an unarmed change immediately (calendar-picker path)', async () => {
+    const harness = makeHarness('2026-10-09')
+    harness.dateDraft.value = '2024-06-30'
+    expect(await harness.commitDateChange()).toBe('2024-06-30')
+    expect(harness.requestContextChange).toHaveBeenCalledTimes(1)
+  })
+
+  it('defers a keyboard-armed change to the blur/Enter commit (typed segment path)', async () => {
+    const harness = makeHarness('2026-10-09')
+    harness.markKeyboardEditing()
+    harness.dateDraft.value = '2025-01-08'
+    expect(await harness.commitDateChange()).toBeNull()
+    expect(harness.requestContextChange).not.toHaveBeenCalled()
+    // The completed typed date commits exactly once through blur/Enter.
+    harness.dateDraft.value = '2025-12-31'
+    expect(await harness.saveDate()).toBe('2025-12-31')
+    expect(harness.requestContextChange).toHaveBeenCalledTimes(1)
+  })
+
+  it('re-arms per keystroke: a picker change after typing still commits', async () => {
+    const harness = makeHarness('2026-10-09')
+    harness.markKeyboardEditing()
+    harness.dateDraft.value = '2025-01-08'
+    expect(await harness.commitDateChange()).toBeNull()
+    expect(harness.requestContextChange).not.toHaveBeenCalled()
+    // New picker selection: no keydown preceded it.
+    harness.dateDraft.value = '2024-06-30'
+    expect(await harness.commitDateChange()).toBe('2024-06-30')
+    expect(harness.requestContextChange).toHaveBeenCalledTimes(1)
   })
 
   it('does not commit an invalid or incomplete typed draft', async () => {

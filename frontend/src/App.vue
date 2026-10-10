@@ -42,7 +42,8 @@
                         density="compact"
                         hide-details
                         :disabled="!context.canRead"
-                        @update:model-value="saveDate"
+                        @keydown="markKeyboardEditing"
+                        @change="commitDateChange"
                         @blur="saveDate"
                         @keydown.enter.prevent="saveDate"
                       />
@@ -182,14 +183,17 @@ const context = usePortfolioContextStore()
 const preferences = ref<InstanceType<typeof SettingsDialog> | null>(null)
 const pendingLabel = ref<string | null>(null)
 // The valuation date commits through the shared context-change owner exactly
-// once per accepted change - from the calendar picker (update:model-value)
-// or from typing plus blur/Enter. Invalid or incomplete drafts never commit;
-// a rejected update restores the committed date.
-const { dateDraft, saveDate } = useValuationDateDraft({
-  committed: computed(() => context.committed.effectiveCurrentDate),
-  canRead: () => context.canRead,
-  requestContextChange,
-})
+// once per accepted change. The native date input fires `change` on every
+// segment edit, so keyboard interaction arms a guard: typed intermediate
+// dates defer to the blur/Enter commit, while a calendar-picker selection
+// (no keydown) commits immediately. Invalid or incomplete drafts never
+// commit; a rejected update restores the committed date.
+const { dateDraft, saveDate, markKeyboardEditing, commitDateChange } =
+  useValuationDateDraft({
+    committed: computed(() => context.committed.effectiveCurrentDate),
+    canRead: () => context.canRead,
+    requestContextChange,
+  })
 function accountLabel(selection: typeof context.committed.accountSelection) {
   return committedAccountLabel(context.accountOptions, selection)
 }
