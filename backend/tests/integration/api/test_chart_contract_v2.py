@@ -143,6 +143,90 @@ class TestNavInceptionFloor:
         assert body.get("empty") is True
         assert body["chartV2"]["outcome"] == "empty"
 
+    def test_empty_scope_with_explicit_from_is_honest_empty(self, user, account):
+        # No transactions at all: an explicit From cannot create data.
+        response = call_nav_chart(user, date_from="2000-01-31", date_to="2026-06-30", contract=2)
+        assert response.status_code == 200
+        body = response.data
+        assert body.get("empty") is True
+        assert body["chartV2"]["outcome"] == "empty"
+
+    def test_inception_floor_is_isolated_per_account_scope(self, user, account, account_uk, monkeypatch):
+        # Two scopes share the user: each scope's own inception applies. The
+        # UK account's inception (2021) is later than the base account's
+        # (2019), so flooring the UK scope must not sample 2019-2020.
+        Transactions.objects.create(
+            investor=user, account=account, type="Cash in", currency="USD",
+            date=datetime(2019, 6, 30, 12, tzinfo=timezone.utc),
+            cash_flow=Decimal("100000"),
+        )
+        Transactions.objects.create(
+            investor=user, account=account_uk, type="Cash in", currency="GBP",
+            date=datetime(2021, 3, 31, 12, tzinfo=timezone.utc),
+            cash_flow=Decimal("50000"),
+        )
+        pin_chart(monkeypatch, {})
+        response = call_nav_chart(user, date_from="2000-01-31", date_to="2026-06-30", contract=2)
+        doc = response.data["chartV2"]
+        end_dates = [p["endDate"] for p in doc["periods"]]
+        assert end_dates and min(end_dates) >= "2019-06-30"
+
+        # The account-scoped request floors at ITS OWN inception.
+        from dashboard import views as dashboard_views
+        from rest_framework.test import APIRequestFactory, force_authenticate
+        scoped_request = APIRequestFactory().get(
+            "/dashboard/api/get-nav-chart-data/",
+            {"breakdown": "none", "frequency": "M", "dateFrom": "2000-01-31", "dateTo": "2026-06-30", "chart_contract": "2", "account": str(account_uk.id)},
+        )
+        scoped_request.effective_current_date = "2026-06-30"
+        force_authenticate(scoped_request, user=user)
+        # The view resolves the scope from the committed selection; emulate the
+        # single-account selection the header produces for this account.
+        user.selected_account_type = "account"
+        user.selected_account_id = account_uk.id
+        user.save()
+        scoped_response = dashboard_views.api_nav_chart_data(scoped_request)
+        assert scoped_response.status_code == 200
+        scoped_doc = scoped_response.data["chartV2"]
+        scoped_end_dates = [p["endDate"] for p in scoped_doc["periods"]]
+        assert scoped_end_dates and min(scoped_end_dates) >= "2021-03-31"
+
+    def test_cash_only_inception_bounds_the_window(self, user, account, monkeypatch):
+        # A cash-only scope's inception is its only transaction; the window
+        # starts there and the single sample carries the cash value.
+        Transactions.objects.create(
+            investor=user, account=account, type="Cash in", currency="USD",
+            date=datetime(2019, 6, 30, 12, tzinfo=timezone.utc),
+            cash_flow=Decimal("75000"),
+        )
+        sample_dates = charts._chart_dates(date(2019, 6, 30), date(2026, 6, 30), "M")
+        pin_chart(monkeypatch, {sample_dates[0]: Decimal("75000")})
+        response = call_nav_chart(user, date_from="2000-01-31", date_to="2026-06-30", contract=2)
+        doc = response.data["chartV2"]
+        end_dates = [p["endDate"] for p in doc["periods"]]
+        assert end_dates and min(end_dates) >= "2019-06-30"
+        nav = next(s for s in doc["series"] if s["metric"] == "nav")
+        assert nav["points"][0]["value"] == "75000"
+
+    def test_both_irr_semantics_survive_the_inception_floor(self, user, account, monkeypatch):
+        self._seed_inception(user, account)
+        pin_chart(monkeypatch, {})
+        response = call_nav_chart(user, date_from="2000-01-31", date_to="2026-06-30", contract=2)
+        doc = response.data["chartV2"]
+        irr = {s["metric"]: s for s in doc["series"]}
+        # Interval semantics live on the periods: the floored window's first
+        # period is inception-kind starting AT the canonical inception (never
+        # at the requested-but-floored 2000-01-31), and every later period is
+        # a sample interval starting after it.
+        periods = doc["periods"]
+        assert periods[0]["interval"] == {
+            "startDate": None,
+            "endDate": "2019-06-30",
+            "kind": "inception",
+        }
+        assert all(p["interval"]["startDate"] >= "2019-06-30" for p in periods[1:])
+        assert all(p["interval"]["kind"] == "sample_interval" for p in periods[1:])
+
     def test_zero_valued_observations_after_inception_are_retained(self, user, account, monkeypatch):
         self._seed_inception(user, account)
         sample_dates = charts._chart_dates(date(2019, 6, 30), date(2026, 6, 30), "M")

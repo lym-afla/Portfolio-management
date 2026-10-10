@@ -465,17 +465,19 @@ def get_nav_chart_data(
         # Transactions.date is a datetime column; the chart window works in
         # calendar dates (Min() above returns a datetime).
         inception_date = inception_date.date()
+    if not inception_date:
+        # An empty scope (no transactions) renders honestly empty for ANY
+        # requested window - there is no inception to chart from.
+        _v2_finalize_empty()
+        return {
+            "labels": [],
+            "datasets": [],
+            "currency": currency + "k",
+            "empty": True,
+        }
     if from_date is None:
-        if not inception_date:
-            _v2_finalize_empty()
-            return {
-                "labels": [],
-                "datasets": [],
-                "currency": currency + "k",
-                "empty": True,
-            }
         from_date = inception_date
-    elif inception_date and from_date < inception_date:
+    elif from_date < inception_date:
         from_date = inception_date
 
     # Validate dates
