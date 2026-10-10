@@ -31,6 +31,7 @@ from services.importer import (
     import_security_prices_from_tbank,
     import_security_prices_from_yahoo,
 )
+from services.positions import position as calculate_position
 
 logger = logging.getLogger(__name__)
 
@@ -443,10 +444,11 @@ class PriceImportConsumer(AsyncHttpConsumer):
                 securities = [
                     security
                     for security in securities
-                    if await database_sync_to_async(security.position)(
+                    if await database_sync_to_async(calculate_position)(
+                        security,
                         effective_current_date,
                         user,
-                        account_ids,  # Added account_ids parameter
+                        account_ids,
                     )
                     > 0
                 ]
