@@ -251,7 +251,21 @@ def series_by_metric(doc):
 
 
 class TestNavContractV2:
+    def _seed_inception(self, user, account):
+        # The inception floor makes an empty scope honestly empty; seed the
+        # canonical inception so the parity/units/format contracts keep a
+        # non-empty sampled window.
+        Transactions.objects.create(
+            investor=user,
+            account=account,
+            type="Cash in",
+            currency="USD",
+            date=datetime(2025, 11, 15, 12, tzinfo=timezone.utc),
+            cash_flow=Decimal("50000"),
+        )
+
     def test_v2_keeps_legacy_keys_and_exposes_exact_raw_values(self, user, account, monkeypatch):
+        self._seed_inception(user, account)
         user.digits = 2
         user.save()
         pin_chart(monkeypatch, {date(2026, 1, 31): Decimal("100000")})
@@ -311,6 +325,16 @@ class TestNavContractV2:
     def test_intervals_use_sample_boundaries_and_flag_partial_calendar_buckets(
         self, user, account, monkeypatch
     ):
+        # The seeded inception (2025-12-31) precedes the requested From, so
+        # the inception floor does not move the window.
+        Transactions.objects.create(
+            investor=user,
+            account=account,
+            type="Cash in",
+            currency="USD",
+            date=datetime(2025, 12, 31, 12, tzinfo=timezone.utc),
+            cash_flow=Decimal("100000"),
+        )
         values = {
             date(2026, 1, 31): Decimal("100000"),
             date(2026, 2, 28): Decimal("110000"),
@@ -431,6 +455,15 @@ class TestNavContractV2:
     ):
         first = make_account(user, name="Alpha", broker_name="B1")
         second = make_account(user, name="Alpha", broker_name="B2")
+        # Seed the canonical inception so the scope is not honestly empty.
+        Transactions.objects.create(
+            investor=user,
+            account=first,
+            type="Cash in",
+            currency="USD",
+            date=datetime(2026, 1, 15, 12, tzinfo=timezone.utc),
+            cash_flow=Decimal("100000"),
+        )
 
         def pinned_nav(uid, ids, day, cur, breakdown=(), diagnostics=None):
             return {"Total NAV": Decimal("100000"), "account": {"Alpha": Decimal("100000")}}
@@ -479,6 +512,8 @@ class TestNavContractV2:
     def test_unknown_category_code_fails_v2_but_keeps_legacy_bar(
         self, user, account, monkeypatch
     ):
+        self._seed_inception(user, account)
+
         def pinned_nav(uid, ids, day, cur, breakdown=(), diagnostics=None):
             return {"Total NAV": Decimal("100000"), "asset_type": {"Mystery": Decimal("1")}}
 
@@ -497,6 +532,7 @@ class TestNavContractV2:
     def test_omitted_valuation_marks_partial_and_known_subtotal(
         self, user, account, monkeypatch
     ):
+        self._seed_inception(user, account)
         omission = [{
             "reason": "missing_price",
             "account_id": account.id,
@@ -549,6 +585,8 @@ class TestNavContractV2:
     def test_crypto_bucket_excluded_from_breakdown_is_nonpartitioning(
         self, user, account, monkeypatch
     ):
+        self._seed_inception(user, account)
+
         def pinned_nav(uid, ids, day, cur, breakdown=(), diagnostics=None):
             return {
                 "Total NAV": Decimal("150000"),

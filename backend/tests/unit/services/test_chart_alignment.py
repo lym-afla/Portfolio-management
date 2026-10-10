@@ -77,6 +77,7 @@ def test_multiple_categories_align_independently():
     ]
 
 
+@pytest.mark.django_db
 def test_full_nav_loader_passes_original_sample_index_without_changing_irr_calls(monkeypatch):
     dates = [date(2026, 1, day) for day in [1, 2, 3]]
     values = [
