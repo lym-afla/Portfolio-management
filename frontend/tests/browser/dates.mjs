@@ -8,9 +8,12 @@ export async function assertMountedDateFlow({
   log,
   session,
   fixtureServer,
+  appOrigin,
 }) {
   const run = (args) =>
     runAgentBrowser({ args, context, initScript, log, session })
+  const evalP = async (expression) =>
+    (await run(['eval', expression])).result
   async function click(role, name) {
     for (let attempt = 0; attempt < 12; attempt++) {
       const snapshot = await run(['snapshot', '-i'])
@@ -139,6 +142,83 @@ export async function assertMountedDateFlow({
     page,
     status: 'passed',
   })
+  // --- Task 1: the dashboard reconciles a persisted custom range when a
+  // historical valuation date commits, through rendered controls only.
+  // Custom From=2026-01-01/To=2026-10-09 persist; the valuation date then
+  // commits as 2024-06-30 (From is later than the new effective date too).
+  await run(['open', appOrigin + '/dashboard'])
+  await run(['wait', '2500'])
+  await run(['eval', 'performance.clearResourceTimings(); true'])
+
+  // Persist a custom range through the rendered date-range menu. Its two
+  // native date inputs are edited segment by segment with real key presses
+  // (CLI fill leaves native date inputs empty).
+  await click('button', '01 Jan 2026 \u2794 08 Sep 2026')
+  await run(['wait', '600'])
+  const setMenuDateByIndex = async (index, keys) => {
+    const snapshot = await run(['snapshot', '-i', '-s', '.v-overlay--active'])
+    const segments = Object.entries(snapshot.refs).filter(
+      ([, item]) => item.role === 'spinbutton'
+    )
+    assert.ok(segments.length >= 3, 'menu date segments missing (' + segments.length + ')')
+    const ordered = index === 0 ? segments.slice(0, 3) : segments.slice(3, 6)
+    assert.ok(ordered.length === 3, 'menu date ' + index + ' segments missing')
+    for (const refId of ordered.map(([refId]) => refId)) {
+      await run(['click', '@' + refId])
+    }
+    for (const key of keys) await run(['press', key])
+  }
+  await setMenuDateByIndex(0, ['2', '0', '2', '6', '0', '1', '0', '1'])
+  await setMenuDateByIndex(1, ['2', '0', '2', '6', '1', '0', '0', '9'])
+  await click('button', 'Apply')
+  await run(['wait', '800'])
+
+  // Commit the historical valuation date through the rendered header control.
+  const navCountBefore = await evalP(
+    "performance.getEntriesByType('resource').map((e) => e.name).filter((n) => n.includes('get-nav-chart-data')).length"
+  )
+  await click('spinbutton', 'Year')
+  for (const key of ['2', '0', '2', '4']) await run(['press', key])
+  const monthSnapshot = await run(['snapshot', '-i', '-s', '.workspace-context'])
+  const monthSegment = Object.entries(monthSnapshot.refs).find(
+    ([, item]) => item.role === 'spinbutton' && item.name.includes('Month')
+  )
+  assert.ok(monthSegment, 'header date Month segment missing')
+  await run(['click', '@' + monthSegment[0]])
+  for (const key of ['0', '6']) await run(['press', key])
+  const daySnapshot = await run(['snapshot', '-i', '-s', '.workspace-context'])
+  const daySegment = Object.entries(daySnapshot.refs).find(
+    ([, item]) => item.role === 'spinbutton' && item.name.includes('Day')
+  )
+  assert.ok(daySegment, 'header date Day segment missing')
+  await run(['click', '@' + daySegment[0]])
+  for (const key of ['3', '0']) await run(['press', key])
+  await run(['press', 'Enter'])
+  await run(['wait', '2500'])
+
+  const navCountAfter = await evalP(
+    "performance.getEntriesByType('resource').map((e) => e.name).filter((n) => n.includes('get-nav-chart-data')).length"
+  )
+  assert.equal(
+    navCountAfter - navCountBefore,
+    1,
+    'exactly one accepted NAV refresh expected after the valuation-date change (' + navCountBefore + ' -> ' + navCountAfter + ')'
+  )
+  const lastNav = await evalP(
+    "decodeURIComponent(performance.getEntriesByType('resource').map((e) => e.name).filter((n) => n.includes('get-nav-chart-data')).pop() || '')"
+  )
+  assert.ok(lastNav.includes('dateFrom=2024-06-30'), 'outgoing request From not clamped: ' + lastNav)
+  assert.ok(lastNav.includes('dateTo=2024-06-30'), 'outgoing request To not clamped: ' + lastNav)
+  const activatorText = await evalP(
+    "[...document.querySelectorAll('button')].find((b) => b.textContent.includes('\u2794'))?.textContent.trim() ?? null"
+  )
+  assert.equal(activatorText, '30 Jun 2024 \u2794 30 Jun 2024', 'displayed range must reconcile: ' + activatorText)
+  await log({
+    context,
+    dashboardReconciliation: { navCountBefore, navCountAfter, lastNav, activatorText },
+    status: 'passed',
+  })
+
   return {
     settings: settings.length,
     refresh: refresh.length,

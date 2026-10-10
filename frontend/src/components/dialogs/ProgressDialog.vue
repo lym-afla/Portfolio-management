@@ -6,20 +6,31 @@
       </v-card-title>
       <v-card-text>
         <template v-if="total > 0">
+          <!-- The percentage label sits OUTSIDE the moving fill in a stable,
+               theme-contrasting element: a label rendered inside the bar's
+               default slot is white-on-light over the unfilled track and
+               unreadable at low percentages. -->
+          <div
+            class="d-flex align-center justify-space-between mb-1"
+            data-testid="import-progress-label"
+          >
+            <span class="text-body-2 font-weight-medium">
+              Processing {{ current }} of {{ total }}
+            </span>
+            <span class="text-body-2 font-weight-medium">
+              {{ Math.ceil(progress) }}%
+            </span>
+          </div>
           <v-progress-linear
             :model-value="progress"
-            height="25"
+            height="12"
             color="primary"
             class="mb-2"
-          >
-            <template v-slot:default="{ value }">
-              <strong>{{ Math.ceil(value) }}%</strong>
-            </template>
-          </v-progress-linear>
+          />
           <v-row no-gutters>
             <v-col cols="12" class="text-center">
               <div class="text-subtitle-2 font-weight-medium">
-                Processing {{ current }} of {{ total }}
+                {{ Math.ceil(progress) }}% complete
               </div>
             </v-col>
           </v-row>

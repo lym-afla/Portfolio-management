@@ -50,7 +50,13 @@ const fixtures = new Map([
     },
   ],
   ['GET /api/effective-current-date/', { effective_current_date: '2026-09-08' }],
-  ['GET /api/get-year-options/', { table_years: [2026] }],
+  ['GET /api/get-year-options/', { table_years: [
+    { text: '2026', value: '2026' },
+    { text: '2025', value: '2025' },
+    { divider: true },
+    { text: 'All-time', value: 'all_time' },
+    { text: '2026YTD', value: 'ytd' },
+  ] }],
   [
     'GET /users/api/user_settings/',
     {

@@ -167,6 +167,38 @@ it.each(['ytd', 'custom', 'all_time'])('invalidates old context content and rede
 // Task 1 (real-data corrections): the NAV request end is clamped to the
 // committed valuation date — a persisted custom To later than the effective
 // date must never sample periods after it.
+it('reconciles a persisted custom range when a historical valuation date commits (one accepted refresh; From and To clamp; selector agrees)', async () => {
+  // Custom bounds persist across sessions: To=2026-10-09, From=2026-01-01.
+  // The owner then commits valuation date 2024-06-30. The displayed range,
+  // the persisted/applied params and the outgoing request must all agree on
+  // the clamped window (From later than the new effective date clamps to it
+  // too), with exactly one accepted refresh for the date change.
+  const pinia = createPinia()
+  setActivePinia(pinia)
+  const { useAppStore: useAppStoreInner } = await import('@/stores/app')
+  const appStore = useAppStoreInner()
+  appStore.updateNavChartParams({ dateRange: 'custom', dateFrom: '2026-01-01', dateTo: '2026-10-09' })
+  chartApi.fetchNavChart.mockResolvedValue(legacyOnlyResult(['2026-09-08']))
+  const wrapper = await mountDashboardWithRealStores(pinia)
+  await flushPromises()
+  expect(chartApi.fetchNavChart).toHaveBeenCalledTimes(1)
+
+  // Commit the historical valuation date through the context store (the same
+  // owner the header uses).
+  const context = usePortfolioContextStore(pinia)
+  await context.changeContext({ effectiveCurrentDate: '2024-06-30' })
+  await flushPromises()
+  expect(chartApi.fetchNavChart).toHaveBeenCalledTimes(2)
+  const query = chartApi.fetchNavChart.mock.calls[1][0]
+  expect(query.fromDate).toBe('2024-06-30')
+  expect(query.toDate).toBe('2024-06-30')
+  // The persisted/applied range agrees with the outgoing request.
+  expect(appStore.navChartParams.dateFrom).toBe('2024-06-30')
+  expect(appStore.navChartParams.dateTo).toBe('2024-06-30')
+  // The rendered DateRangeSelector reconciliation is covered by the dates
+  // browser case (the selector renders inside the stubbed NAVChart here).
+})
+
 it('clamps the NAV request end to the committed valuation date', async () => {
   const pinia = createPinia()
   setActivePinia(pinia)

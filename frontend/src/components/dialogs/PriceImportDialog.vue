@@ -147,7 +147,17 @@
     <v-card>
       <v-card-title>Import Summary</v-card-title>
       <v-card-text>
-        <v-alert v-if="generalErrorSummary" type="error">
+        <v-alert
+          v-if="generalErrorSummary && generalErrorSummary.noEligible"
+          type="info"
+          data-testid="no-eligible-securities"
+        >
+          {{ generalErrorSummary.message }}
+          <p>Start date: {{ generalErrorSummary.startDate }}</p>
+          <p>End date: {{ generalErrorSummary.endDate }}</p>
+          <p>Frequency: {{ generalErrorSummary.frequency }}</p>
+        </v-alert>
+        <v-alert v-else-if="generalErrorSummary" type="error">
           {{ generalErrorSummary.message }}
           <p>Start date: {{ generalErrorSummary.startDate }}</p>
           <p>End date: {{ generalErrorSummary.endDate }}</p>
@@ -382,6 +392,7 @@ const handleProgress = (event) => {
         startDate: data.start_date,
         endDate: data.end_date,
         frequency: data.frequency,
+        noEligible: data.no_eligible_securities === true,
       }
     }
     showProgressDialog.value = false

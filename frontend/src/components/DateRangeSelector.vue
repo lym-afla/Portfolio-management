@@ -134,10 +134,21 @@ watch(
   { deep: true }
 )
 
-// Watch for changes in effectiveCurrentDate
+// Watch for changes in effectiveCurrentDate. Custom ranges reconcile too:
+// bounds later than the newly committed valuation date clamp to it, so the
+// displayed range never contradicts the committed context.
 watch(effectiveCurrentDate, () => {
   if (selectedRange.value !== 'custom') {
     updateDateRange()
+    return
+  }
+  const effective = effectiveCurrentDate.value ? parseISO(effectiveCurrentDate.value) : null
+  if (!effective) return
+  if (dateTo.value && parseISO(dateTo.value) > effective) {
+    dateTo.value = effectiveCurrentDate.value
+  }
+  if (dateFrom.value && parseISO(dateFrom.value) > effective) {
+    dateFrom.value = effectiveCurrentDate.value
   }
 })
 

@@ -305,11 +305,15 @@ function fetchNAVChartData(params: NavChartParams = navChartInitialParams.value)
     params.dateTo && params.dateTo < committed.effectiveCurrentDate
       ? params.dateTo
       : committed.effectiveCurrentDate
+  const requestStart =
+    params.dateFrom && params.dateFrom > committed.effectiveCurrentDate
+      ? committed.effectiveCurrentDate
+      : params.dateFrom
   const query: NavQuery = {
     context: requireReadyChartContext(committed),
     mode: params.breakdown as NavMode,
     frequency: params.frequency as Frequency,
-    fromDate: params.dateFrom,
+    fromDate: requestStart,
     toDate: requestEnd,
   }
   return navChartQuery.run(query)

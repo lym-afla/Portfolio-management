@@ -271,7 +271,7 @@ async function main() {
         }
         if (selectedCase === 'dates') {
           try {
-            const flow = await assertMountedDateFlow({ context: `${viewport.name} mounted date flow`, initScript, log, session, fixtureServer })
+            const flow = await assertMountedDateFlow({ context: `${viewport.name} mounted date flow`, initScript, log, session, fixtureServer, appOrigin: appServer.origin })
             await log({ context: `${viewport.name} mounted date flow`, flow, status: 'passed' })
             console.log(`PASS ${viewport.name} mounted date flow`)
           } catch (error) {
