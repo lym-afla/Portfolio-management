@@ -179,7 +179,7 @@ it('reconciles a persisted custom range when a historical valuation date commits
   const appStore = useAppStoreInner()
   appStore.updateNavChartParams({ dateRange: 'custom', dateFrom: '2026-01-01', dateTo: '2026-10-09' })
   chartApi.fetchNavChart.mockResolvedValue(legacyOnlyResult(['2026-09-08']))
-  const wrapper = await mountDashboardWithRealStores(pinia)
+  await mountDashboardWithRealStores(pinia)
   await flushPromises()
   expect(chartApi.fetchNavChart).toHaveBeenCalledTimes(1)
 
