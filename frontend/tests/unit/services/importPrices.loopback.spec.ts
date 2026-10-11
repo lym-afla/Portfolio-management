@@ -12,7 +12,6 @@
 // limitation, documented in the ledger.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as http from 'node:http'
-import type { AddressInfo } from 'node:net'
 import { createPinia, setActivePinia } from 'pinia'
 
 import axiosInstance from '@/config/axiosConfig'
