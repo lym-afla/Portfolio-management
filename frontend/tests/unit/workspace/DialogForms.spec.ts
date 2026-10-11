@@ -27,6 +27,7 @@ const api = vi.hoisted(() => ({
   createBroker: vi.fn(),
   getPriceImportFormStructure: vi.fn(),
   importPrices: vi.fn(),
+  currentPriceImportId: vi.fn(() => 0),
   addPrice: vi.fn(),
   getFXFormStructure: vi.fn(),
   addFXRate: vi.fn(),

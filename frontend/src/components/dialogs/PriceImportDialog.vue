@@ -214,7 +214,11 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useForm, useField } from 'vee-validate'
-import { importPrices, getPriceImportFormStructure } from '@/services/api'
+import {
+  importPrices,
+  getPriceImportFormStructure,
+  currentPriceImportId,
+} from '@/services/api'
 import { format } from 'date-fns'
 import ProgressDialog from '@/components/dialogs/ProgressDialog.vue'
 import { useErrorHandler } from '@/composables/useErrorHandler'
@@ -362,9 +366,16 @@ const toggleSelectAllAccounts = () => {
   }
 }
 
+// Import ownership: progress events ride a window-level bus, so a stream
+// that outlives its dialog must never complete a reopened one. Only events
+// tagged with the id of the import this dialog instance started are
+// adopted; closing the dialog releases the ownership.
+const ownedImportId = ref(null)
+
 const handleProgress = (event) => {
   logger.log('Unknown', 'Progress event received:', event)
   const data = event.detail
+  if (data.importId !== ownedImportId.value) return
   if (data.status === 'progress') {
     progress.value = data.progress
     currentOperation.value = data.current
@@ -429,6 +440,7 @@ const submitForm = handleSubmit(async (values) => {
   currentMessage.value = 'Starting import'
   showProgressDialog.value = true
   progress.value = 0
+  ownedImportId.value = currentPriceImportId() + 1
   importSummary.value = null
   detailedSummary.value = []
   generalError.value = ''
@@ -488,6 +500,7 @@ watch(
   (newValue) => {
     if (!newValue) {
       cleanupForm()
+      ownedImportId.value = null
     }
   }
 )

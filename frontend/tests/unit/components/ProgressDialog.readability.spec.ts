@@ -55,6 +55,21 @@ describe('ProgressDialog readability', () => {
     document.body.innerHTML = ''
   })
 
+  it('renders the indeterminate state as readable body text beside the spinner (no in-fill label)', async () => {
+    // total=0 (indeterminate phase: "Starting import") shows no percentage
+    // label at all — the message renders as body text next to the spinner,
+    // never inside a fill.
+    const wrapper = mountProgress({ progress: 0, current: 0, total: 0, currentMessage: 'Starting import' })
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(labelAt()).toBeFalsy()
+    const message = [...document.body.querySelectorAll('.text-body-2')]
+      .find((el) => el.textContent.includes('Starting import'))
+    expect(message).toBeTruthy()
+    expect(message.closest('.v-progress-linear')).toBeFalsy()
+    wrapper.unmount()
+    document.body.innerHTML = ''
+  })
+
   it('keeps the label stable between 0% and 100% (same element, live updates)', async () => {
     const wrapper = mountProgress({ progress: 0, current: 0, total: 10 })
     const label = labelAt()

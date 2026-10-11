@@ -14,6 +14,7 @@ import * as directives from 'vuetify/directives'
 const api = vi.hoisted(() => ({
   importPrices: vi.fn(),
   getPriceImportFormStructure: vi.fn(),
+  currentPriceImportId: vi.fn(() => 0),
 }))
 vi.mock('@/services/api', () => api)
 
@@ -126,20 +127,43 @@ describe('PriceImportDialog account payload', () => {
     wrapper.unmount()
   })
 
-  it('renders an explicit no-eligible-securities summary result', async () => {
+  it('renders an explicit no-eligible-securities summary result for its own import', async () => {
+    // The completion arrives on the window bus tagged with the import id;
+    // a dialog only adopts the import it started, so this test submits
+    // first (id 0 + 1) and then delivers the consumer's no-eligible
+    // completion for that import.
     const wrapper = await mountDialog()
+    const vAutocompletes = selects(wrapper)
+    const vSelects = wrapper.findAllComponents({ name: 'VSelect' })
+    const pickers = wrapper.findAllComponents({ name: 'VDatePicker' })
+    await vSelects[0].setValue('weekly')
+    await vAutocompletes[0].setValue([42])
+    await vAutocompletes[1].setValue([7])
+    await pickers[0].setValue(new Date('2026-01-01T00:00:00'))
+    await pickers[1].setValue(new Date('2026-01-31T00:00:00'))
+    const setupState = (wrapper.vm.$ as unknown as { setupState: Record<string, unknown> }).setupState
+    const submitting = setupState.submitForm()
+    for (let attempt = 0; attempt < 50; attempt++) {
+      if (setupState.ownedImportId !== null) break
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      await flushPromises()
+    }
+    const ownedImportId = setupState.ownedImportId
+    expect(ownedImportId, 'the dialog took ownership').toBeTruthy()
     window.dispatchEvent(new CustomEvent('priceImportProgress', {
       detail: {
         status: 'complete', current: 0, total: 0, progress: 0,
+        importId: ownedImportId,
         message: 'No eligible securities found for the selected accounts (no held positions in the selected period)',
         no_eligible_securities: true,
-        start_date: '2026-01-01', end_date: '2026-01-31', frequency: 'D',
+        start_date: '2026-01-01', end_date: '2026-01-31', frequency: 'weekly',
       },
     }))
     await flushPromises()
     const noEligible = doc().querySelector('[data-testid="no-eligible-securities"]')
     expect(noEligible).toBeTruthy()
     expect(noEligible.textContent).toContain('No eligible securities found')
+    await submitting
     wrapper.unmount()
   })
 })
