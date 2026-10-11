@@ -241,6 +241,8 @@ const { cardId: focusCardId } = useDialogFormFocus(dialog, 'price-import')
 const cancelImport = () => {
   dialog.value = false
   cleanupForm()
+  // Explicit session cancellation: a cancelled import adopts nothing.
+  ownedImportId.value = null
 }
 
 const dateType = ref('range')
@@ -446,6 +448,11 @@ const submitForm = handleSubmit(async (values) => {
   generalError.value = ''
   generalErrorSummary.value = null
 
+  // This submit's identity: the configuration-dialog close (v-model false
+  // propagated by the parent) happens INSIDE this handler and must not end
+  // the session — only the stream settling, an explicit cancel, or a fresh
+  // dialog open may.
+  const myImportId = ownedImportId.value
   try {
     // Prepare the data based on the date type
     const submitData = {
@@ -476,10 +483,20 @@ const submitForm = handleSubmit(async (values) => {
     resetForm()
   } catch (error) {
     logger.error('Unknown', 'Error importing prices:', error)
-    handleApiError(error)
+    // A superseded request's late failure belongs to no live session: it
+    // must not report into the import that replaced it.
+    if (ownedImportId.value === myImportId) {
+      handleApiError(error)
+    }
   } finally {
-    if (!showSummaryDialog.value) {
-      showProgressDialog.value = false
+    // Only the owning request settles its own session: an older request's
+    // finally can neither hide the newer import's progress dialog nor
+    // release the newer session.
+    if (ownedImportId.value === myImportId) {
+      ownedImportId.value = null
+      if (!showSummaryDialog.value) {
+        showProgressDialog.value = false
+      }
     }
   }
 })
@@ -499,7 +516,13 @@ watch(
   () => props.modelValue,
   (newValue) => {
     if (!newValue) {
+      // Configuration-dialog close (including the submit-time close the
+      // parent observes): form state resets, the in-flight import session
+      // keeps owning its events until it settles.
       cleanupForm()
+    } else {
+      // A fresh open adopts nothing: a stale stream from an abandoned
+      // session can never complete a reopened dialog.
       ownedImportId.value = null
     }
   }

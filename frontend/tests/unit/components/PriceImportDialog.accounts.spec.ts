@@ -142,6 +142,15 @@ describe('PriceImportDialog account payload', () => {
     await pickers[0].setValue(new Date('2026-01-01T00:00:00'))
     await pickers[1].setValue(new Date('2026-01-31T00:00:00'))
     const setupState = (wrapper.vm.$ as unknown as { setupState: Record<string, unknown> }).setupState
+    // The stream events dispatch before the transport promise settles in
+    // production; hold the mock so the completion arrives while the dialog
+    // still owns the session.
+    let releaseImport
+    api.importPrices.mockImplementationOnce(
+      () => new Promise((resolve) => {
+        releaseImport = resolve
+      })
+    )
     const submitting = setupState.submitForm()
     for (let attempt = 0; attempt < 50; attempt++) {
       if (setupState.ownedImportId !== null) break
@@ -163,6 +172,7 @@ describe('PriceImportDialog account payload', () => {
     const noEligible = doc().querySelector('[data-testid="no-eligible-securities"]')
     expect(noEligible).toBeTruthy()
     expect(noEligible.textContent).toContain('No eligible securities found')
+    releaseImport(undefined)
     await submitting
     wrapper.unmount()
   })

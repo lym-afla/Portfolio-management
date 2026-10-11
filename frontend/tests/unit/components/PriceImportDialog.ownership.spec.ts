@@ -104,16 +104,24 @@ describe('PriceImportDialog import ownership', () => {
     document.body.innerHTML = ''
   })
 
-  it('releases ownership when the dialog closes mid-import', async () => {
+  it('keeps the session across the configuration close and adopts nothing on a fresh open', async () => {
     const wrapper = await mountDialog()
     const state = setupOf(wrapper)
     state.ownedImportId = 3
     state.handleProgress({ detail: detail({ importId: 3 }) })
     await flushPromises()
     expect(state.progress).toBe(40)
-    // Closing mid-import releases the ownership: the abandoned stream's
-    // late completion must not surface in this (or a reopened) dialog.
+    // The submit-time configuration close (v-model false) must NOT cancel
+    // the in-flight session: delayed events still render.
     await wrapper.setProps({ modelValue: false })
+    await flushPromises()
+    expect(state.ownedImportId).toBe(3)
+    state.handleProgress({ detail: detail({ importId: 3, progress: 80 }) })
+    await flushPromises()
+    expect(state.progress).toBe(80)
+    // A fresh open adopts nothing: the abandoned stream's late completion
+    // can never surface in the reopened dialog.
+    await wrapper.setProps({ modelValue: true })
     await flushPromises()
     expect(state.ownedImportId).toBeNull()
     state.handleProgress({ detail: { status: 'complete', importId: 3, details: [{ security_name: 'Abandoned stream', updated_dates: [], skipped_dates: [], errors: [] }], total_dates: 0, start_date: '2026-01-01', end_date: '2026-01-31', frequency: 'weekly' } })
