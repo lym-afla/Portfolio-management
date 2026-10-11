@@ -255,11 +255,12 @@ export async function assertMountedDateFlow({
     "[...document.querySelectorAll('button')].find((b) => b.textContent.includes('\u2794'))?.textContent.trim() ?? null"
   )
   assert.equal(activatorText, '30 Jun 2024 \u2794 30 Jun 2024', 'displayed range must reconcile: ' + activatorText)
-  // Calendar-picker path: selecting a date in the browser picker fires
-  // input+change on the field without any keydown, so the commit is
-  // immediate. Dispatching the same events on the real rendered field (after
-  // the typed 2024-06-30 commit above) must produce exactly one settings
-  // mutation and one accepted NAV refresh for the picked date.
+  // EVENT-PATH coverage (not native-picker interaction): selecting a date
+  // in the browser's native picker fires input+change on the field without
+  // any keydown, so the commit is immediate. Dispatching those same events
+  // on the real rendered field (after the typed 2024-06-30 commit above)
+  // exercises exactly that event sequence; the native picker widget itself
+  // is driven separately below where the tooling permits it.
   const pickerBefore = fixtureServer.requests.length
   const navPickerBefore = await evalP(
     "performance.getEntriesByType('resource').map((e) => e.name).filter((n) => n.includes('get-nav-chart-data')).length"
@@ -290,9 +291,104 @@ export async function assertMountedDateFlow({
   await log({
     context,
     dashboardReconciliation: { navCountBefore, navCountAfter, lastNav, activatorText },
-    pickerCommit: { pickerPosts: pickerPosts.length, pickerNav },
+    pickerEventPath: { pickerPosts: pickerPosts.length, pickerNav },
     status: 'passed',
   })
+
+  // --- Guard edge: a keyboard segment MOVE must not suppress a selection ---
+  // ArrowLeft moves between segments without changing the value and without
+  // firing change; an arm that only cleared on a change would still be set
+  // here and would wrongly suppress the next unarmed commit. The arm
+  // expires on the macrotask after the keystroke, so the event-path change
+  // below must commit exactly once.
+  const edgeBefore = fixtureServer.requests.length
+  const yearSnapshotForEdge = await run(['snapshot', '-i', '-s', '.workspace-context'])
+  const yearSegmentForEdge = Object.entries(yearSnapshotForEdge.refs).find(
+    ([, item]) => item.role === 'spinbutton' && item.name.includes('Year')
+  )
+  assert.ok(yearSegmentForEdge, 'header date Year segment missing (guard edge)')
+  await run(['click', '@' + yearSegmentForEdge[0]])
+  await run(['press', 'ArrowLeft'])
+  await evalP("(() => { const el = document.querySelector('.workspace-context input[type=\"date\"]'); el.value = '2024-06-20'; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); return el.value })()")
+  await run(['wait', '2500'])
+  const edgePosts = fixtureServer.requests
+    .slice(edgeBefore)
+    .filter((request) => request.actualMethod === 'POST' && request.path === '/users/api/update_dashboard_settings/')
+  assert.equal(
+    edgePosts.length,
+    1,
+    'a change after a value-neutral keydown (segment move) must still commit exactly once: ' + JSON.stringify(fixtureServer.requests.slice(edgeBefore).map(({ actualMethod, path }) => actualMethod + ' ' + path))
+  )
+  assert.equal(edgePosts[0].body.table_date, '2024-06-20')
+  await log({ guardEdge: { edgePosts: edgePosts.length, tableDate: edgePosts[0].body.table_date }, status: 'passed' })
+
+  // --- Blur commit: typed day edit committed by moving focus away ---------
+  // Real segment keys edit the day; a real click on another control moves
+  // focus, the field blurs and the completed typed date commits exactly
+  // once (the armed intermediate never committed).
+  const blurBefore = fixtureServer.requests.length
+  const daySnapshotForBlur = await run(['snapshot', '-i', '-s', '.workspace-context'])
+  const daySegmentForBlur = Object.entries(daySnapshotForBlur.refs).find(
+    ([, item]) => item.role === 'spinbutton' && item.name.includes('Day')
+  )
+  assert.ok(daySegmentForBlur, 'header date Day segment missing (blur path)')
+  await run(['click', '@' + daySegmentForBlur[0]])
+  for (const key of ['1', '5']) await run(['press', key])
+  // A real click on the page heading moves focus off the field; the blur
+  // commit fires exactly once.
+  await run(['click', '[data-testid="workspace-page-heading"]'])
+  await run(['wait', '2500'])
+  const blurPosts = fixtureServer.requests
+    .slice(blurBefore)
+    .filter((request) => request.actualMethod === 'POST' && request.path === '/users/api/update_dashboard_settings/')
+  assert.equal(
+    blurPosts.length,
+    1,
+    'the typed day edit must commit exactly once on blur: ' + JSON.stringify(fixtureServer.requests.slice(blurBefore).map(({ actualMethod, path }) => actualMethod + ' ' + path))
+  )
+  assert.equal(blurPosts[0].body.table_date, '2024-06-15')
+  await log({ blurCommit: { blurPosts: blurPosts.length, tableDate: blurPosts[0].body.table_date }, status: 'passed' })
+
+  // --- Real native-picker attempt (tooling permitting) ---------------------
+  // showPicker() needs transient user activation, which a real CDP click
+  // provides; keys sent while the native picker is open go to the picker
+  // widget (the page sees no keydown) — exactly the property the guard
+  // relies on. What the harness cannot drive is recorded honestly for
+  // manual verification instead of being asserted over.
+  const yearSnapshotForPicker = await run(['snapshot', '-i', '-s', '.workspace-context'])
+  const yearSegmentForPicker = Object.entries(yearSnapshotForPicker.refs).find(
+    ([, item]) => item.role === 'spinbutton' && item.name.includes('Year')
+  )
+  assert.ok(yearSegmentForPicker, 'header date Year segment missing (real-picker attempt)')
+  await run(['click', '@' + yearSegmentForPicker[0]])
+  const pickerProbe = await evalP("(() => { const el = document.querySelector('.workspace-context input[type=\"date\"]'); try { el.showPicker(); return 'opened' } catch (error) { return 'showPicker ' + error.name + ': ' + error.message } })()")
+  await log({ realPicker: { showPicker: pickerProbe }, status: 'real-picker-probe' })
+  if (pickerProbe === 'opened') {
+    const valueBefore = await evalP("document.querySelector('.workspace-context input[type=\"date\"]').value")
+    await run(['press', 'ArrowDown'])
+    await run(['press', 'ArrowDown'])
+    await run(['press', 'Enter'])
+    await run(['wait', '300'])
+    const valueAfter = await evalP("document.querySelector('.workspace-context input[type=\"date\"]').value")
+    const keysReachedPicker = valueBefore !== valueAfter
+    await log({ realPicker: { valueBefore, valueAfter, keysReachedPicker }, status: 'real-picker-keys' })
+    if (keysReachedPicker) {
+      await run(['wait', '2500'])
+      const pickerKeyPosts = fixtureServer.requests
+        .slice(edgeBefore)
+        .filter((request) => request.actualMethod === 'POST' && request.path === '/users/api/update_dashboard_settings/')
+      assert.equal(
+        pickerKeyPosts.filter((request) => request.body.table_date === valueAfter).length,
+        1,
+        'a genuine picker selection (keys reached the picker, no page keydown) must commit exactly once: ' + valueAfter
+      )
+      await log({ realPicker: { committed: valueAfter, posts: pickerKeyPosts.length }, status: 'real-picker-committed' })
+    } else {
+      await log({ realPicker: { manualVerification: 'the native picker widget did not respond to harness keys in this environment; genuine picker interaction (mouse selection and keyboard navigation inside the widget) needs manual verification' }, status: 'real-picker-manual' })
+    }
+  } else {
+    await log({ realPicker: { manualVerification: 'showPicker() could not be driven from the harness (' + pickerProbe + '); genuine picker interaction needs manual verification' }, status: 'real-picker-manual' })
+  }
 
   return {
     settings: settings.length,

@@ -78,6 +78,42 @@ describe('useValuationDateDraft', () => {
     expect(harness.requestContextChange).toHaveBeenCalledTimes(1)
   })
 
+  it('disarms after the keystroke task: a segment move cannot suppress a later selection', async () => {
+    vi.useFakeTimers()
+    try {
+      const harness = makeHarness('2026-10-09')
+      // A keydown that changes no value (segment move) arms the guard, but
+      // the arm expires on the next macrotask — the change it covered never
+      // arrives, and a later calendar-picker selection must still commit.
+      harness.markKeyboardEditing()
+      await vi.advanceTimersByTimeAsync(0)
+      harness.dateDraft.value = '2024-06-30'
+      expect(await harness.commitDateChange()).toBe('2024-06-30')
+      expect(harness.requestContextChange).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('keeps the arm across the keystroke task so typed intermediates still defer', async () => {
+    vi.useFakeTimers()
+    try {
+      const harness = makeHarness('2026-10-09')
+      harness.markKeyboardEditing()
+      harness.dateDraft.value = '2025-01-08'
+      // Same macrotask as the keystroke: not yet disarmed.
+      expect(await harness.commitDateChange()).toBeNull()
+      expect(harness.requestContextChange).not.toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(0)
+      // The completed typed value commits through blur/Enter exactly once.
+      harness.dateDraft.value = '2025-12-31'
+      expect(await harness.saveDate()).toBe('2025-12-31')
+      expect(harness.requestContextChange).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('does not commit an invalid or incomplete typed draft', async () => {
     const harness = makeHarness('2026-10-09')
     harness.dateDraft.value = ''

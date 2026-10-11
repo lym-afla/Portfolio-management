@@ -36,6 +36,7 @@ export interface ValuationDateDraftOptions {
 export function useValuationDateDraft(options: ValuationDateDraftOptions) {
   const dateDraft = ref(options.committed.value ?? '')
   const keyboardEditing = ref(false)
+  let armTimer: ReturnType<typeof setTimeout> | null = null
 
   watch(
     () => options.committed.value,
@@ -65,9 +66,22 @@ export function useValuationDateDraft(options: ValuationDateDraftOptions) {
     }
   }
 
-  /** Arm on keydown: the following change is a typed segment edit. */
+  /**
+   * Arm on keydown. A date-input keystroke's input and change events
+   * dispatch inside the keystroke's own task, so the arm expires on the
+   * next macrotask: it covers exactly the change caused by that keystroke
+   * and is gone before any later selection. A boolean arm that only
+   * cleared on a change would stay set after a keydown that produced no
+   * value change (e.g. an ArrowLeft segment move) and would then wrongly
+   * suppress a genuine calendar-picker selection.
+   */
   function markKeyboardEditing(): void {
     keyboardEditing.value = true
+    if (armTimer !== null) clearTimeout(armTimer)
+    armTimer = setTimeout(() => {
+      keyboardEditing.value = false
+      armTimer = null
+    }, 0)
   }
 
   /**
