@@ -1,30 +1,29 @@
-// Absent-data breakdown-row rule (owner: "Portfolio breakdown works. I
-// would hide rows with no data").
+// Absent-data breakdown-row rule (owner round-4 correction).
 //
 // The breakdown endpoint always emits every asset-class row plus the TOTAL
-// row, so classes the portfolio holds nothing in arrive as rows whose every
-// cell carries an absence encoding of this contract: an empty string (the
-// non-applicable cells, e.g. a Cash row's cost/unrealized/realized) or a
-// numeric-zero display ('$0.00', '0.0%', '($0.00)'). Such a row is hidden.
-// A row that carries any real information is kept and every cell renders
-// verbatim — numeric zeros inside a kept row are never blanked, and
-// status-style markers ('N/A', 'N/R', a bare dash) count as meaningful.
-// TOTAL rows are always kept.
+// row. The ONLY contractual absence encoding on this wire is the empty
+// string (a Cash row's non-applicable cost/unrealized/realized cells) and
+// its null/undefined equivalents. Numeric zero — raw or formatted ('$0.00',
+// '0.0%', '($0.00)') — is meaningful data and is never treated as absence:
+// wholly zero-valued rows remain visible, and zeros inside kept rows render
+// verbatim. Status-style markers ('N/A', 'N/R', a bare dash) and any
+// unparseable display count as meaningful. TOTAL rows are never hidden.
+//
+// Wire limitation (documented, not guessed around): the backend currently
+// cannot distinguish "no activity in this class" from "genuine zero
+// activity" — both arrive as all-zero displays — so ambiguous all-zero rows
+// are deliberately PRESERVED until the backend gains an explicit absence
+// marker. On today's wire no real row is fully empty (Cash always carries
+// market_value/commission), so the filter is contract-complete but inert;
+// it becomes active the moment the backend marks absence.
 export const TOTAL_ROW_NAME = 'TOTAL'
 
-// A bare dash is a status marker; signed/currency-wrapped zero displays are
-// absence encodings.
 const STATUS_MARKER = /^(?:n\/?a|n\/r|—|–|-)$/i
-const ZERO_DISPLAY = /^-?\(?\$?\s*0+(?:[.,]0+)*\s*\)?%?$/
 
 export function isAbsentBreakdownCell(value) {
   if (value === null || value === undefined) return true
-  if (typeof value === 'number') return value === 0
-  if (typeof value !== 'string') return false
-  const text = value.trim()
-  if (text === '') return true
-  if (STATUS_MARKER.test(text)) return false
-  return ZERO_DISPLAY.test(text)
+  if (typeof value === 'string') return value.trim() === ''
+  return false
 }
 
 export function isAbsentBreakdownRow(row) {
