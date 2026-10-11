@@ -1072,6 +1072,43 @@ class TestSecurityContractV2:
         )
         assert keys == [f"security:{asset.id}:position:row:{pk}" for pk in transaction_ids]
 
+    def test_bounded_period_position_opening_row_is_a_calendar_date(
+        self, user, asset, account
+    ):
+        """The real-data bond partial-load defect: the v2 opening row was
+        built from a datetime, serializing as "YYYY-MM-DDT00:00:00" — every
+        real-backend bounded-period position document failed the client
+        contract parser (partial-load alert, legacy-only position chart)
+        while the price document settled. Period "All" has no opening row, so
+        the synthetic-only suites never saw it."""
+        Transactions.objects.create(
+            investor=user,
+            account=account,
+            security=asset,
+            currency="USD",
+            type="Buy",
+            date=datetime(2025, 1, 10, 10, tzinfo=timezone.utc),
+            quantity=Decimal("10"),
+            price=Decimal("1"),
+        )
+        modern = call_position_history(user, asset.id, contract=2, period="1Y")
+        assert modern.status_code == 200
+        doc = modern.data["chartV2"]
+        assert doc["outcome"] == "ready"
+        dates = [period["endDate"] for period in doc["periods"]]
+        for value in dates:
+            # Calendar ISO date only: no time component anywhere in the
+            # document's date surface.
+            assert len(value) == 10 and value[4] == "-" and value[7] == "-", value
+        opening = doc["periods"][0]
+        assert opening["key"] == f"security:{asset.id}:position:opening:2025-01-31"
+        assert opening["endDate"] == "2025-01-31"
+        assert opening["interval"]["startDate"] == "2025-01-31"
+        assert opening["interval"]["endDate"] == "2025-01-31"
+        # The legacy array keeps its incumbent wire shape (the opening row's
+        # date stays encoded exactly as the no-contract response emits it).
+        assert modern.data["legacy"][0]["position"] == "10.000000"
+
     def test_empty_security_history_is_empty_outcome(self, user, asset):
         modern = call_price_history(user, asset.id, contract=2)
         assert modern.status_code == 200

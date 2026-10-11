@@ -363,6 +363,20 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
     else chartV2 = c4SecurityDocument(securityId, kind)
     const envelope = { legacy, chartV2 }
     if (scenario === 'legacy') return legacy
+    if (scenario === 'datetime-opening-position' && kind === 'position') {
+      // Faithful synthetic reproduction of the captured real-backend
+      // envelope: the position view built the v2 opening row from a
+      // datetime, so the first period serialized "T00:00:00". The request
+      // scope was NOT the problem — the unfiltered request answers
+      // context.accountIds [] exactly as requested; the date format alone
+      // must be (and is) rejected by the contract parser.
+      const periods = envelope.chartV2.periods
+      const stamp = `${periods[0].endDate}T00:00:00`
+      periods[0].endDate = stamp
+      periods[0].interval.startDate = stamp
+      periods[0].interval.endDate = stamp
+      periods[0].key = periods[0].key.replace(/^(.*:opening:).*$/, `$1${stamp}`)
+    }
     if (scenario === `malformed-${kind}`) envelope.chartV2.version = 3
     if (scenario === `outrange-${kind}`) envelope.chartV2.series[0].points[0].plotValue = '9'.repeat(400)
     if (scenario === 'empty') {

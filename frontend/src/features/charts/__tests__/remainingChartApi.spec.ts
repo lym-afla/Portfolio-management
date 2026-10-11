@@ -394,6 +394,42 @@ describe('fetchSecurityHistory', () => {
     expect(result.capability).toBe('v2')
   })
 
+  it('rejects a position document whose opening row carries a time component (real-data bond defect)', async () => {
+    // The captured real-backend envelope: the position view built the v2
+    // opening row from a datetime, so periods[0] serialized as
+    // "2025-10-09T00:00:00". The contract parser must reject it — this is
+    // exactly why every real bounded-period security page showed the
+    // partial-load alert with a legacy-only position chart while the price
+    // document settled.
+    const envelope = securityEnvelopeWithContext('position')
+    const raw = envelope.chartV2 as Record<string, unknown>
+    const periods = raw.periods as Array<Record<string, unknown>>
+    periods[0].endDate = '2026-01-31T00:00:00'
+    const interval = periods[0].interval as Record<string, unknown>
+    interval.startDate = '2026-01-31T00:00:00'
+    interval.endDate = '2026-01-31T00:00:00'
+    periods[0].key = 'security:9:position:opening:2026-01-31T00:00:00'
+    transport.mockResolvedValue({ data: envelope })
+    const failure = await fetchSecurityHistory(baseQuery, 'position', { signal: new AbortController().signal }).catch((error) => error)
+    expect(failure.name).toBe('ChartContractError')
+    expect(failure.message).toContain('date is invalid: 2026-01-31T00:00:00')
+    expect(transport).toHaveBeenCalledTimes(1)
+  })
+
+  it('accepts the corrected opening row shape the backend now emits', async () => {
+    // The fixed view normalizes the opening row to a calendar date: plain
+    // ISO in the key, endDate and interval — the shape this contract
+    // requires. Nothing about the context checks loosens.
+    const envelope = securityEnvelopeWithContext('position')
+    const raw = envelope.chartV2 as Record<string, unknown>
+    const periods = raw.periods as Array<Record<string, unknown>>
+    periods[0].key = 'security:9:position:opening:2026-01-31'
+    periods[0].endDate = '2026-01-31'
+    transport.mockResolvedValue({ data: envelope })
+    const result = await fetchSecurityHistory(baseQuery, 'position', { signal: new AbortController().signal })
+    expect(result.capability).toBe('v2')
+  })
+
   it('rejects a document answering for a different security identity', async () => {
     const envelope = securityEnvelopeWithContext('price')
     const document = envelope.chartV2 as ChartDocument
