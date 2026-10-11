@@ -245,9 +245,9 @@
                 </td>
               </tr>
               <tr
-                v-for="(item, itemIndex) in portfolioBreakdownData[
-                  `${category}_context`
-                ]"
+                v-for="(item, itemIndex) in visibleBreakdownRows(
+                  portfolioBreakdownData[`${category}_context`]
+                )"
                 :key="`${categoryIndex}-${itemIndex}`"
                 :class="{ 'total-row': item.name === 'TOTAL' }"
               >
@@ -302,6 +302,7 @@ import { snapshotContext } from '@/types/query'
 import WorkspacePage from '@/components/workspace/WorkspacePage.vue'
 import WorkspaceSection from '@/components/workspace/WorkspaceSection.vue'
 import WorkspaceEmptyState from '@/components/workspace/WorkspaceEmptyState.vue'
+import { visibleBreakdownRows } from '@/utils/breakdownRows'
 import {
   accountGroupLabel,
   defaultPeriod,

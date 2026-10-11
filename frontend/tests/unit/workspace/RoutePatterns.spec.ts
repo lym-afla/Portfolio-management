@@ -65,8 +65,22 @@ const performanceFixture = (value: (period: string) => string) => {
   }
 }
 
+const absentBreakdownRow = {
+  name: 'Options',
+  cost: '$0.00', unrealized: '$0.00', unrealized_percent: '0.0%',
+  market_value: '$0.00', portfolio_percent: '0.0%',
+  realized: '$0.00', realized_percent: '0.0%',
+  capital_distribution: '$0.00', capital_distribution_percent: '0.0%',
+  commission: '$0.00', commission_percent: '0.0%',
+  total: '$0.00', total_percent: '0.0%',
+}
+
 const breakdownFixture = {
   consolidated_context: [
+    // The wire always carries every asset-class row; an all-zero row is the
+    // documented "no data" encoding and must not render (owner: "I would
+    // hide rows with no data"). Zeros inside a kept row stay verbatim.
+    absentBreakdownRow,
     { name: 'Stocks', cost: '$10,000.00', unrealized: '$1,000.00', unrealized_percent: '10%', market_value: '$11,000.00', portfolio_percent: '55%', realized: '$0.00', realized_percent: '0%', capital_distribution: '$0.00', capital_distribution_percent: '0%', commission: '($10.00)', commission_percent: '0.1%', total: '$1,000.00', total_percent: '10%' },
     { name: 'TOTAL', cost: '$10,000.00', unrealized: '$1,000.00', unrealized_percent: '10%', market_value: '$11,000.00', portfolio_percent: '55%', realized: '$0.00', realized_percent: '0%', capital_distribution: '$0.00', capital_distribution_percent: '0%', commission: '($10.00)', commission_percent: '0.1%', total: '$1,000.00', total_percent: '10%' },
   ],
@@ -228,6 +242,13 @@ describe('/summary route patterns', () => {
     const breakdownText = wrapper.find('.portfolio-breakdown-table').text()
     expect(breakdownText).toContain('(USD)')
     expect(breakdownText).toContain('$10,000.00')
+    // The all-zero Options row is the documented "no data" encoding and
+    // stays hidden; the kept row's zero cells render verbatim; the TOTAL
+    // row is always present.
+    expect(breakdownText).not.toContain('Options')
+    expect(breakdownText).toContain('Stocks')
+    expect(breakdownText).toContain('TOTAL')
+    expect(breakdownText).toContain('$0.00')
     // Reporting-currency change re-labels the breakdown units.
     await usePortfolioContextStore(pinia).changeContext({
       currency: 'EUR',
