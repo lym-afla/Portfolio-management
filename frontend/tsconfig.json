@@ -18,7 +18,7 @@
     "paths": {
       "@/*": ["./src/*"]
     },
-    "types": ["vite/client"]
+    "types": ["vite/client", "node"]
   },
   "include": [
     "src/**/*",
@@ -27,7 +27,8 @@
     "tests/unit/composables/useWebSocket.spec.ts",
     "tests/unit/features/brokers/connections.spec.ts",
     "tests/unit/features/brokers/forms.spec.ts",
-    "tests/unit/features/securities/detail.spec.ts"
+    "tests/unit/features/securities/detail.spec.ts",
+    "tests/unit/services/importPrices.loopback.spec.ts"
   ],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

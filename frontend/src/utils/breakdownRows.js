@@ -18,7 +18,6 @@
 // it becomes active the moment the backend marks absence.
 export const TOTAL_ROW_NAME = 'TOTAL'
 
-const STATUS_MARKER = /^(?:n\/?a|n\/r|—|–|-)$/i
 
 export function isAbsentBreakdownCell(value) {
   if (value === null || value === undefined) return true
