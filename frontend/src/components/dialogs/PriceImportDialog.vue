@@ -487,7 +487,12 @@ const submitForm = handleSubmit(async (values) => {
     logger.log('Unknown', 'Submitting data:', submitData)
 
     await importPrices(submitData)
-    resetForm()
+    // Only the owning request resets the shared form, and only while the
+    // configuration form is closed: an older import resolving after the
+    // user reopened the form must not erase the draft they are working on.
+    if (!props.modelValue && ownedImportId.value === myImportId) {
+      resetForm()
+    }
   } catch (error) {
     logger.error('Unknown', 'Error importing prices:', error)
     // A superseded request's late failure belongs to no live session: it

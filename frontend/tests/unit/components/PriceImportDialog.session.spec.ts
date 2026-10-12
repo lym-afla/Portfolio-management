@@ -82,7 +82,7 @@ const mountHost = async () => {
   return wrapper
 }
 
-const fillAndSubmit = async (host) => {
+const fillDraft = async (host, { start = '2026-01-01', end = '2026-01-31' } = {}) => {
   const dialog = host.findComponent(PriceImportDialog)
   const autocompletes = dialog.findAllComponents({ name: 'VAutocomplete' })
   const selects = dialog.findAllComponents({ name: 'VSelect' })
@@ -90,8 +90,14 @@ const fillAndSubmit = async (host) => {
   await selects[0].setValue('weekly')
   await autocompletes[0].setValue([42])
   await autocompletes[1].setValue([7])
-  await pickers[0].setValue(new Date('2026-01-01T00:00:00'))
-  await pickers[1].setValue(new Date('2026-01-31T00:00:00'))
+  // Plain ISO strings: Date objects would drift a day through local/UTC
+  // conversions and poison the comparisons.
+  await pickers[0].setValue(start)
+  await pickers[1].setValue(end)
+}
+
+const fillAndSubmit = async (host, options = {}) => {
+  await fillDraft(host, options)
   const submitButton = [...document.body.querySelectorAll('button')]
     .find((b) => ['Import Prices', 'Start Import'].includes(b.textContent?.trim() ?? ''))
   expect(submitButton, 'submit button rendered').toBeTruthy()
@@ -99,6 +105,21 @@ const fillAndSubmit = async (host) => {
   await flushPromises()
   await new Promise((resolve) => setTimeout(resolve, 300))
   await flushPromises()
+}
+
+const dialogDatePickerValues = (host) => {
+  const dialog = host.findComponent(PriceImportDialog)
+  const pickers = dialog.findAllComponents({ name: 'VDatePicker' })
+  return pickers.map((picker) => {
+    const model = picker.props('modelValue')
+    if (Array.isArray(model)) {
+      // resetForm clears date fields to [] — normalize to null so erased
+      // and never-set are comparable.
+      if (model.length === 0) return null
+      return model.length === 0 ? null : model.map(String)
+    }
+    return model === null || model === undefined ? null : String(model)
+  })
 }
 
 const summaryText = () =>
@@ -214,6 +235,40 @@ describe('PriceImportDialog import session across normal submission', () => {
     expect(labelAfter?.textContent).toContain('70%')
     pendingB[0](undefined)
     await flushPromises()
+    host.unmount()
+    document.body.innerHTML = ''
+  })
+
+  it('an older import resolving successfully cannot erase the reopened configuration draft', async () => {
+    // Import A hangs; the user reopens the configuration form and enters a
+    // fresh distinct draft (not yet submitted); A then resolves
+    // successfully. A's post-await resetForm must not erase the visible
+    // draft the user is working on.
+    let releaseA
+    api.importPrices.mockImplementationOnce(() => new Promise((resolve) => {
+      releaseA = resolve
+    }))
+    const host = await mountHost(Host)
+    await fillAndSubmit(host) // import A in flight, config closed
+    const exposed = host.vm.$.exposed as unknown as { reopen: () => void }
+    exposed.reopen()
+    await flushPromises()
+    // A distinct new draft, entered but NOT submitted.
+    await fillDraft(host, { start: '2026-02-01', end: '2026-02-15' })
+    expect(api.importPrices).toHaveBeenCalledTimes(1)
+
+    // A resolves successfully while the fresh draft sits in the open form.
+    releaseA(undefined)
+    await flushPromises()
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    await flushPromises()
+
+    const values = dialogDatePickerValues(host)
+    expect(values[0]).toContain('2026-02-01')
+    expect(values[1]).toContain('2026-02-15')
+    // A had no completion event: no summary, no refresh.
+    const exposedState = (host.vm.$.exposed as unknown as { state: () => { refreshes: number } }).state()
+    expect(exposedState.refreshes).toBe(0)
     host.unmount()
     document.body.innerHTML = ''
   })
