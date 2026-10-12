@@ -33,13 +33,32 @@ export async function runRoute({ appOrigin, authenticated, route, session, viewp
     log,
     session,
   })
-  await runAgentBrowser({
-    args: ['wait', '250'],
-    context: `${context} settle`,
-    initScript,
-    log,
-    session,
-  })
+  // Readiness: wait for the SPA to actually mount instead of a fixed
+  // settle. A fixed 250 ms raced the first mount on slow sessions and the
+  // probe then asserted an empty body (observed: mobile /profile probed
+  // bodyTextLength 0 with everything else healthy). The bounded condition
+  // is exactly the probe's own mount predicate.
+  const settleStarted = Date.now()
+  let mounted = false
+  while (Date.now() - settleStarted < 10000) {
+    const readiness = await runAgentBrowser({
+      args: ['eval', `({ appChildren: document.querySelector('#app')?.childElementCount ?? 0, bodyTextLength: document.body.innerText.length })`],
+      context: `${context} readiness`,
+      initScript,
+      log,
+      session,
+    })
+    if ((readiness.result?.appChildren ?? 0) > 0 && (readiness.result?.bodyTextLength ?? 0) > 0) {
+      mounted = true
+      break
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250))
+  }
+  if (!mounted) {
+    // Fall through to the probe below, which fails with its full
+    // diagnostic — the same assertion, now awaited instead of blind.
+    console.log(`[route-probe] ${context}: mount readiness not reached in 10s; probing for the diagnostic`)
+  }
 
   if (viewport.zoom !== 1) {
     await runAgentBrowser({
