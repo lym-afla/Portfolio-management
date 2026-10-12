@@ -62,25 +62,34 @@ Absent-data breakdown-row behavior — **implemented** (commit `8120bc9c`): the 
 - **Breakdown filtering corrected — numeric zero is data** (`d75da0b0`): only contractually absent cells (empty string, null/undefined) are absence; wholly zero-valued rows stay visible; the earlier formatted-zero-as-absence rule (and its tests) is withdrawn. Wire limitation documented rather than guessed around: the backend cannot yet distinguish "no activity" from "genuine zero" (both arrive as all-zero displays), so ambiguous rows are preserved; the filter is contract-complete but inert until the backend marks absence explicitly.
 - **The loopback transport spec is actually type-checked** (`47276c1d` + `cb38aef1`'s exclusion corrected): it sits in the main tsconfig's explicit test include with the `@types/node` dev dependency (`node` added to the project types for its http/Buffer surface); the reliability project stays scoped to the platform files with a corrected comment.
 - **The browser import e2e — unblocked, root cause found, no longer environment-blocked** (`ef4f8abd`): the minimal faithful reproduction (`transport-repro.mjs`, clean two-server probe matrix, standalone-runnable, also `--fixture` against the real fixture server) proved the wire is fine and exposed the real cause: the committed fixture had NO handler for the SSE POST (the Task-4 branch existed only uncommitted), and for a preflighted request to an unfixtured path the preflight's `access-control-request-method` reaches `resolveFixture` as POST, which throws and 501s the PREFLIGHT — Chrome then never sends the real request (the identical simple POST always worked, which is what made it look environmental). Fixes: the committed `priceImportFlow` fixture mode (form structure + scripted SSE scenarios), and a catch-all CORS preflight responder placed after every family's recording branches but before `resolveFixture`. The revived `imports-prices` browser case passes all four phases over the real axios SSE wire (exact [7, 11] payload, live readable label, summary, no-eligible info result, provider-error surface, transport-abort surface) — two consecutive greens.
+
+### Round 5 (owner review) — success-path reset guard and D8 acceptance closed
+
+- **Success-path reset guard** (`2bc38ee3`): submitForm's post-await `resetForm()` was unconditional, so an older import resolving after the user reopened the configuration form erased the fresh draft they were working on (restoring the older import's own submitted values). The ownership check alone cannot protect this case — the older import is still the current session until something supersedes it — so the reset now also requires the configuration dialog to be closed. RED-first parent-controlled regression: reopen, enter a distinct draft WITHOUT submitting, resolve the older import successfully, assert every new field remains unchanged (the unconditional reset nulled the draft's dates). Draft values use plain ISO strings end to end — Date objects drifted a day through local/UTC conversions and poisoned the first comparison. The stale-rejection and newer-import-progress regressions are retained.
+- **final-qa-d8 acceptance — CLOSED with a clean committed-head run** (`bd109229`). The earlier intermittent failures were investigated at their specific conditions: the acceptance run on the corrected head first failed once at `mobile /profile` with `bodyTextLength: 0` — the route probe navigated, waited a FIXED 250 ms, and asserted the rendered page blind; on a slow first mount the SPA had produced no body text when the assertion fired. Focused harness fix: the probe's own mount predicate (`#app` has children AND body has text) became a bounded 10 s readiness wait before probing — the same assertion awaited instead of blind, no retries, no timeout increase; an unreadied probe still falls through to the original full diagnostic. With that fix the D8 acceptance PASSED CLEAN on the fully committed head: 90 default-on probes, 37 workflows, 3 rollback spot-checks, 0 failures (128 PASS assertions), and the full route matrix re-ran 18x4 with zero failures through the same probe.
 - **Provider-error surface defect fixed** (`ef4f8abd`): a stream `error` event set `generalError`, but the ProgressDialog binding never received it — stream errors rendered nowhere and the import looked hung. The error prop is wired, and a failed stream keeps the progress dialog open with its readable error alert (closed by the dialog's own Close action) instead of the submit finally closing it out.
 
 ## Gates (actual exit codes, final head `cb38aef1` unless noted)
 
 | Gate | Result | Exit |
 |---|---|---|
-| `npx vitest run --no-file-parallelism` (serialized) | 108 files / **1072 passed** | 0 |
-| `npm run type-check` / `:reliability` / `:charts` (the loopback spec now main-project type-checked) | clean | 0 / 0 / 0 |
+| `npx vitest run --no-file-parallelism` (serialized) | 108 files / **1073 passed** | 0 |
+| `npm run type-check` / `:reliability` / `:charts` (the loopback spec main-project type-checked) | clean | 0 / 0 / 0 |
 | `npm run lint` | clean | 0 |
 | `npm run api:types:check` | match | 0 |
 | `npm run build` | ok | 0 |
 | browser `dates` (typed commit, reconciliation, guard edge, blur, real picker) | PASS | 0 |
 | browser `charts-c4` (incl. the datetime-opening mounted-page phase) | PASS | 0 |
 | browser `imports-d6` | PASS | 0 |
-| browser **`imports-prices`** (real axios SSE wire: payload, live label, summary, no-eligible, provider error, transport abort) | PASS — two consecutive greens | 0 |
-| browser full route matrix (18 routes x 4 viewports) | `routeFailures: []`, `fixtureMismatches: []` | 0 |
+| browser **`imports-prices`** (real axios SSE wire: payload, live label, summary, no-eligible, provider error, transport abort) | PASS — consecutive greens | 0 |
+| browser full route matrix (18 routes x 4 viewports, through the readiness-aware probe) | `routeFailures: []`, `fixtureMismatches: []` | 0 |
 | browser `delivery` | PASS | 0 |
-| browser `final-qa-d8` (integrated default-on acceptance) | **UNRESOLVED — see below** | 1 |
+| browser **`final-qa-d8`** (integrated default-on acceptance, on the committed head) | **PASS — 90 probes, 37 workflows, 3 rollback spot-checks, 0 failures** | 0 |
 | backend `uv run python -m pytest` (full suite) | **1399 passed / 10 skipped**, coverage 83.55% | 0 |
+
+### final-qa-d8 — RESOLVED
+
+The acceptance is CLOSED by a clean committed-head run after a focused harness fix. History, recorded in full: three earlier runs on pre-round-4 heads failed with shifting timing-sensitive sets (7/7/1 — dialogs-keyboard focus misses, a d7-desktop 15s timeout, a settings-error state); the base, midpoint and parent commits passed clean with built apps identical to the failing heads', which localized the cause to harness timing rather than application code. The acceptance run on the corrected head then failed ONCE at mobile /profile with `bodyTextLength: 0`, exposing the concrete defect: the route probe asserted its mount predicate blind after a fixed 250 ms settle. The probe now awaits that predicate (bounded 10 s, same assertion) before probing, and the acceptance passed clean (0 failures; the full route matrix re-ran 0 through the same probe). Backend ran once during this round (1399/10 at 83.57%) and once at the final head (1399/10 at 83.55%) — both exit 0.
 
 ### final-qa-d8 — EXPLICITLY UNRESOLVED
 
@@ -94,4 +103,4 @@ Earlier recorded flakes: two full-unit attempts lost canvas-heavy chart specs to
 
 ## Boundaries
 
-Phase B–D not started. Task 2's breakdown filtering and Task 3's acceptance items are complete at every tooling level except the explicitly unresolved final-qa-d8 harness run. Chart.js retained. C5b implementation and removal not started; the owner's acceptance of the release-validation cycle remains the gate. No merge, deploy, production mutation, or real data committed (all real-data reproduction used the disposable copy; no real values, screenshots or tokens committed). The transport-repro diagnostic (clean-server + fixture modes) is committed for future harness investigations.
+Phase B–D not started. Task 2's breakdown filtering and Task 3's acceptance items are complete; the integrated final-qa-d8 acceptance passed clean on the final committed head. Chart.js retained. C5b implementation and removal not started; the owner's acceptance of the release-validation cycle remains the gate. No merge, deploy, production mutation, or real data committed (all real-data reproduction used the disposable copy; no real values, screenshots or tokens committed). The transport-repro diagnostic (clean-server + fixture modes) is committed for future harness investigations.
