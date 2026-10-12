@@ -42,6 +42,8 @@
                         density="compact"
                         hide-details
                         :disabled="!context.canRead"
+                        @keydown="markKeyboardEditing"
+                        @change="commitDateChange"
                         @blur="saveDate"
                         @keydown.enter.prevent="saveDate"
                       />
@@ -167,6 +169,7 @@ import Navigation from './components/Navigation.vue'
 import AccountSelection from './components/AccountSelection.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
 import WorkspaceContextStrip from './components/workspace/WorkspaceContextStrip.vue'
+import { useValuationDateDraft } from './composables/useValuationDateDraft'
 import { toContextPatch } from './components/workspace/contextIntent'
 import { useWorkspaceContextView } from './components/workspace/useWorkspaceContextView'
 import { committedAccountLabel } from './utils/accountUtils'
@@ -179,27 +182,18 @@ import { snackbarTimeout } from '@/utils/snackbarTimeout'
 const context = usePortfolioContextStore()
 const preferences = ref<InstanceType<typeof SettingsDialog> | null>(null)
 const pendingLabel = ref<string | null>(null)
-const dateDraft = ref(context.committed.effectiveCurrentDate ?? '')
-watch(
-  () => context.committed.effectiveCurrentDate,
-  (date) => {
-    dateDraft.value = date ?? ''
-  }
-)
-async function saveDate() {
-  if (
-    !context.canRead ||
-    dateDraft.value === context.committed.effectiveCurrentDate
-  )
-    return
-  try {
-    await requestContextChange({ effectiveCurrentDate: dateDraft.value })
-  } catch {
-    /* Committed context and transition error remain authoritative. */
-  } finally {
-    dateDraft.value = context.committed.effectiveCurrentDate ?? ''
-  }
-}
+// The valuation date commits through the shared context-change owner exactly
+// once per accepted change. The native date input fires `change` on every
+// segment edit, so keyboard interaction arms a guard: typed intermediate
+// dates defer to the blur/Enter commit, while a calendar-picker selection
+// (no keydown) commits immediately. Invalid or incomplete drafts never
+// commit; a rejected update restores the committed date.
+const { dateDraft, saveDate, markKeyboardEditing, commitDateChange } =
+  useValuationDateDraft({
+    committed: computed(() => context.committed.effectiveCurrentDate),
+    canRead: () => context.canRead,
+    requestContextChange,
+  })
 function accountLabel(selection: typeof context.committed.accountSelection) {
   return committedAccountLabel(context.accountOptions, selection)
 }

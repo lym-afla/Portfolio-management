@@ -232,10 +232,16 @@ def api_get_security_position_history(request, security_id):
         )
         v2_rows = []
         if contract_version is not None and start_date:
+            # The contract carries calendar dates: a datetime here serializes
+            # as "YYYY-MM-DDT00:00:00", which the client parser correctly
+            # rejects as an invalid chart period (every bounded-period
+            # position document failed with the partial-load alert on real
+            # data). The legacy array keeps its incumbent wire untouched.
+            opening_date = start_date.date() if isinstance(start_date, datetime) else start_date
             v2_rows.append(
                 (
-                    f"security:{security.id}:position:opening:{start_date.isoformat()}",
-                    start_date,
+                    f"security:{security.id}:position:opening:{opening_date.isoformat()}",
+                    opening_date,
                     current_position,
                 )
             )

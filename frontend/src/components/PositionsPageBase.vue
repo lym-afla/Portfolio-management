@@ -640,11 +640,17 @@ const retryFailedResources = () => {
   if (positionsQuery.error.value) fetchData()
   if (yearsQuery.error.value) fetchYearOptions()
 }
-watch(yearsQuery.data, (years) => {
-  yearOptions.value = [
-    { text: 'YTD', value: 'ytd' }, { text: 'All time', value: 'all_time' },
-    ...(years ?? []).map((year) => ({ text: String(year), value: year })),
-  ]
+watch(yearsQuery.data, (options) => {
+  // The server list is authoritative (numeric years plus its own All-time/
+  // YTD entries and dividers). The special values map to the local timespan
+  // values; calendar years keep their numeric value for the query builder.
+  yearOptions.value = (options ?? []).map((option) =>
+    option.divider
+      ? { divider: true, text: '', value: '' }
+      : {
+          text: option.value === 'ytd' ? 'YTD' : option.value === 'all_time' ? 'All time' : option.text,
+          value: option.value === 'ytd' || option.value === 'all_time' ? option.value : Number(option.value),
+        })
 }, { flush: 'sync' })
 
 watch(

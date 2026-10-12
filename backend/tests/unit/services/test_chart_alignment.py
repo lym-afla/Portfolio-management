@@ -77,7 +77,25 @@ def test_multiple_categories_align_independently():
     ]
 
 
+@pytest.mark.django_db
 def test_full_nav_loader_passes_original_sample_index_without_changing_irr_calls(monkeypatch):
+    # The authoritative inception floor reads the scope's earliest
+    # transaction on every request; seed it so the pinned window samples.
+    from datetime import datetime as dt, timezone as tz
+    from common.models import Accounts, Brokers, Transactions
+    from django.contrib.auth import get_user_model
+
+    owner = get_user_model().objects.create(username="align-fixture")
+    broker = Brokers.objects.create(investor=owner, name="B", country="US")
+    aligned_account = Accounts.objects.create(broker=broker, name="Aligned")
+    Transactions.objects.create(
+        investor=owner,
+        account=aligned_account,
+        type="Cash in",
+        currency="USD",
+        date=dt(2026, 1, 1, 12, tzinfo=tz.utc),
+        cash_flow=Decimal("1000"),
+    )
     dates = [date(2026, 1, day) for day in [1, 2, 3]]
     values = [
         {"Total NAV": Decimal("1000"), "asset_type": {"Equity": Decimal("1000")}},
@@ -95,7 +113,7 @@ def test_full_nav_loader_passes_original_sample_index_without_changing_irr_calls
         return Decimal("0.1000") if "start_date" not in kwargs else Decimal("0.0200")
 
     monkeypatch.setattr(charts, "IRR", irr)
-    chart = charts.get_nav_chart_data(1, (2,), "D", dates[0], dates[-1], "USD", "asset_type")
+    chart = charts.get_nav_chart_data(owner.id, (aligned_account.id,), "D", dates[0], dates[-1], "USD", "asset_type")
     assert chart["labels"] == ["01-Jan-26", "02-Jan-26", "03-Jan-26"]
     assert chart["datasets"][0]["data"] == [Decimal("1"), None, Decimal("3")]
     assert [series["data"] for series in chart["datasets"][-2:]] == [

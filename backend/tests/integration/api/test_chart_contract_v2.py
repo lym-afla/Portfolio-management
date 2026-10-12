@@ -95,6 +95,152 @@ def call_position_history(user, security_id, contract=None, period="All", effect
     return database_views.api_get_security_position_history(request, security_id)
 
 
+class TestNavInceptionFloor:
+    """Task 1 (real-data corrections): the authoritative effective start is
+    the LATER of the requested From and the selected scope's canonical
+    inception (earliest transaction date). All-time uses that inception. An
+    inception after the effective end is an honest empty outcome.
+    Zero-valued observations after inception are retained."""
+
+    def _seed_inception(self, user, account):
+        Transactions.objects.create(
+            investor=user,
+            account=account,
+            type="Cash in",
+            currency="USD",
+            date=datetime(2019, 6, 30, 12, tzinfo=timezone.utc),
+            cash_flow=Decimal("100000"),
+        )
+
+    def test_requested_from_before_inception_floors_at_canonical_inception(self, user, account, monkeypatch):
+        self._seed_inception(user, account)
+        pin_chart(monkeypatch, {})
+        response = call_nav_chart(user, date_from="2000-01-31", date_to="2026-06-30", contract=2)
+        assert response.status_code == 200
+        doc = response.data["chartV2"]
+        assert doc["outcome"] == "ready"
+        end_dates = [p["endDate"] for p in doc["periods"]]
+        assert end_dates, "no periods sampled"
+        assert min(end_dates) >= "2019-06-30"
+        metrics = {s["metric"] for s in doc["series"]}
+        assert {"nav", "irr_inception", "irr_interval"} <= metrics
+
+    def test_all_time_uses_canonical_inception(self, user, account, monkeypatch):
+        self._seed_inception(user, account)
+        pin_chart(monkeypatch, {})
+        response = call_nav_chart(user, date_from=None, date_to="2026-06-30", contract=2)
+        assert response.status_code == 200
+        doc = response.data["chartV2"]
+        end_dates = [p["endDate"] for p in doc["periods"]]
+        assert end_dates, "no periods sampled"
+        assert min(end_dates) >= "2019-06-30"
+
+    def test_inception_after_effective_end_is_honest_empty(self, user, account):
+        self._seed_inception(user, account)  # canonical inception 2019-06-30
+        response = call_nav_chart(user, date_from="2019-01-31", date_to="2019-05-31", contract=2)
+        assert response.status_code == 200
+        body = response.data
+        assert body.get("empty") is True
+        assert body["chartV2"]["outcome"] == "empty"
+
+    def test_empty_scope_with_explicit_from_is_honest_empty(self, user, account):
+        # No transactions at all: an explicit From cannot create data.
+        response = call_nav_chart(user, date_from="2000-01-31", date_to="2026-06-30", contract=2)
+        assert response.status_code == 200
+        body = response.data
+        assert body.get("empty") is True
+        assert body["chartV2"]["outcome"] == "empty"
+
+    def test_inception_floor_is_isolated_per_account_scope(self, user, account, account_uk, monkeypatch):
+        # Two scopes share the user: each scope's own inception applies. The
+        # UK account's inception (2021) is later than the base account's
+        # (2019), so flooring the UK scope must not sample 2019-2020.
+        Transactions.objects.create(
+            investor=user, account=account, type="Cash in", currency="USD",
+            date=datetime(2019, 6, 30, 12, tzinfo=timezone.utc),
+            cash_flow=Decimal("100000"),
+        )
+        Transactions.objects.create(
+            investor=user, account=account_uk, type="Cash in", currency="GBP",
+            date=datetime(2021, 3, 31, 12, tzinfo=timezone.utc),
+            cash_flow=Decimal("50000"),
+        )
+        pin_chart(monkeypatch, {})
+        response = call_nav_chart(user, date_from="2000-01-31", date_to="2026-06-30", contract=2)
+        doc = response.data["chartV2"]
+        end_dates = [p["endDate"] for p in doc["periods"]]
+        assert end_dates and min(end_dates) >= "2019-06-30"
+
+        # The account-scoped request floors at ITS OWN inception.
+        from dashboard import views as dashboard_views
+        from rest_framework.test import APIRequestFactory, force_authenticate
+        scoped_request = APIRequestFactory().get(
+            "/dashboard/api/get-nav-chart-data/",
+            {"breakdown": "none", "frequency": "M", "dateFrom": "2000-01-31", "dateTo": "2026-06-30", "chart_contract": "2", "account": str(account_uk.id)},
+        )
+        scoped_request.effective_current_date = "2026-06-30"
+        force_authenticate(scoped_request, user=user)
+        # The view resolves the scope from the committed selection; emulate the
+        # single-account selection the header produces for this account.
+        user.selected_account_type = "account"
+        user.selected_account_id = account_uk.id
+        user.save()
+        scoped_response = dashboard_views.api_nav_chart_data(scoped_request)
+        assert scoped_response.status_code == 200
+        scoped_doc = scoped_response.data["chartV2"]
+        scoped_end_dates = [p["endDate"] for p in scoped_doc["periods"]]
+        assert scoped_end_dates and min(scoped_end_dates) >= "2021-03-31"
+
+    def test_cash_only_inception_bounds_the_window(self, user, account, monkeypatch):
+        # A cash-only scope's inception is its only transaction; the window
+        # starts there and the single sample carries the cash value.
+        Transactions.objects.create(
+            investor=user, account=account, type="Cash in", currency="USD",
+            date=datetime(2019, 6, 30, 12, tzinfo=timezone.utc),
+            cash_flow=Decimal("75000"),
+        )
+        sample_dates = charts._chart_dates(date(2019, 6, 30), date(2026, 6, 30), "M")
+        pin_chart(monkeypatch, {sample_dates[0]: Decimal("75000")})
+        response = call_nav_chart(user, date_from="2000-01-31", date_to="2026-06-30", contract=2)
+        doc = response.data["chartV2"]
+        end_dates = [p["endDate"] for p in doc["periods"]]
+        assert end_dates and min(end_dates) >= "2019-06-30"
+        nav = next(s for s in doc["series"] if s["metric"] == "nav")
+        assert nav["points"][0]["value"] == "75000"
+
+    def test_both_irr_semantics_survive_the_inception_floor(self, user, account, monkeypatch):
+        self._seed_inception(user, account)
+        pin_chart(monkeypatch, {})
+        response = call_nav_chart(user, date_from="2000-01-31", date_to="2026-06-30", contract=2)
+        doc = response.data["chartV2"]
+        irr = {s["metric"]: s for s in doc["series"]}
+        # Interval semantics live on the periods: the floored window's first
+        # period is inception-kind starting AT the canonical inception (never
+        # at the requested-but-floored 2000-01-31), and every later period is
+        # a sample interval starting after it.
+        periods = doc["periods"]
+        assert periods[0]["interval"] == {
+            "startDate": None,
+            "endDate": "2019-06-30",
+            "kind": "inception",
+        }
+        assert all(p["interval"]["startDate"] >= "2019-06-30" for p in periods[1:])
+        assert all(p["interval"]["kind"] == "sample_interval" for p in periods[1:])
+
+    def test_zero_valued_observations_after_inception_are_retained(self, user, account, monkeypatch):
+        self._seed_inception(user, account)
+        sample_dates = charts._chart_dates(date(2019, 6, 30), date(2026, 6, 30), "M")
+        pin_chart(
+            monkeypatch,
+            {sample_dates[0]: Decimal("0"), sample_dates[1]: Decimal("5000000")},
+        )
+        response = call_nav_chart(user, date_from="2019-06-30", date_to="2026-06-30", contract=2)
+        doc = response.data["chartV2"]
+        nav = next(s for s in doc["series"] if s["metric"] == "nav")
+        assert nav["points"][0]["value"] == "0"
+        assert nav["points"][1]["value"] == "5000000"
+
+
 def series_by_metric(doc):
     return {s["metric"]: s for s in doc["series"]}
 
@@ -105,7 +251,21 @@ def series_by_metric(doc):
 
 
 class TestNavContractV2:
+    def _seed_inception(self, user, account):
+        # The inception floor makes an empty scope honestly empty; seed the
+        # canonical inception so the parity/units/format contracts keep a
+        # non-empty sampled window.
+        Transactions.objects.create(
+            investor=user,
+            account=account,
+            type="Cash in",
+            currency="USD",
+            date=datetime(2025, 11, 15, 12, tzinfo=timezone.utc),
+            cash_flow=Decimal("50000"),
+        )
+
     def test_v2_keeps_legacy_keys_and_exposes_exact_raw_values(self, user, account, monkeypatch):
+        self._seed_inception(user, account)
         user.digits = 2
         user.save()
         pin_chart(monkeypatch, {date(2026, 1, 31): Decimal("100000")})
@@ -165,6 +325,16 @@ class TestNavContractV2:
     def test_intervals_use_sample_boundaries_and_flag_partial_calendar_buckets(
         self, user, account, monkeypatch
     ):
+        # The seeded inception (2025-12-31) precedes the requested From, so
+        # the inception floor does not move the window.
+        Transactions.objects.create(
+            investor=user,
+            account=account,
+            type="Cash in",
+            currency="USD",
+            date=datetime(2025, 12, 31, 12, tzinfo=timezone.utc),
+            cash_flow=Decimal("100000"),
+        )
         values = {
             date(2026, 1, 31): Decimal("100000"),
             date(2026, 2, 28): Decimal("110000"),
@@ -285,6 +455,15 @@ class TestNavContractV2:
     ):
         first = make_account(user, name="Alpha", broker_name="B1")
         second = make_account(user, name="Alpha", broker_name="B2")
+        # Seed the canonical inception so the scope is not honestly empty.
+        Transactions.objects.create(
+            investor=user,
+            account=first,
+            type="Cash in",
+            currency="USD",
+            date=datetime(2026, 1, 15, 12, tzinfo=timezone.utc),
+            cash_flow=Decimal("100000"),
+        )
 
         def pinned_nav(uid, ids, day, cur, breakdown=(), diagnostics=None):
             return {"Total NAV": Decimal("100000"), "account": {"Alpha": Decimal("100000")}}
@@ -333,6 +512,8 @@ class TestNavContractV2:
     def test_unknown_category_code_fails_v2_but_keeps_legacy_bar(
         self, user, account, monkeypatch
     ):
+        self._seed_inception(user, account)
+
         def pinned_nav(uid, ids, day, cur, breakdown=(), diagnostics=None):
             return {"Total NAV": Decimal("100000"), "asset_type": {"Mystery": Decimal("1")}}
 
@@ -351,6 +532,7 @@ class TestNavContractV2:
     def test_omitted_valuation_marks_partial_and_known_subtotal(
         self, user, account, monkeypatch
     ):
+        self._seed_inception(user, account)
         omission = [{
             "reason": "missing_price",
             "account_id": account.id,
@@ -403,6 +585,8 @@ class TestNavContractV2:
     def test_crypto_bucket_excluded_from_breakdown_is_nonpartitioning(
         self, user, account, monkeypatch
     ):
+        self._seed_inception(user, account)
+
         def pinned_nav(uid, ids, day, cur, breakdown=(), diagnostics=None):
             return {
                 "Total NAV": Decimal("150000"),
@@ -444,12 +628,15 @@ class TestNavContractV2:
             date(2026, 1, 31): Decimal("90000"),
             date(2026, 2, 28): Decimal("110000"),
         }
+        # The seeded cash-in predates the requested window: with the Task-1
+        # inception floor, the scope's canonical inception must precede the
+        # requested From for the requested pre-inception sample to exist.
         Transactions.objects.create(
             investor=user,
             account=account,
             type="Cash in",
             currency="USD",
-            date=datetime(2026, 2, 5, 12, tzinfo=timezone.utc),
+            date=datetime(2026, 1, 5, 12, tzinfo=timezone.utc),
             cash_flow=Decimal("100"),
         )
 
@@ -483,8 +670,10 @@ class TestNavContractV2:
         # (sample 0 via its own terminal value, sample 1 via the opening).
         assert series["return"]["points"][0]["status"] == "partial"
         assert series["return"]["points"][1]["status"] == "partial"
-        # The cash-flow storage scale (9dp) carries through the subtraction.
-        assert series["return"]["points"][1]["knownSubtotal"] == "19900.000000000"
+        # The seeded cash-in sits inside the FIRST sample's interval, so the
+        # Feb return carries no in-interval contribution: the known subtotal
+        # is the opening partial value alone.
+        assert series["return"]["points"][1]["knownSubtotal"] == "20000"
         assert series["return"]["points"][1]["reason"] == "missing_price"
 
         # Since-inception IRR depends only on the terminal value.
@@ -882,6 +1071,43 @@ class TestSecurityContractV2:
             )
         )
         assert keys == [f"security:{asset.id}:position:row:{pk}" for pk in transaction_ids]
+
+    def test_bounded_period_position_opening_row_is_a_calendar_date(
+        self, user, asset, account
+    ):
+        """The real-data bond partial-load defect: the v2 opening row was
+        built from a datetime, serializing as "YYYY-MM-DDT00:00:00" — every
+        real-backend bounded-period position document failed the client
+        contract parser (partial-load alert, legacy-only position chart)
+        while the price document settled. Period "All" has no opening row, so
+        the synthetic-only suites never saw it."""
+        Transactions.objects.create(
+            investor=user,
+            account=account,
+            security=asset,
+            currency="USD",
+            type="Buy",
+            date=datetime(2025, 1, 10, 10, tzinfo=timezone.utc),
+            quantity=Decimal("10"),
+            price=Decimal("1"),
+        )
+        modern = call_position_history(user, asset.id, contract=2, period="1Y")
+        assert modern.status_code == 200
+        doc = modern.data["chartV2"]
+        assert doc["outcome"] == "ready"
+        dates = [period["endDate"] for period in doc["periods"]]
+        for value in dates:
+            # Calendar ISO date only: no time component anywhere in the
+            # document's date surface.
+            assert len(value) == 10 and value[4] == "-" and value[7] == "-", value
+        opening = doc["periods"][0]
+        assert opening["key"] == f"security:{asset.id}:position:opening:2025-01-31"
+        assert opening["endDate"] == "2025-01-31"
+        assert opening["interval"]["startDate"] == "2025-01-31"
+        assert opening["interval"]["endDate"] == "2025-01-31"
+        # The legacy array keeps its incumbent wire shape (the opening row's
+        # date stays encoded exactly as the no-contract response emits it).
+        assert modern.data["legacy"][0]["position"] == "10.000000"
 
     def test_empty_security_history_is_empty_outcome(self, user, asset):
         modern = call_price_history(user, asset.id, contract=2)

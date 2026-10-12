@@ -18,7 +18,11 @@ const api = vi.hoisted(() => ({
   getPortfolioBreakdownSummary: vi.fn(),
   getYearOptions: vi.fn(),
 }))
-vi.mock('@/services/api', () => api)
+vi.mock('@/services/api', async (importOriginal) => ({
+  ...((await importOriginal()) as Record<string, unknown>),
+  ...api,
+  calendarYearOptions: (await importOriginal()).calendarYearOptions,
+}))
 
 const vuetify = createVuetify({ components, directives })
 
@@ -61,8 +65,24 @@ const performanceFixture = (value: (period: string) => string) => {
   }
 }
 
+const ambiguousZeroRow = {
+  name: 'Options',
+  cost: '$0.00', unrealized: '$0.00', unrealized_percent: '0.0%',
+  market_value: '$0.00', portfolio_percent: '0.0%',
+  realized: '$0.00', realized_percent: '0.0%',
+  capital_distribution: '$0.00', capital_distribution_percent: '0.0%',
+  commission: '$0.00', commission_percent: '0.0%',
+  total: '$0.00', total_percent: '0.0%',
+}
+
 const breakdownFixture = {
   consolidated_context: [
+    // The wire always carries every asset-class row. An all-zero row is
+    // AMBIGUOUS on this wire ("no activity" vs "genuine zero" are
+    // indistinguishable), so it is preserved and rendered — numeric zero is
+    // data (owner round-4 correction). Only a contractually absent row
+    // (every cell an empty string) would hide.
+    ambiguousZeroRow,
     { name: 'Stocks', cost: '$10,000.00', unrealized: '$1,000.00', unrealized_percent: '10%', market_value: '$11,000.00', portfolio_percent: '55%', realized: '$0.00', realized_percent: '0%', capital_distribution: '$0.00', capital_distribution_percent: '0%', commission: '($10.00)', commission_percent: '0.1%', total: '$1,000.00', total_percent: '10%' },
     { name: 'TOTAL', cost: '$10,000.00', unrealized: '$1,000.00', unrealized_percent: '10%', market_value: '$11,000.00', portfolio_percent: '55%', realized: '$0.00', realized_percent: '0%', capital_distribution: '$0.00', capital_distribution_percent: '0%', commission: '($10.00)', commission_percent: '0.1%', total: '$1,000.00', total_percent: '10%' },
   ],
@@ -97,7 +117,7 @@ beforeEach(() => {
     performanceFixture(() => '$10,000.00'),
   )
   api.getPortfolioBreakdownSummary.mockResolvedValue(breakdownFixture)
-  api.getYearOptions.mockResolvedValue([2026])
+  api.getYearOptions.mockResolvedValue([{ text: '2026', value: '2026' }])
 })
 
 describe('/summary route patterns', () => {
@@ -224,6 +244,13 @@ describe('/summary route patterns', () => {
     const breakdownText = wrapper.find('.portfolio-breakdown-table').text()
     expect(breakdownText).toContain('(USD)')
     expect(breakdownText).toContain('$10,000.00')
+    // The all-zero Options row is ambiguous on this wire and renders; the
+    // kept row's zero cells render verbatim; the TOTAL row is always
+    // present.
+    expect(breakdownText).toContain('Options')
+    expect(breakdownText).toContain('Stocks')
+    expect(breakdownText).toContain('TOTAL')
+    expect(breakdownText).toContain('$0.00')
     // Reporting-currency change re-labels the breakdown units.
     await usePortfolioContextStore(pinia).changeContext({
       currency: 'EUR',

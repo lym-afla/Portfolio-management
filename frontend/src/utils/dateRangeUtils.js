@@ -42,10 +42,16 @@ export function calculateDateRange(
     case 'all_time':
       fromDate = null
       break
-    case 'custom':
-      fromDate = customFrom ? parseISO(customFrom) : null
-      toDate = customTo ? parseISO(customTo) : effectiveDate
+    case 'custom': {
+      // The valuation date bounds the charted range: persisted custom bounds
+      // later than the committed effective date clamp to it (From included,
+      // otherwise the range would start after the whole valuation window).
+      const customToDate = customTo && parseISO(customTo) < effectiveDate ? parseISO(customTo) : effectiveDate
+      const customFromDate = customFrom && parseISO(customFrom) < effectiveDate ? parseISO(customFrom) : effectiveDate
+      fromDate = customFromDate
+      toDate = customToDate
       break
+    }
   }
 
   return {

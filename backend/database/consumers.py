@@ -31,6 +31,7 @@ from services.importer import (
     import_security_prices_from_tbank,
     import_security_prices_from_yahoo,
 )
+from services.positions import position as calculate_position
 
 logger = logging.getLogger(__name__)
 
@@ -443,10 +444,11 @@ class PriceImportConsumer(AsyncHttpConsumer):
                 securities = [
                     security
                     for security in securities
-                    if await database_sync_to_async(security.position)(
+                    if await database_sync_to_async(calculate_position)(
+                        security,
                         effective_current_date,
                         user,
-                        account_ids,  # Added account_ids parameter
+                        account_ids,
                     )
                     > 0
                 ]
@@ -454,6 +456,24 @@ class PriceImportConsumer(AsyncHttpConsumer):
                 securities = await database_sync_to_async(list)(
                     Assets.objects.filter(investors__id=user.id, id__in=security_ids)
                 )
+
+            if not securities:
+                # Explicit no-eligible-securities result: never a generic
+                # completed-with-zero-stream the UI could mistake for success.
+                yield self.format_progress(
+                    "complete",
+                    0,
+                    0,
+                    message=(
+                        "No eligible securities found for the selected accounts "
+                        "(no held positions in the selected period)"
+                    ),
+                    no_eligible_securities=True,
+                    start_date=start_date.strftime("%Y-%m-%d") if start_date else None,
+                    end_date=end_date.strftime("%Y-%m-%d") if end_date else None,
+                    frequency=frequency,
+                )
+                return
 
             print(
                 f"Filtered securities: {[security.name for security in securities]}"

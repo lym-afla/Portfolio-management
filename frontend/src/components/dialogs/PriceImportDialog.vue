@@ -141,13 +141,24 @@
     :current="currentOperation"
     :total="totalOperations"
     :currentMessage="currentMessage"
+    :error="generalError"
   />
 
   <v-dialog v-model="showSummaryDialog" max-width="800px">
     <v-card>
       <v-card-title>Import Summary</v-card-title>
       <v-card-text>
-        <v-alert v-if="generalErrorSummary" type="error">
+        <v-alert
+          v-if="generalErrorSummary && generalErrorSummary.noEligible"
+          type="info"
+          data-testid="no-eligible-securities"
+        >
+          {{ generalErrorSummary.message }}
+          <p>Start date: {{ generalErrorSummary.startDate }}</p>
+          <p>End date: {{ generalErrorSummary.endDate }}</p>
+          <p>Frequency: {{ generalErrorSummary.frequency }}</p>
+        </v-alert>
+        <v-alert v-else-if="generalErrorSummary" type="error">
           {{ generalErrorSummary.message }}
           <p>Start date: {{ generalErrorSummary.startDate }}</p>
           <p>End date: {{ generalErrorSummary.endDate }}</p>
@@ -204,7 +215,11 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useForm, useField } from 'vee-validate'
-import { importPrices, getPriceImportFormStructure } from '@/services/api'
+import {
+  importPrices,
+  getPriceImportFormStructure,
+  currentPriceImportId,
+} from '@/services/api'
 import { format } from 'date-fns'
 import ProgressDialog from '@/components/dialogs/ProgressDialog.vue'
 import { useErrorHandler } from '@/composables/useErrorHandler'
@@ -227,6 +242,8 @@ const { cardId: focusCardId } = useDialogFormFocus(dialog, 'price-import')
 const cancelImport = () => {
   dialog.value = false
   cleanupForm()
+  // Explicit session cancellation: a cancelled import adopts nothing.
+  ownedImportId.value = null
 }
 
 const dateType = ref('range')
@@ -352,9 +369,17 @@ const toggleSelectAllAccounts = () => {
   }
 }
 
+// Import ownership: progress events ride a window-level bus, so a stream
+// that outlives its dialog must never complete a reopened one. Only events
+// tagged with the id of the import this dialog instance started are
+// adopted; closing the dialog releases the ownership.
+const ownedImportId = ref(null)
+const streamFailed = ref(false)
+
 const handleProgress = (event) => {
   logger.log('Unknown', 'Progress event received:', event)
   const data = event.detail
+  if (data.importId !== ownedImportId.value) return
   if (data.status === 'progress') {
     progress.value = data.progress
     currentOperation.value = data.current
@@ -382,6 +407,7 @@ const handleProgress = (event) => {
         startDate: data.start_date,
         endDate: data.end_date,
         frequency: data.frequency,
+        noEligible: data.no_eligible_securities === true,
       }
     }
     showProgressDialog.value = false
@@ -389,6 +415,10 @@ const handleProgress = (event) => {
     emit('prices-imported', importSummary.value)
   } else if (data.status === 'error') {
     generalError.value = data.message
+    // The stream reported a failure: keep the progress dialog open with its
+    // readable error alert (the finally must not close it out from under
+    // the user), closed only by the dialog's own Close action.
+    streamFailed.value = true
   }
 }
 
@@ -418,11 +448,18 @@ const submitForm = handleSubmit(async (values) => {
   currentMessage.value = 'Starting import'
   showProgressDialog.value = true
   progress.value = 0
+  ownedImportId.value = currentPriceImportId() + 1
   importSummary.value = null
   detailedSummary.value = []
   generalError.value = ''
   generalErrorSummary.value = null
 
+  // This submit's identity: the configuration-dialog close (v-model false
+  // propagated by the parent) happens INSIDE this handler and must not end
+  // the session — only the stream settling, an explicit cancel, or a fresh
+  // dialog open may.
+  const myImportId = ownedImportId.value
+  streamFailed.value = false
   try {
     // Prepare the data based on the date type
     const submitData = {
@@ -450,13 +487,28 @@ const submitForm = handleSubmit(async (values) => {
     logger.log('Unknown', 'Submitting data:', submitData)
 
     await importPrices(submitData)
-    resetForm()
+    // Only the owning request resets the shared form, and only while the
+    // configuration form is closed: an older import resolving after the
+    // user reopened the form must not erase the draft they are working on.
+    if (!props.modelValue && ownedImportId.value === myImportId) {
+      resetForm()
+    }
   } catch (error) {
     logger.error('Unknown', 'Error importing prices:', error)
-    handleApiError(error)
+    // A superseded request's late failure belongs to no live session: it
+    // must not report into the import that replaced it.
+    if (ownedImportId.value === myImportId) {
+      handleApiError(error)
+    }
   } finally {
-    if (!showSummaryDialog.value) {
-      showProgressDialog.value = false
+    // Only the owning request settles its own session: an older request's
+    // finally can neither hide the newer import's progress dialog nor
+    // release the newer session.
+    if (ownedImportId.value === myImportId) {
+      ownedImportId.value = null
+      if (!showSummaryDialog.value && !streamFailed.value) {
+        showProgressDialog.value = false
+      }
     }
   }
 })
@@ -476,7 +528,15 @@ watch(
   () => props.modelValue,
   (newValue) => {
     if (!newValue) {
+      // Configuration-dialog close (including the submit-time close the
+      // parent observes): form state resets, the in-flight import session
+      // keeps owning its events until it settles.
       cleanupForm()
+      streamFailed.value = false
+    } else {
+      // A fresh open adopts nothing: a stale stream from an abandoned
+      // session can never complete a reopened dialog.
+      ownedImportId.value = null
     }
   }
 )

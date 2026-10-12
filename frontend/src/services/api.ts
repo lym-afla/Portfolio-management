@@ -1,7 +1,7 @@
 export { getOpenPositions, getClosedPositions } from '@/services/api/portfolio'
 export { getDashboardSummary } from '@/services/api/dashboard'
 export { getTransactions } from '@/services/api/transactions'
-export { getAccountsTable, getBrokersTable, getPrices, getSecuritiesForDatabase, getFXData, getYearOptions } from '@/services/api/database'
+export { getAccountsTable, getBrokersTable, getPrices, getSecuritiesForDatabase, getFXData, getYearOptions, calendarYearOptions } from '@/services/api/database'
 
 import axiosInstance, { refreshSessionToken } from '@/config/axiosConfig'
 import { usePortfolioContextStore } from '@/stores/portfolioContext'
@@ -629,7 +629,15 @@ export const createMerger = async ({
   }
 }
 
+// Monotonic identity for price-import streams. Progress events ride a
+// window-level CustomEvent bus; tagging each event with the import that
+// produced it lets the dialog adopt only its own stream (a stale stream
+// that outlives its dialog must never complete a reopened one).
+let priceImportSequence = 0
+export const currentPriceImportId = (): number => priceImportSequence
+
 export const importPrices = async (importData: ApiRecord): Promise<string | ApiRecord> => {
+  const importId = ++priceImportSequence
   try {
     const effectiveCurrentDate = useAppStore().effectiveCurrentDate
     if (!effectiveCurrentDate) {
@@ -661,7 +669,9 @@ export const importPrices = async (importData: ApiRecord): Promise<string | ApiR
                 try {
                   const data = JSON.parse(line)
                   window.dispatchEvent(
-                    new CustomEvent('priceImportProgress', { detail: data })
+                    new CustomEvent('priceImportProgress', {
+                      detail: { ...data, importId },
+                    })
                   )
                 } catch (error) {
                   console.error(

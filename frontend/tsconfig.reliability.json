@@ -28,7 +28,13 @@
     // project. The spec is type-checked by the main tsconfig (explicit
     // include there) and exercised by vitest; it is excluded here to keep
     // this project scoped to the reliability platform files.
-    "tests/unit/composables/useWebSocket.spec.ts"
+    "tests/unit/composables/useWebSocket.spec.ts",
+    // Task 3 (real-data corrections): the loopback SSE transport spec is
+    // node-typed (http/Buffer via the @types/node dev dependency) and is
+    // type-checked by the MAIN tsconfig (explicit include). Same rationale
+    // as the websocket spec above for keeping it out of this strict
+    // platform project.
+    "tests/unit/services/importPrices.loopback.spec.ts"
   ],
   "references": []
 }

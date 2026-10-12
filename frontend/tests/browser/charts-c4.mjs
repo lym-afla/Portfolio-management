@@ -387,6 +387,36 @@ export async function runChartsC4PilotFlow({
     assert.equal(historyRequests(fixtureServer, 'price').length - beforeMalformedPrice, 1, 'malformed price: exactly one request, no retry')
     chartsC4.securityScenario = 'v2'
 
+    // --- real-data reproduction: datetime opening row in the position doc ----
+    // The captured real-backend envelope built the position document's
+    // opening row from a datetime ("2025-10-09T00:00:00"), so every
+    // bounded-period position document was rejected by the contract parser
+    // while the price document settled — the exact real-data mixed rendering
+    // and partial-load alert. The request scope was faithful (unfiltered
+    // request, context.accountIds []); only the date format was wrong.
+    chartsC4.securityScenario = 'datetime-opening-position'
+    const beforeDatetime = historyRequests(fixtureServer, 'position').length
+    await reload()
+    await waitFor(run, `document.querySelector('.v-alert--variant-flat') !== null`)
+    await run(['wait', '600'])
+    const alertText = await evalProbe(run, `document.querySelector('.v-alert--variant-flat')?.innerText ?? null`)
+    assert.match(String(alertText), /Unable to load part of this security/, 'datetime opening row raises the honest partial-load alert')
+    priceState = await evalProbe(run, securityState('price'))
+    positionState = await evalProbe(run, securityState('position'))
+    assert.notEqual(priceState.table, null, 'the price document still settles independently (modern table)')
+    assert.equal(positionState.table, null, 'the datetime-stamped position document renders no modern table')
+    const positionQueryAtDefect = historyRequests(fixtureServer, 'position')[beforeDatetime]?.query ?? {}
+    assert.equal(positionQueryAtDefect.account_id, undefined, 'the rejected position request was unfiltered — scope matched, format alone failed')
+    assert.equal(historyRequests(fixtureServer, 'position').length - beforeDatetime, 1, 'exactly one position request, no retry, no downgrade')
+    chartsC4.securityScenario = 'v2'
+    await reload()
+    await waitFor(run, `document.querySelectorAll('[data-testid="security-data-table"]').length === 2`)
+    await run(['wait', '300'])
+    priceState = await evalProbe(run, securityState('price'))
+    positionState = await evalProbe(run, securityState('position'))
+    assert.notEqual(positionState.table, null, 'the corrected opening-row shape settles as a modern table')
+    assert.equal(await evalProbe(run, `document.querySelector('.v-alert--variant-flat') === null`), true, 'the alert clears on the contract-conformant document')
+
     // --- renderer failure with explicit fallback -----------------------------
     chartsC4.securityScenario = 'outrange-price'
     await reload()
