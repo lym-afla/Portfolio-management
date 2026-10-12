@@ -460,7 +460,6 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
     response.setHeader('Cache-Control', 'no-store')
 
     try {
-      console.log('[sse-trace] callback:', requestedMethod, url.pathname, 'mode=', activeModes.priceImportFlow)
       const readBody = async () => {
         const chunks = []
         for await (const chunk of request) chunks.push(chunk)
@@ -1326,9 +1325,6 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
     }
   })
 
-  server.on('clientError', (err) => {
-    console.log('[sse-trace] clientError:', err.code, err.message)
-  })
   await listen(server, port)
   const address = server.address()
 
