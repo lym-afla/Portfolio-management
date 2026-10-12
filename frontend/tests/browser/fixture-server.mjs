@@ -31,7 +31,7 @@ function close(server) {
   })
 }
 
-export async function startFixtureServer({ longAccount = false, contextFailures = false, dateFlow = false, requestFlow = false, recoveryFlow = false, d4Flow = false, chartsC2Flow = false, chartsC3Flow = false, chartsC4Flow = false, settingsAccountFlow = false, d5States = false, importsD6Flow = false, brokersSecurityD7Flow = false, port } = {}) {
+export async function startFixtureServer({ longAccount = false, contextFailures = false, dateFlow = false, requestFlow = false, recoveryFlow = false, d4Flow = false, chartsC2Flow = false, chartsC3Flow = false, chartsC4Flow = false, settingsAccountFlow = false, d5States = false, importsD6Flow = false, brokersSecurityD7Flow = false, priceImportFlow = false, port } = {}) {
   const importsWs = importsD6Flow ? createImportsWs() : null
   // D8 final-QA: phase-scoped fixture modes. The app under test bakes ONE
   // fixture origin at build time, so every QA phase shares this server and
@@ -41,6 +41,7 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
   // the settings payloads; any non-all selection context vs the C2/C4
   // chart envelopes), so only one special flow is active at a time.
   const activeModes = {
+    priceImportFlow,
     longAccount,
     d4Flow,
     chartsC2Flow,
@@ -420,6 +421,9 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
   // recorded credential write bodies, queued save rejections and a failure
   // switch for the security resources. Synthetic credential VALUES live only
   // in the flow's form inputs; recorded bodies never go into screenshots.
+  // Price-import transport flow: scripted SSE streams per scenario plus the
+  // captured submit bodies for the payload contract.
+  const priceImport = { requests: [], scenario: 'run' }
   const brokersSecurityD7 = {
     tokens: {
       tinkoff_tokens: [
@@ -456,6 +460,7 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
     response.setHeader('Cache-Control', 'no-store')
 
     try {
+      console.log('[sse-trace] callback:', requestedMethod, url.pathname, 'mode=', activeModes.priceImportFlow)
       const readBody = async () => {
         const chunks = []
         for await (const chunk of request) chunks.push(chunk)
@@ -606,6 +611,68 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
         requests.push({ method: fixtureMethod, actualMethod: requestedMethod, path: url.pathname, query: Object.fromEntries(url.searchParams) })
         response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
         response.end(JSON.stringify({ transactions: [], total_items: 0, current_page: 1, total_pages: 1 }))
+        return
+      }
+      if (activeModes.priceImportFlow && requestedMethod !== 'OPTIONS' && fixtureMethod === 'GET' && url.pathname === '/database/api/price-import/') {
+        requests.push({ method: fixtureMethod, actualMethod: requestedMethod, path: url.pathname })
+        response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': request.headers.origin || '*' })
+        response.end(JSON.stringify({
+          securities: [{ id: 401, name: 'Fixture Bond' }, { id: 402, name: 'Fixture Stock' }],
+          accounts: [{ id: 7, name: 'Fixture Trading' }, { id: 11, name: 'Fixture Long-term' }],
+          frequency_choices: [{ value: 'weekly', text: 'Weekly' }],
+        }))
+        return
+      }
+      if (activeModes.priceImportFlow && requestedMethod !== 'OPTIONS' && requestedMethod === 'POST' && url.pathname === '/database/api/price-import/sse/') {
+        // Record the arrival BEFORE reading the body so even a client abort
+        // leaves evidence, then parse defensively.
+        priceImport.requests.push({ arrival: true })
+        let raw = ''
+        try {
+          const chunks = []
+          for await (const chunk of request) chunks.push(chunk)
+          raw = Buffer.concat(chunks).toString('utf8')
+          try {
+            priceImport.requests[priceImport.requests.length - 1] = JSON.parse(raw)
+          } catch {
+            priceImport.requests[priceImport.requests.length - 1] = { unparsed: raw.slice(0, 200) }
+          }
+        } catch {
+          priceImport.requests[priceImport.requests.length - 1] = { aborted: true }
+        }
+        const sendLine = (payload) => {
+          try {
+            response.write(JSON.stringify(payload) + '\n')
+          } catch { /* the client went away */ }
+        }
+        response.writeHead(200, {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          Connection: 'keep-alive',
+          'Access-Control-Allow-Origin': request.headers.origin || '*',
+        })
+        if (priceImport.scenario === 'no-eligible') {
+          sendLine({ status: 'complete', current: 0, total: 0, progress: 0, message: 'No eligible securities found for the selected accounts (no held positions in the selected period)', no_eligible_securities: true, start_date: '2026-01-01', end_date: '2026-01-31', frequency: 'weekly' })
+          response.end()
+          return
+        }
+        if (priceImport.scenario === 'provider-error') {
+          sendLine({ status: 'progress', current: 1, total: 4, progress: 25, security_name: 'Fixture Bond', date: '2026-01-05', result: 'updated' })
+          sendLine({ status: 'error', message: 'Provider rejected the price request for Fixture Bond' })
+          response.end()
+          return
+        }
+        if (priceImport.scenario === 'abort') {
+          sendLine({ status: 'progress', current: 1, total: 4, progress: 25, security_name: 'Fixture Bond', date: '2026-01-05', result: 'updated' })
+          response.destroy()
+          return
+        }
+        sendLine({ status: 'progress', current: 1, total: 4, progress: 25, security_name: 'Fixture Bond', date: '2026-01-05', result: 'updated' })
+        sendLine({ status: 'progress', current: 2, total: 4, progress: 50, security_name: 'Fixture Bond', date: '2026-01-06', result: 'skipped' })
+        setTimeout(() => {
+          sendLine({ status: 'complete', current: 4, total: 4, progress: 100, details: [{ security_name: 'Fixture Bond', updated_dates: ['2026-01-05'], skipped_dates: ['2026-01-06'], errors: [] }], total_dates: 2, start_date: '2026-01-01', end_date: '2026-01-31', frequency: 'weekly' })
+          response.end()
+        }, priceImport.scenario === 'slow' ? 1500 : 150)
         return
       }
       if (activeModes.chartsC4Flow && requestedMethod === 'GET' && fixtureMethod === 'GET' && /\/database\/api\/securities\/\d+\/(price|position)-history\/$/.test(url.pathname)) {
@@ -1120,6 +1187,19 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
         // Fall through to the generic fixtures for anything else.
       }
 
+      // CORS preflight catch-all: for a mode whose POST path has no base
+      // fixture (the price-import SSE stream), the preflight's
+      // access-control-request-method reaches resolveFixture as a POST,
+      // which throws Unmatched and 501s the preflight — Chrome then never
+      // sends the real request. The per-family branches above already
+      // recorded their own OPTIONS; anything still here is preflighted to
+      // an unfixedtured path and must answer 204 before resolveFixture.
+      if (requestedMethod === 'OPTIONS') {
+        response.writeHead(204)
+        response.end()
+        return
+      }
+
       const isContextMutation = contextFailures && ['/users/api/update_user_data_for_new_account/', '/users/api/update_dashboard_settings/'].includes(url.pathname)
       const dateSettingsPost = dateFlow && fixtureMethod === 'POST' && url.pathname === '/users/api/update_dashboard_settings/'
       const dateRefreshPost = dateFlow && fixtureMethod === 'POST' && url.pathname === '/users/api/refresh-token/'
@@ -1197,7 +1277,12 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
       response.writeHead(fixture.status, { 'Content-Type': 'application/json; charset=utf-8' })
       response.end(JSON.stringify(fixture.body))
     } catch (error) {
-      const mismatch = { method: fixtureMethod, path: url.pathname }
+      if (url.pathname.includes('price-import/sse')) {
+        console.log('[sse-trace] THROW:', error instanceof Error ? error.message : String(error))
+        console.log('[sse-trace] THROW stack:', error instanceof Error ? String(error.stack).slice(0, 300) : '')
+        console.log('[sse-trace] THROW request:', requestedMethod, request.url, JSON.stringify(request.headers))
+      }
+      const mismatch = { method: fixtureMethod, path: url.pathname, error: error instanceof Error ? error.message : String(error) }
       unmatchedRequests.push(mismatch)
       response.writeHead(501, { 'Content-Type': 'application/json; charset=utf-8' })
       response.end(JSON.stringify({ detail: error.message, ...mismatch }))
@@ -1241,6 +1326,9 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
     }
   })
 
+  server.on('clientError', (err) => {
+    console.log('[sse-trace] clientError:', err.code, err.message)
+  })
   await listen(server, port)
   const address = server.address()
 
@@ -1268,6 +1356,7 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
     resetSettingsAccount: () => { settingsAccount.selection = { type: 'account', id: 42 } },
     importsWs,
     brokersSecurityD7,
+    priceImport,
     origin: `http://127.0.0.1:${address.port}`,
     requests,
     unmatchedRequests,

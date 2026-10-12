@@ -141,6 +141,7 @@
     :current="currentOperation"
     :total="totalOperations"
     :currentMessage="currentMessage"
+    :error="generalError"
   />
 
   <v-dialog v-model="showSummaryDialog" max-width="800px">
@@ -373,6 +374,7 @@ const toggleSelectAllAccounts = () => {
 // tagged with the id of the import this dialog instance started are
 // adopted; closing the dialog releases the ownership.
 const ownedImportId = ref(null)
+const streamFailed = ref(false)
 
 const handleProgress = (event) => {
   logger.log('Unknown', 'Progress event received:', event)
@@ -413,6 +415,10 @@ const handleProgress = (event) => {
     emit('prices-imported', importSummary.value)
   } else if (data.status === 'error') {
     generalError.value = data.message
+    // The stream reported a failure: keep the progress dialog open with its
+    // readable error alert (the finally must not close it out from under
+    // the user), closed only by the dialog's own Close action.
+    streamFailed.value = true
   }
 }
 
@@ -453,6 +459,7 @@ const submitForm = handleSubmit(async (values) => {
   // the session — only the stream settling, an explicit cancel, or a fresh
   // dialog open may.
   const myImportId = ownedImportId.value
+  streamFailed.value = false
   try {
     // Prepare the data based on the date type
     const submitData = {
@@ -494,7 +501,7 @@ const submitForm = handleSubmit(async (values) => {
     // release the newer session.
     if (ownedImportId.value === myImportId) {
       ownedImportId.value = null
-      if (!showSummaryDialog.value) {
+      if (!showSummaryDialog.value && !streamFailed.value) {
         showProgressDialog.value = false
       }
     }
@@ -520,6 +527,7 @@ watch(
       // parent observes): form state resets, the in-flight import session
       // keeps owning its events until it settles.
       cleanupForm()
+      streamFailed.value = false
     } else {
       // A fresh open adopts nothing: a stale stream from an abandoned
       // session can never complete a reopened dialog.

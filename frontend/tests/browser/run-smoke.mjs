@@ -28,12 +28,13 @@ import { runChartsC5Flow } from './charts-c5.mjs'
 import { assertD5FamilyProbesFlow, assertD5NativeZoomFlow, assertD5StatesFlow, assertMobilePageControlsFlow, captureD5Screenshots, d5FamilyRoutes } from './d5.mjs'
 import { assertSettingsAccountFlow } from './settings-account.mjs'
 import { assertImportsD6Flow } from './imports-d6.mjs'
+import { runImportsPricesFlow } from './imports-prices.mjs'
 import { assertBrokersSecurityD7Flow } from './brokers-security-d7.mjs'
 import { runFinalQaD8Flow } from './final-qa-d8.mjs'
 
 const caseIndex = process.argv.indexOf('--case')
 const selectedCase = caseIndex < 0 ? null : process.argv[caseIndex + 1]
-if (selectedCase !== null && !['layout', 'context', 'dates', 'requests', 'recovery', 'delivery', 'dialogs', 'dialog-recovery', 'd4', 'charts-c2', 'charts-c3', 'charts-c4', 'charts-c5', 'd5', 'settings-account', 'imports-d6', 'brokers-security-d7', 'final-qa-d8'].includes(selectedCase)) {
+if (selectedCase !== null && !['layout', 'context', 'dates', 'requests', 'recovery', 'delivery', 'dialogs', 'dialog-recovery', 'd4', 'charts-c2', 'charts-c3', 'charts-c4', 'charts-c5', 'd5', 'settings-account', 'imports-d6', 'imports-prices', 'brokers-security-d7', 'final-qa-d8'].includes(selectedCase)) {
   throw new Error(`Unknown browser case: ${selectedCase || '(missing)'}`)
 }
 
@@ -65,7 +66,7 @@ async function main() {
   await mkdir(screenshotsDir, { recursive: true })
   await writeFile(browserLog, '', 'utf8')
 
-  const fixtureServer = await startFixtureServer({ longAccount: selectedCase === 'layout', contextFailures: selectedCase === 'context', dateFlow: selectedCase === 'dates', requestFlow: selectedCase === 'requests', recoveryFlow: selectedCase === 'recovery', d4Flow: selectedCase === 'd4', chartsC2Flow: selectedCase === 'charts-c2', chartsC3Flow: selectedCase === 'charts-c3' || selectedCase === 'charts-c5', chartsC4Flow: selectedCase === 'charts-c4' || selectedCase === 'charts-c5', settingsAccountFlow: selectedCase === 'settings-account', d5States: selectedCase === 'd5', importsD6Flow: selectedCase === 'imports-d6', brokersSecurityD7Flow: selectedCase === 'brokers-security-d7' })
+  const fixtureServer = await startFixtureServer({ longAccount: selectedCase === 'layout', contextFailures: selectedCase === 'context', dateFlow: selectedCase === 'dates', requestFlow: selectedCase === 'requests', recoveryFlow: selectedCase === 'recovery', d4Flow: selectedCase === 'd4', chartsC2Flow: selectedCase === 'charts-c2', chartsC3Flow: selectedCase === 'charts-c3' || selectedCase === 'charts-c5', chartsC4Flow: selectedCase === 'charts-c4' || selectedCase === 'charts-c5', settingsAccountFlow: selectedCase === 'settings-account', d5States: selectedCase === 'd5', importsD6Flow: selectedCase === 'imports-d6', brokersSecurityD7Flow: selectedCase === 'brokers-security-d7', priceImportFlow: selectedCase === 'imports-prices' })
   let appServer
   const sessions = new Map()
   const routeFailures = []
@@ -111,10 +112,10 @@ async function main() {
     }
     appServer = await startBuiltAppServer(builtAppDir, selectedCase === 'dialog-recovery')
 
-    for (const viewport of selectedCase === 'brokers-security-d7' ? viewports.filter((entry) => ['desktop', 'tablet', 'mobile'].includes(entry.name)) : ['dialogs', 'd4', 'd5', 'settings-account', 'imports-d6'].includes(selectedCase) ? viewports.filter(entry => ['desktop', 'mobile'].includes(entry.name)) : ['dates', 'requests', 'recovery', 'delivery', 'dialog-recovery', 'charts-c2', 'charts-c3', 'charts-c4', 'charts-c5'].includes(selectedCase) ? viewports.filter((entry) => entry.name === 'desktop') : viewports) {
+    for (const viewport of selectedCase === 'brokers-security-d7' ? viewports.filter((entry) => ['desktop', 'tablet', 'mobile'].includes(entry.name)) : selectedCase === 'imports-prices' ? viewports.filter((entry) => entry.name === 'desktop') : ['dialogs', 'd4', 'd5', 'settings-account', 'imports-d6'].includes(selectedCase) ? viewports.filter(entry => ['desktop', 'mobile'].includes(entry.name)) : ['dates', 'requests', 'recovery', 'delivery', 'dialog-recovery', 'charts-c2', 'charts-c3', 'charts-c4', 'charts-c5'].includes(selectedCase) ? viewports.filter((entry) => entry.name === 'desktop') : viewports) {
       for (const authenticated of selectedCase && selectedCase !== 'delivery' ? [true] : [false, true]) {
         const selectedRoutes = routes.filter((route) =>
-          selectedCase === 'dialog-recovery' ? route.path === '/transactions' : selectedCase === 'dialogs' ? dialogRoutes.includes(route.path) : selectedCase === 'delivery' ? ['/login', '/profile', '/dashboard'].includes(route.path) && route.authenticated === authenticated : selectedCase === 'd4' ? ['/open-positions', '/closed-positions', '/transactions'].includes(route.path) : ['charts-c2', 'charts-c3'].includes(selectedCase) ? route.path === '/dashboard' : selectedCase === 'charts-c4' || selectedCase === 'charts-c5' ? ['/dashboard', '/database/securities/1'].includes(route.path) : selectedCase === 'requests' ? ['/database/fx', '/transactions'].includes(route.path) : selectedCase === 'dates' ? route.path === '/open-positions' : ['context', 'recovery'].includes(selectedCase) ? route.path === '/dashboard' : selectedCase === 'd5' ? d5FamilyRoutes.includes(route.path) : selectedCase === 'settings-account' ? route.path === '/profile/settings' : selectedCase === 'imports-d6' ? route.path === '/transactions' : selectedCase === 'brokers-security-d7' ? ['/profile/settings', '/database/securities/1'].includes(route.path) : selectedCase === 'layout'
+          selectedCase === 'dialog-recovery' ? route.path === '/transactions' : selectedCase === 'dialogs' ? dialogRoutes.includes(route.path) : selectedCase === 'delivery' ? ['/login', '/profile', '/dashboard'].includes(route.path) && route.authenticated === authenticated : selectedCase === 'd4' ? ['/open-positions', '/closed-positions', '/transactions'].includes(route.path) : ['charts-c2', 'charts-c3'].includes(selectedCase) ? route.path === '/dashboard' : selectedCase === 'charts-c4' || selectedCase === 'charts-c5' ? ['/dashboard', '/database/securities/1'].includes(route.path) : selectedCase === 'requests' ? ['/database/fx', '/transactions'].includes(route.path) : selectedCase === 'dates' ? route.path === '/open-positions' : ['context', 'recovery'].includes(selectedCase) ? route.path === '/dashboard' : selectedCase === 'd5' ? d5FamilyRoutes.includes(route.path) : selectedCase === 'settings-account' ? route.path === '/profile/settings' : selectedCase === 'imports-d6' ? route.path === '/transactions' : selectedCase === 'brokers-security-d7' ? ['/profile/settings', '/database/securities/1'].includes(route.path) : selectedCase === 'imports-prices' ? route.path === '/database/prices' : selectedCase === 'layout'
             ? ['/dashboard', '/summary', '/profile', '/database'].includes(route.path)
             : route.authenticated === authenticated,
         )
@@ -190,6 +191,9 @@ async function main() {
             }
             if (selectedCase === 'imports-d6') {
               await assertImportsD6Flow({ appOrigin: appServer.origin, context: `${viewport.name} imports d6`, initScript, log, session, fixtureServer, viewport })
+            }
+            if (selectedCase === 'imports-prices') {
+              await runImportsPricesFlow({ appOrigin: appServer.origin, context: `${viewport.name} imports prices`, initScript, log, session, fixtureServer, viewport })
             }
             if (selectedCase === 'brokers-security-d7') {
               await assertBrokersSecurityD7Flow({ appOrigin: appServer.origin, context: `${viewport.name} brokers-security-d7`, initScript, log, session, fixtureServer, viewport })
