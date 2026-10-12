@@ -1,6 +1,6 @@
 # Real-data validation corrections — phase A evidence ledger
 
-Date: 10 October 2026. Branch `codex/release-validation-functional-fixes` (dedicated worktree `D:\Developing\Portfolio-management-relval-fixes`), base `f32e7d09` (`origin/codex/frontend-modernization`: PR #61/D8 merged plus the correction plan). Scope: **phase A Tasks 1–3 implemented; acceptance items complete except where marked partial/unavailable** (statuses below; three review rounds incorporated). The correction plan transcribes the owner's real-data annotations from the C5b release-validation run. Phase A was reviewed twice by the owner; both rounds are folded into the commits listed here.
+Date: 11 October 2026 (round 4). Branch `codex/release-validation-functional-fixes` (dedicated worktree `D:\Developing\Portfolio-management-relval-fixes`), base `f32e7d09` (`origin/codex/frontend-modernization`: PR #61/D8 merged plus the correction plan). Scope: **phase A Tasks 1–3 implemented; acceptance items complete except where marked partial/unavailable** (statuses below; three review rounds incorporated). The correction plan transcribes the owner's real-data annotations from the C5b release-validation run. Phase A was reviewed twice by the owner; both rounds are folded into the commits listed here.
 
 ## Task 1 — date selection, historical boundary and inception
 
@@ -56,22 +56,35 @@ Absent-data breakdown-row behavior — **implemented** (commit `8120bc9c`): the 
 - **Browser e2e of the same journey — environment-blocked, honestly recorded**: the prepared browser flow reproduced the dialog interactions end to end (dialog open, form structure load, option picking, calendar day selection) but Chrome in this harness never dispatches the preflighted POST to the fixture origin — the preflight 204 arrives at the fixture and the real POST never does, while the identical simple (preflight-free) POST and every other preflighted fixture POST work; fixture-side arrival recording, page-side resource timings and a raw-fetch three-way probe are preserved in the session log. Single/multi-account, no-eligible, provider-error and transport-abort are covered at the consumer level (backend) and the real-transport level (loopback) instead; recorded as this round's unavailable scenario.
 - **Progress readability across all loading surfaces**: the plan's inventory shows ProgressDialog is the shared progress surface of all three import flows (prices/FX/transactions) — the readable-label fix applies to each; every other loading surface is an indeterminate spinner or linear bar without a percentage label (AccountGroupManager, NAVChart, ProfileSettings, PositionsPageBase, TransactionsPage) — nothing unreadable to restyle, and the readability spec now also pins the indeterminate state (message beside the spinner, never inside a fill). Financial eligibility semantics untouched (the consumer-level eligibility tests pass unchanged).
 
+### Round 4 (owner review) — session lifecycle, zero-is-data, checked typing, and the browser e2e unblocked
+
+- **Import ownership across NORMAL submission — real defect fixed** (`cea678e0`): the parent-controlled mounted regression (real v-model Host, no internal-ref assignment) caught that submitForm's configuration-dialog close propagated `update:modelValue=false` back into the component, whose watcher then cleared `ownedImportId` — every post-close stream event was dropped in normal production submission. The configuration-dialog lifecycle and the import-session lifecycle are now separate: the close resets form state only; a fresh open adopts nothing; ownership releases when the owning stream settles, on explicit cancel, or on a fresh open; a superseded request's catch and finally are ownership-guarded (its late rejection cannot report into, reset, or hide the newer import). Regressions: the session survives the parent-observed close and renders delayed progress/completion; exactly one refresh per completion; the superseded-rejection protection.
+- **Breakdown filtering corrected — numeric zero is data** (`d75da0b0`): only contractually absent cells (empty string, null/undefined) are absence; wholly zero-valued rows stay visible; the earlier formatted-zero-as-absence rule (and its tests) is withdrawn. Wire limitation documented rather than guessed around: the backend cannot yet distinguish "no activity" from "genuine zero" (both arrive as all-zero displays), so ambiguous rows are preserved; the filter is contract-complete but inert until the backend marks absence explicitly.
+- **The loopback transport spec is actually type-checked** (`47276c1d` + `cb38aef1`'s exclusion corrected): it sits in the main tsconfig's explicit test include with the `@types/node` dev dependency (`node` added to the project types for its http/Buffer surface); the reliability project stays scoped to the platform files with a corrected comment.
+- **The browser import e2e — unblocked, root cause found, no longer environment-blocked** (`ef4f8abd`): the minimal faithful reproduction (`transport-repro.mjs`, clean two-server probe matrix, standalone-runnable, also `--fixture` against the real fixture server) proved the wire is fine and exposed the real cause: the committed fixture had NO handler for the SSE POST (the Task-4 branch existed only uncommitted), and for a preflighted request to an unfixtured path the preflight's `access-control-request-method` reaches `resolveFixture` as POST, which throws and 501s the PREFLIGHT — Chrome then never sends the real request (the identical simple POST always worked, which is what made it look environmental). Fixes: the committed `priceImportFlow` fixture mode (form structure + scripted SSE scenarios), and a catch-all CORS preflight responder placed after every family's recording branches but before `resolveFixture`. The revived `imports-prices` browser case passes all four phases over the real axios SSE wire (exact [7, 11] payload, live readable label, summary, no-eligible info result, provider-error surface, transport-abort surface) — two consecutive greens.
+- **Provider-error surface defect fixed** (`ef4f8abd`): a stream `error` event set `generalError`, but the ProgressDialog binding never received it — stream errors rendered nowhere and the import looked hung. The error prop is wired, and a failed stream keeps the progress dialog open with its readable error alert (closed by the dialog's own Close action) instead of the submit finally closing it out.
+
 ## Gates (actual exit codes, final head `cb38aef1` unless noted)
 
 | Gate | Result | Exit |
 |---|---|---|
-| `npx vitest run --no-file-parallelism` (serialized) | 107 files / **1070 passed** | 0 |
-| `npm run type-check` / `:reliability` / `:charts` | clean | 0 / 0 / 0 |
-| `npm run lint` | baseline clean after the api.ts line shift | 0 |
+| `npx vitest run --no-file-parallelism` (serialized) | 108 files / **1072 passed** | 0 |
+| `npm run type-check` / `:reliability` / `:charts` (the loopback spec now main-project type-checked) | clean | 0 / 0 / 0 |
+| `npm run lint` | clean | 0 |
 | `npm run api:types:check` | match | 0 |
 | `npm run build` | ok | 0 |
 | browser `dates` (typed commit, reconciliation, guard edge, blur, real picker) | PASS | 0 |
 | browser `charts-c4` (incl. the datetime-opening mounted-page phase) | PASS | 0 |
 | browser `imports-d6` | PASS | 0 |
+| browser **`imports-prices`** (real axios SSE wire: payload, live label, summary, no-eligible, provider error, transport abort) | PASS — two consecutive greens | 0 |
 | browser full route matrix (18 routes x 4 viewports) | `routeFailures: []`, `fixtureMismatches: []` | 0 |
 | browser `delivery` | PASS | 0 |
-| browser `final-qa-d8` (integrated default-on acceptance) | **3 runs: 7 / 7 / 1 failures — intermittent, see below** | 1 / 1 / 1 |
-| backend `uv run python -m pytest` (full suite) | **1399 passed / 10 skipped**, coverage 83.57% | 0 |
+| browser `final-qa-d8` (integrated default-on acceptance) | **UNRESOLVED — see below** | 1 |
+| backend `uv run python -m pytest` (full suite) | **1399 passed / 10 skipped**, coverage 83.55% | 0 |
+
+### final-qa-d8 — EXPLICITLY UNRESOLVED
+
+The integrated D8 acceptance is NOT claimed. Its status is recorded below in full; acceptance requires either a clean committed-head run or a demonstrated harness fix.
 
 ### final-qa-d8 attribution (recorded in full)
 
@@ -81,4 +94,4 @@ Earlier recorded flakes: two full-unit attempts lost canvas-heavy chart specs to
 
 ## Boundaries
 
-Phase B–D not started. Chart.js retained. C5b implementation and removal not started; the owner's acceptance of the release-validation cycle remains the gate. No merge, deploy, production mutation, or real data committed (all real-data reproduction used the disposable copy; no real values, screenshots or tokens committed). The browser price-import e2e flow is recorded as environment-blocked (see Task 3) rather than approximated.
+Phase B–D not started. Task 2's breakdown filtering and Task 3's acceptance items are complete at every tooling level except the explicitly unresolved final-qa-d8 harness run. Chart.js retained. C5b implementation and removal not started; the owner's acceptance of the release-validation cycle remains the gate. No merge, deploy, production mutation, or real data committed (all real-data reproduction used the disposable copy; no real values, screenshots or tokens committed). The transport-repro diagnostic (clean-server + fixture modes) is committed for future harness investigations.

@@ -43,7 +43,7 @@ const respondSse = (response: http.ServerResponse) => {
     }
     const entry = script[index]
     if ('hold' in entry) {
-      setTimeout(() => drain(index + 1), entry.hold)
+      setTimeout(() => drain(index + 1), Number(entry.hold))
       return
     }
     if ('destroy' in entry) {
