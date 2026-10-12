@@ -22,7 +22,22 @@ export async function assertLayoutGeometry({
       `(() => {
         const bar = document.querySelector('.v-app-bar')
         const content = document.querySelector('[data-testid="route-content"]')
-        if (!bar || !content) return { missing: { bar: !bar, content: !content } }
+        if (!content) return { missing: { bar: !bar, content: true } }
+        if (!bar) {
+          // Bare shell (presentation phase B): routes without context
+          // controls render no app bar on md+ viewports — the empty header
+          // line was removed. A missing bar beside a context strip would
+          // still be a defect, so only a strip-less page may be bare.
+          const strip = document.querySelector('.workspace-context')
+          if (strip) return { missing: { bar: true, content: false, withStrip: true } }
+          const contentRect = content.getBoundingClientRect()
+          return {
+            bare: true,
+            contentTop: Math.round(contentRect.top),
+            scrollY: window.scrollY,
+            rawObjectLabel: document.body.innerText.includes('[object Object]'),
+          }
+        }
         const barRect = bar.getBoundingClientRect()
         const contentRect = content.getBoundingClientRect()
         const intrinsic = bar.querySelector('[data-testid="app-bar-content"]')?.getBoundingClientRect()
@@ -61,6 +76,20 @@ export async function assertLayoutGeometry({
     `${context}: missing rendered layout node: ${JSON.stringify(result)}`
   )
   assert.equal(result.scrollY, 0, `${context}: page must start at scroll zero`)
+  assert.equal(
+    result.rawObjectLabel,
+    false,
+    `${context}: a raw [object Object] label must never render anywhere on the page`
+  )
+  if (result.bare) {
+    // Bare shell: no header region may cover the content and the route must
+    // still be the mounted one.
+    assert.ok(
+      result.contentTop >= 0,
+      `${context}: bare route content sits above the viewport: ${JSON.stringify(result)}`
+    )
+    return result
+  }
   assert.ok(
     result.layoutTop > 0,
     `${context}: Vuetify must register a positive top offset: ${JSON.stringify(result)}`
@@ -73,11 +102,6 @@ export async function assertLayoutGeometry({
   assert.ok(
     result.contentTop >= result.headerBottom - 1,
     `${context}: header covers route content: ${JSON.stringify(result)}`
-  )
-  assert.equal(
-    result.rawObjectLabel,
-    false,
-    `${context}: a raw [object Object] label must never render anywhere on the page`
   )
   if (result.intrinsicBottom !== null) {
     assert.ok(

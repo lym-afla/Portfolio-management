@@ -12,7 +12,7 @@
         <tr>
           <th scope="col" class="allocation-table__category">Category</th>
           <th scope="col" class="allocation-table__value">{{ currency }} amount</th>
-          <th scope="col" class="allocation-table__value">Share</th>
+          <th scope="col" class="allocation-table__value allocation-table__share">Share</th>
         </tr>
       </thead>
       <tbody>
@@ -29,12 +29,12 @@
         >
           <th scope="row" class="allocation-table__category">{{ label(allocation.seriesId) }}</th>
           <td class="allocation-table__value">{{ valueText(allocation.amount) }}</td>
-          <td class="allocation-table__value">{{ valueText(allocation.share) }}</td>
+          <td class="allocation-table__value allocation-table__share">{{ valueText(allocation.share) }}</td>
         </tr>
         <tr class="allocation-table__total">
           <th scope="row" class="allocation-table__category">Total (full NAV)</th>
           <td class="allocation-table__value">{{ valueText(document.allocationSummary?.denominator) }}</td>
-          <td class="allocation-table__value">{{ valueText(document.allocationSummary?.totalShare) }}</td>
+          <td class="allocation-table__value allocation-table__share">{{ valueText(document.allocationSummary?.totalShare) }}</td>
         </tr>
       </tbody>
     </table>
@@ -117,6 +117,11 @@ td {
 .allocation-table__value {
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+/* Owner request: Share values are italic. Display strings are untouched. */
+.allocation-table__share {
+  font-style: italic;
 }
 
 .allocation-table__total th,

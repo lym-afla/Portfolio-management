@@ -8,16 +8,20 @@
       <template v-if="isAuthenticated">
         <Navigation @logout="handleLogout" />
 
-        <v-app-bar elevation="1" :height="appBarHeight">
+        <v-app-bar
+          v-if="showComponents || showSettingsDialog || !mdAndUp"
+          :elevation="showComponents || showSettingsDialog ? 1 : 0"
+          :height="showComponents || showSettingsDialog ? appBarHeight : 64"
+        >
           <div
             ref="appBarContent"
             class="app-bar-content"
+            :class="{ 'app-bar-content--bare': !showComponents && !showSettingsDialog }"
             data-testid="app-bar-content"
           >
             <v-container fluid class="py-2">
-              <div class="d-flex app-bar-title">
+              <div v-if="showSettingsDialog" class="d-flex app-bar-title">
                 <SettingsDialog
-                  v-if="showSettingsDialog"
                   class="ml-auto"
                   :request-change="requestContextChange"
                 />
@@ -39,7 +43,7 @@
                         v-model="dateDraft"
                         label="Valuation date"
                         type="date"
-                        density="compact"
+                        density="comfortable"
                         hide-details
                         :disabled="!context.canRead"
                         @keydown="markKeyboardEditing"
@@ -53,7 +57,7 @@
                         item-title="text"
                         item-value="value"
                         label="Reporting currency"
-                        density="compact"
+                        density="comfortable"
                         hide-details
                         :disabled="!context.canRead"
                         @update:model-value="
@@ -71,7 +75,6 @@
                 preferences-only
                 :request-change="requestContextChange"
               />
-              <v-divider v-if="showComponents" />
             </v-container>
           </div>
         </v-app-bar>
@@ -165,6 +168,7 @@ import {
   workspaceHeadingKey,
   type ContextIntent,
 } from './components/workspace/types'
+import { useDisplay } from 'vuetify'
 import Navigation from './components/Navigation.vue'
 import AccountSelection from './components/AccountSelection.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
@@ -268,10 +272,17 @@ const isProfilePage = computed(() => route.path.startsWith('/profile'))
 const isDatabasePage = computed(() => route.path.startsWith('/database'))
 const isSummaryPage = computed(() => route.path === '/summary')
 
+// The context strip (dashboard/performance/positions/transactions routes) and
+// the summary-page settings dialog are real app-bar content. On the remaining
+// routes there is none, so the desktop bar disappears entirely instead of
+// leaving an empty bordered line; on mobile the bar stays as the fixed
+// navigation trigger's clear zone.
+
 const showComponents = computed(
   () => !isProfilePage.value && !isDatabasePage.value && !isSummaryPage.value
 )
 const showSettingsDialog = computed(() => isSummaryPage.value)
+const { mdAndUp } = useDisplay()
 
 const handleLogout = async () => {
   await authStore.logout()
@@ -321,6 +332,12 @@ body {
   width: 100%;
   height: max-content;
 }
+/* On routes without context controls the mobile bar is the fixed navigation
+   trigger's clear zone; reserving that row keeps the registered height equal
+   to the bar's real content instead of empty padding. */
+.app-bar-content--bare {
+  min-height: 64px;
+}
 
 .workspace-context-controls {
   display: flex;
@@ -342,6 +359,11 @@ body {
   flex: 1 1 0;
   min-width: 0;
 }
+/* Every header control sits on the same 56px row height, matching the
+   account select and its arrow buttons. */
+.workspace-context-settings .v-field {
+  min-height: 56px;
+}
 @media (max-width: 959px) {
   .app-bar-title {
     padding-left: 48px;
@@ -355,9 +377,6 @@ body {
   .workspace-context-account,
   .workspace-context-settings {
     flex-basis: 100%;
-  }
-  .workspace-context-settings .v-field {
-    min-height: 44px;
   }
 }
 

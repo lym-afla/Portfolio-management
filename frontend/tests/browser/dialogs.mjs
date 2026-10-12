@@ -64,11 +64,11 @@ export async function assertDialogDeliveryFlow({ context, initScript, log, sessi
     }
     throw lastError
   }
-  const defaultOverflowActions = new Set(['Add FX transaction', 'Transfer asset', 'Record merger'])
-  // 'Add Security' sits in the overflow only on the prices page (D5); on the
-  // securities inventory it stays a visible secondary action.
-  const isOverflowAction = (name) =>
-    name === 'Add Security' ? route.path === '/database/prices' : defaultOverflowActions.has(name)
+  // Presentation phase B: the action tiers are MEASURED, not static — each
+  // candidate action renders directly when the row fits it and inside the
+  // overflow menu otherwise. The flow therefore tries the direct button
+  // first and falls back to the overflow menu; both paths end in the same
+  // dialog through the same emitted action id.
   const openOverflow = async () => {
     for (let attempt = 0; attempt < 8; attempt++) {
       const snapshot = await run(['snapshot', '-i'])
@@ -83,12 +83,14 @@ export async function assertDialogDeliveryFlow({ context, initScript, log, sessi
     throw new Error('Overflow More actions control missing')
   }
   const clickAction = async (name) => {
-    if (isOverflowAction(name)) {
-      await openOverflow()
-      await run(['eval', `(() => { const item = [...document.querySelectorAll('.v-overlay--active [data-action]')].find(el => el.textContent.trim().startsWith('${name}')); if (!item) throw new Error('overflow item ${name} missing'); item.click(); return true })()`])
+    try {
+      await clickButton([name])
       return
+    } catch (error) {
+      if (!/Missing button/.test(String(error.message))) throw error
     }
-    await clickButton([name])
+    await openOverflow()
+    await run(['eval', `(() => { const item = [...document.querySelectorAll('.v-overlay--active [data-action]')].find(el => el.textContent.trim().startsWith('${name}')); if (!item) throw new Error('overflow item ${name} missing'); item.click(); return true })()`])
   }
   for (const button of flows[route.path]) {
     const closeDialog = () => button === 'Import Prices' ? run(['press', 'Escape']) : clickButton(['Cancel', 'Close'])
