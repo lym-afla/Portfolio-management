@@ -199,4 +199,16 @@ function forwardParams(params: object): void {
   min-width: 0;
   max-width: 100%;
 }
+
+/* Phase C: the pilot canvas matches the incumbent chart-wrapper height
+   (600px desktop / 360px narrow) and fills the card width. */
+.nav-chart-panel__pilot :deep(.chart-host) {
+  height: 600px;
+}
+
+@media (max-width: 599px) {
+  .nav-chart-panel__pilot :deep(.chart-host) {
+    height: 360px;
+  }
+}
 </style>
