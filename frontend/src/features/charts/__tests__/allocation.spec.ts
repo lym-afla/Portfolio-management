@@ -91,7 +91,13 @@ interface PieSeries {
   type: string
   radius: [number, string]
   selectedMode: boolean
-  data: Array<{ id: string; name: string; value: number; itemStyle?: { color?: string } }>
+  data: Array<{
+    id: string
+    name: string
+    value: number
+    itemStyle?: { color?: string; borderColor?: string; borderWidth?: number }
+    label?: { show?: boolean }
+  }>
 }
 
 function pieSeriesOf(option: ReturnType<typeof buildAllocationOption>): PieSeries {
