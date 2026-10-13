@@ -202,14 +202,14 @@ async function assertD8ChartAcceptance({ appOrigin, fixtureServer, frontendRoot,
   assert.equal(rowFocus.isRow, true, 'Tab moves from the table region into its first row')
   await run(['press', 'Enter'])
   await run(['wait', '300'])
-  const inspection = await evalProbe(run, `document.querySelector('.chart-inspection')?.innerText ?? ''`)
-  assert.match(String(inspection), /[A-Z][a-z]{2}-\d{2}/, 'keyboard inspection shows the selected period')
-  assert.ok(String(inspection).includes(rowFocus.period), `Enter on the focused row inspects ITS period (${rowFocus.period})`)
+  const inspectedRow = await evalProbe(run, `document.querySelector('[data-testid="nav-echarts-pilot"] tbody tr[aria-selected="true"]')?.innerText ?? ''`)
+  assert.match(String(inspectedRow), /[A-Z][a-z]{2}-\d{2}/, 'keyboard inspection selects a row in the exact table')
+  assert.ok(String(inspectedRow).includes(rowFocus.period), `Enter on the focused row inspects ITS period (${rowFocus.period})`)
   const selectedPeriod = await evalProbe(run, `(() => { const row = document.querySelector('[data-testid="nav-echarts-pilot"] tbody tr[aria-selected="true"]'); return row ? (row.querySelector('.chart-table__period')?.childNodes[0]?.textContent ?? '').trim() : null })()`)
   assert.equal(selectedPeriod, rowFocus.period, 'the Enter-inspected row is the aria-selected row')
 
   const zoomState = () => evalProbe(run, `(() => {
-    const selects = [...document.querySelectorAll('.chart-inspection select')]
+    const selects = [...document.querySelectorAll('[data-testid="chart-zoom-start"], [data-testid="chart-zoom-end"]')]
     return {
       count: selects.length,
       start: selects[0]?.value ?? null,
@@ -221,7 +221,7 @@ async function assertD8ChartAcceptance({ appOrigin, fixtureServer, frontendRoot,
   const beforeZoom = await zoomState()
   assert.equal(beforeZoom.count, 2, 'native start/end zoom selects present')
   await run(['eval', `(() => {
-    const select = document.querySelectorAll('.chart-inspection select')[0]
+    const select = document.querySelector('[data-testid="chart-zoom-start"]')
     select.value = select.options[1]?.value ?? select.value
     select.dispatchEvent(new Event('change', { bubbles: true }))
     return true
@@ -437,7 +437,7 @@ async function assertD8ChartAcceptance({ appOrigin, fixtureServer, frontendRoot,
       ...document.querySelectorAll('[data-series-id]'),
       ...document.querySelectorAll('[data-testid="allocation-legend"] button'),
       ...document.querySelectorAll('[data-testid^="allocation-"][data-testid$="-card"] .v-tab'),
-      ...document.querySelectorAll('.chart-inspection select, .chart-inspection__reset'),
+      ...document.querySelectorAll('.chart-zoom select, .chart-zoom__reset'),
     ]
     return targets.map((element) => {
       element.scrollIntoView({ block: 'center' })

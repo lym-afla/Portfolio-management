@@ -45,7 +45,7 @@ const chartState = `(() => ({
     text: button.innerText.trim(),
   })),
   tableCaption: document.querySelector('[data-testid="nav-echarts-pilot"] caption')?.innerText ?? null,
-  inspection: document.querySelector('.chart-inspection')?.innerText ?? null,
+  inspectedRow: document.querySelector('[data-testid="nav-echarts-pilot"] tbody tr[aria-selected="true"]')?.innerText ?? null,
 }))()`
 
 async function legendButton(run, text) {
@@ -311,18 +311,18 @@ export async function runChartsC3PilotFlow({
     assert.equal(navRequestCount(fixtureServer) - beforeLegend, 0, 'legend toggles issue no requests')
 
     // --- keyboard/table inspection into the shared model ------------------
-    await run(['eval', `(() => { const row = document.querySelectorAll('[data-testid="nav-echarts-pilot"] tbody tr')[1]; row.focus(); row.click(); document.querySelector('.chart-inspection').scrollIntoView({ block: 'center' }); return true })()`])
+    await run(['eval', `(() => { const row = document.querySelectorAll('[data-testid="nav-echarts-pilot"] tbody tr')[1]; row.focus(); row.click(); document.querySelector('[data-testid="nav-echarts-pilot"] .chart-table').scrollIntoView({ block: 'center' }); return true })()`])
     await run(['wait', '150'])
     state = await evalProbe(run, chartState)
-    assert.match(String(state.inspection), /Jul-26/, 'inspection shows the selected period')
+    assert.match(String(state.inspectedRow), /Jul-26/, 'keyboard row inspection selects the row in the exact table')
     await run(['screenshot', resolve(DESIGN_ASSETS, 'c3-nav-keyboard.png')])
 
     // --- viewport controls: zoom is view-only ------------------------------
-    const selects = await evalProbe(run, `document.querySelectorAll('.chart-inspection select').length`)
+    const selects = await evalProbe(run, `document.querySelectorAll('[data-testid="chart-zoom-start"], [data-testid="chart-zoom-end"]').length`)
     assert.equal(selects, 2, 'native start/end period selects')
-    await run(['eval', `(() => { const select = document.querySelectorAll('.chart-inspection select')[0]; select.value = select.options[1].value; select.dispatchEvent(new Event('change', { bubbles: true })); return true })()`])
+    await run(['eval', `(() => { const select = document.querySelector('[data-testid="chart-zoom-start"]'); select.value = select.options[1].value; select.dispatchEvent(new Event('change', { bubbles: true })); return true })()`])
     await run(['wait', '150'])
-    await run(['eval', `document.querySelector('.chart-inspection__reset').click()`])
+    await run(['eval', `document.querySelector('[data-testid="chart-zoom-reset"]').click()`])
     await run(['wait', '150'])
     assert.equal(navRequestCount(fixtureServer) - beforeLegend, 0, 'viewport changes issue no requests')
 
@@ -370,7 +370,7 @@ export async function runChartsC3PilotFlow({
       const panelRect = panel ? panel.getBoundingClientRect() : null
       const controls = [...document.querySelectorAll('[data-series-id]')]
       const canvas = document.querySelector('[data-testid="nav-echarts-pilot"] canvas')
-      const viewportControls = [...document.querySelectorAll('.chart-inspection select, .chart-inspection__reset')]
+      const viewportControls = [...document.querySelectorAll('.chart-zoom select, .chart-zoom__reset')]
       const withinPanel = (element) => {
         const rect = element.getBoundingClientRect()
         return rect.width > 0 && panelRect ? rect.right <= panelRect.right + 1 : false
@@ -422,7 +422,7 @@ export async function runChartsC3PilotFlow({
     assert.deepEqual(new Set(restored.pressed), new Set(['true']), 'desktop restore: all series still visible')
     await run(['set', 'viewport', '390', '844'])
     const hit = await evalProbe(run, `(() => {
-      const targets = ['.v-btn-toggle button', '[data-series-id]', '.chart-inspection select', '.chart-inspection__reset', '.chart-table']
+      const targets = ['.v-btn-toggle button', '[data-series-id]', '.chart-zoom select', '.chart-zoom__reset', '.chart-table']
       return targets.map((selector) => {
         const elements = [...document.querySelectorAll(selector)]
         if (elements.length === 0) return { selector, present: false }

@@ -12,7 +12,7 @@ import { buildNavOption } from '../buildNavOption'
 import { defaultInteraction, reconcileInteraction } from '../interaction'
 import ChartLegend from '../ChartLegend.vue'
 import ChartDataTable from '../ChartDataTable.vue'
-import ChartInspection from '../ChartInspection.vue'
+import ChartZoomControls from '../ChartZoomControls.vue'
 import { navWireFixture } from './navFixtures'
 
 function emittedInteraction(wrapper: { emitted: (event: string) => unknown[][] | undefined }, index = 0): ChartInteraction {
@@ -89,9 +89,11 @@ describe('ChartDataTable', () => {
     const wrapper = mountTable(doc)
     expect(wrapper.find('caption').text()).toBe('Exact values by period')
     const columnHeaders = wrapper.findAll('thead th[scope="col"]')
+    // Phase C: the two IRR columns carry the fixed distinct control names
+    // (matching the legend), not the terse wire labels.
     expect(columnHeaders.map((header) => header.text())).toEqual([
-      'Period', 'Interval', 'Stock', 'Cash', 'IRR (RHS)', 'Rolling IRR (RHS)',
-      'Portfolio NAV (all categories)',
+      'Period', 'Interval', 'Stock', 'Cash', 'Since-inception IRR (annualized)',
+      'Interval IRR (annualized)', 'Portfolio NAV (all categories)',
     ])
     expect(wrapper.findAll('tbody th[scope="row"]').length).toBe(doc.periods.length)
   })
@@ -152,32 +154,38 @@ describe('ChartDataTable', () => {
     expect(wrapper.find('thead img').exists()).toBe(false)
     expect(wrapper.findAll('thead th[scope="col"]')[3].text()).toContain('<img src=x')
   })
+
+  it('carries the detailed per-period horizons the tooltip no longer repeats (phase C)', () => {
+    const doc = parsedDocument()
+    const wrapper = mountTable(doc)
+    const rows = wrapper.findAll('tbody tr')
+    // First sample: inception semantics.
+    expect(rows[0].find('td').text()).toBe(`Inception to ${doc.periods[0].interval.endDate}`)
+    // Later samples: the server-provided interval bounds, verbatim.
+    const second = doc.periods[1]
+    expect(rows[1].find('td').text()).toBe(`${second.interval.startDate} – ${second.interval.endDate}`)
+  })
 })
 
-describe('ChartInspection', () => {
-  const mountInspection = (doc: ChartDocument, interaction = defaultInteraction(doc)) =>
-    mount(ChartInspection, { props: { document: doc, interaction } })
+describe('ChartZoomControls (phase C: the inspection card is removed)', () => {
+  const mountZoom = (doc: ChartDocument, interaction = defaultInteraction(doc)) =>
+    mount(ChartZoomControls, { props: { document: doc, interaction } })
 
-  it('shows exact displays, units and both horizon semantics', () => {
+  it('exposes only the viewport controls — no duplicated value displays', () => {
     const doc = parsedDocument()
-    const interaction = { ...defaultInteraction(doc), inspectedPeriodKey: doc.periods[1].key }
-    const wrapper = mountInspection(doc, interaction)
-    const text = wrapper.text()
-    expect(text).toContain(doc.periods[1].displayLabel)
-    expect(text).toContain(`${doc.periods[1].interval.startDate} – ${doc.periods[1].interval.endDate}`)
-    expect(text).toContain('reporting currency USD')
-    expect(text).toContain('annualized percentage')
-    expect(text).toContain('Portfolio NAV (all categories)')
-    expect(text).toContain(doc.totals![1].display)
-    const inceptionInteraction = { ...interaction, inspectedPeriodKey: doc.periods[0].key }
-    const first = mountInspection(doc, inceptionInteraction)
-    expect(first.text()).toContain(`Inception to ${doc.periods[0].interval.endDate}`)
+    const wrapper = mountZoom(doc)
+    expect(wrapper.find('[data-testid="chart-zoom-start"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="chart-zoom-end"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="chart-zoom-reset"]').exists()).toBe(true)
+    // No inspection surface: exact values live in the table and tooltip only.
+    expect(wrapper.text()).not.toContain('USD')
+    expect(wrapper.text()).not.toContain('Portfolio NAV')
   })
 
   it('emits an ordered viewport from the native selects and swaps reversed picks', async () => {
     const doc = parsedDocument()
     const interaction = defaultInteraction(doc)
-    const wrapper = mountInspection(doc, interaction)
+    const wrapper = mountZoom(doc, interaction)
     const selects = wrapper.findAll('select')
     await selects[0].setValue(doc.periods[2].key)
     const first = emittedInteraction(wrapper, 0)
@@ -198,8 +206,8 @@ describe('ChartInspection', () => {
       inspectedPeriodKey: doc.periods[0].key,
       viewport: { firstPeriodKey: doc.periods[0].key, lastPeriodKey: doc.periods[1].key },
     }
-    const wrapper = mountInspection(doc, interaction)
-    await wrapper.find('.chart-inspection__reset').trigger('click')
+    const wrapper = mountZoom(doc, interaction)
+    await wrapper.find('[data-testid="chart-zoom-reset"]').trigger('click')
     const update = emittedInteraction(wrapper, 0)
     expect(update.viewport).toBeNull()
     expect(update.inspectedPeriodKey).toBe(doc.periods[0].key)

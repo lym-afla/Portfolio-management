@@ -71,12 +71,12 @@
               @update:interaction="interaction = $event"
               @fallback="useFallback"
             />
-            <ChartLegend
+            <ChartZoomControls
               :document="v2Document"
               :interaction="interaction"
               @update:interaction="interaction = $event"
             />
-            <ChartInspection
+            <ChartLegend
               :document="v2Document"
               :interaction="interaction"
               @update:interaction="interaction = $event"
@@ -103,7 +103,7 @@ import { pilotRequested, resolveRenderer } from './rendererPolicy'
 import ChartHost from './ChartHost.vue'
 import ChartLegend from './ChartLegend.vue'
 import ChartDataTable from './ChartDataTable.vue'
-import ChartInspection from './ChartInspection.vue'
+import ChartZoomControls from './ChartZoomControls.vue'
 
 const props = defineProps<{
   result: NavResult | null

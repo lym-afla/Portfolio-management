@@ -13,7 +13,7 @@
           <th scope="col" class="chart-table__period">Period</th>
           <th scope="col">Interval</th>
           <th v-for="series in document.series" :key="series.id" scope="col" class="chart-table__value">
-            {{ series.label }}
+            {{ seriesControlName(series) }}
           </th>
           <th v-if="hasTotals" scope="col" class="chart-table__value">Portfolio NAV (all categories)</th>
         </tr>
@@ -49,7 +49,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { ChartDocument, ChartPeriod, ChartValue } from './contracts'
-import type { ChartInteraction } from './interaction'
+import { seriesControlName, type ChartInteraction } from './interaction'
 
 const props = defineProps<{
   document: ChartDocument

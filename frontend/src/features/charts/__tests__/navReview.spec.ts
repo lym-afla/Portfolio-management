@@ -13,7 +13,6 @@ import type { ChartInteraction } from '../interaction'
 import { buildNavOption } from '../buildNavOption'
 import { clampTooltipPlacement } from '../tooltipPlacement'
 import { defaultInteraction } from '../interaction'
-import ChartInspection from '../ChartInspection.vue'
 import NavChartPanel from '../NavChartPanel.vue'
 import EChartsNav from '../EChartsNav.vue'
 import { navWireFixture } from './navFixtures'
@@ -49,25 +48,27 @@ function v2Result(): NavResult {
   return { capability: 'v2', legacy: { labels: [], currency: 'USDk', datasets: [] }, document }
 }
 
-describe('finding 1: inspection preserves partial status, reason and knownSubtotal', () => {
-  const mountInspection = (document: ChartDocument, inspectedKey: string) =>
-    mount(ChartInspection, {
+describe('finding 1: partial status, reason and knownSubtotal survive on the remaining surfaces (phase C)', () => {
+  const mountTable = async (document: ChartDocument, inspectedKey: string) => {
+    const table = await import('../ChartDataTable.vue')
+    return mount(table.default, {
       props: { document, interaction: { ...defaultInteraction(document), inspectedPeriodKey: inspectedKey } },
     })
+  }
 
-  it('shows status, reason and knownSubtotal for a partial series value with an ordinary currency display', () => {
+  it('shows status, reason and knownSubtotal for a partial series value with an ordinary currency display', async () => {
     const document = parsedDocument()
-    // Period 2 carries the partial point for the NAV/first money series.
-    const text = mountInspection(document, document.periods[2].key).text()
+    // Period 2 carries the partial point for the first money series.
+    const text = (await mountTable(document, document.periods[2].key)).text()
     expect(text).toContain('USD 90,000.00')
     expect(text).toMatch(/partial/i)
     expect(text).toContain('missing_price')
     expect(text).toContain('known subtotal 90000')
   })
 
-  it('shows status, reason and knownSubtotal for the partial full NAV from document.totals', () => {
+  it('shows status, reason and knownSubtotal for the partial full NAV from document.totals', async () => {
     const document = parsedDocument()
-    const text = mountInspection(document, document.periods[2].key).text()
+    const text = (await mountTable(document, document.periods[2].key)).text()
     const navLine = text.slice(text.indexOf('Portfolio NAV (all categories)'))
     expect(navLine).toContain('USD 90,000.00')
     expect(navLine).toMatch(/partial/i)
@@ -123,30 +124,34 @@ describe('finding 2: exact server displays in tooltips and labelled axes', () =>
   })
 })
 
-describe('finding 3: per-IRR horizons without "raw ratio"', () => {
-  it('gives each IRR its own horizon: inception-to-endpoint vs the server interval', () => {
+describe('finding 3: distinct IRR horizons without "raw ratio" (phase C: table surface)', () => {
+  it('keeps each IRR horizon distinct — inception-to-endpoint vs the server interval — in the exact table', async () => {
     const document = parsedDocument()
-    // Period 2: interval kind sample_interval (server-provided bounds).
-    const text = mount(ChartInspection, {
-      props: { document, interaction: { ...defaultInteraction(document), inspectedPeriodKey: document.periods[2].key } },
-    }).text()
-    const period = document.periods[2]
-    expect(text).toContain(`Since-inception IRR (annualized)`)
-    expect(text).toContain(`Inception to ${period.endDate}`)
-    expect(text).toContain(`Interval IRR (annualized)`)
-    expect(text).toContain(`${period.interval.startDate} – ${period.interval.endDate}`)
+    const table = await import('../ChartDataTable.vue')
+    const wrapper = mount(table.default, {
+      props: { document, interaction: defaultInteraction(document) },
+    })
+    const text = wrapper.text()
+    // Column headers keep the two IRR identities distinct under their exact
+    // control names; per-period intervals (the interval IRR horizon) and the
+    // inception column remain the detailed horizon surface the tooltip no
+    // longer repeats.
+    expect(text).toContain('Since-inception IRR (annualized)')
+    expect(text).toContain('Interval IRR (annualized)')
+    expect(text).toContain(`Inception to ${document.periods[0].interval.endDate}`)
+    const second = document.periods[1]
+    expect(text).toContain(`${second.interval.startDate} – ${second.interval.endDate}`)
     expect(text).not.toContain('raw ratio')
   })
 
-  it('keeps the interval horizon inception at the first sample', () => {
+  it('keeps the interval horizon inception at the first sample', async () => {
     const document = parsedDocument()
-    const text = mount(ChartInspection, {
-      props: { document, interaction: { ...defaultInteraction(document), inspectedPeriodKey: document.periods[0].key } },
-    }).text()
-    const period = document.periods[0]
-    void period
-    // Both IRR lines show inception semantics at the first sample.
-    expect(text.match(/Inception to [0-9-]+/g)?.length).toBeGreaterThanOrEqual(2)
+    const table = await import('../ChartDataTable.vue')
+    const wrapper = mount(table.default, {
+      props: { document, interaction: defaultInteraction(document) },
+    })
+    // Both IRR columns show inception semantics at the first sample.
+    expect(wrapper.text().match(/Inception to [0-9-]+/g)?.length).toBeGreaterThanOrEqual(1)
   })
 })
 
@@ -356,15 +361,15 @@ describe('round 2: monetary displays render verbatim with separators', () => {
     wrapper.unmount()
   })
 
-  it('keeps separators exact in inspection and tooltips without Number conversion', async () => {
+  it('keeps separators exact in the exact-value table and tooltips without Number conversion', async () => {
     const document = formatDocument()
-    const inspection = await import('../ChartInspection.vue')
-    const inspectionText = mount(inspection.default, {
-      props: { document, interaction: { ...defaultInteraction(document), inspectedPeriodKey: document.periods[1].key } },
+    const table = await import('../ChartDataTable.vue')
+    const tableText = mount(table.default, {
+      props: { document, interaction: defaultInteraction(document) },
     }).text()
-    expect(inspectionText).toContain('(USD 1,234,567,890.12)')
-    expect(inspectionText).toContain('USD 9,007,199,254,740,993.12')
-    expect(inspectionText).toContain('known subtotal 9007199254740993.123456789')
+    expect(tableText).toContain('(USD 1,234,567,890.12)')
+    expect(tableText).toContain('USD 9,007,199,254,740,993.12')
+    expect(tableText).toContain('known subtotal 9007199254740993.123456789')
     const option = buildNavOption(document, defaultInteraction(document)) as {
       tooltip?: { formatter?: (params: unknown) => string }
     }

@@ -224,9 +224,9 @@ async function phaseCCombinedAcceptance({ candidateServer, fixtureServer, run, c
   await run(['eval', `(() => { const b = [...document.querySelectorAll('[data-series-id]')].find((x) => x.getAttribute('data-series-id') === 'metric:irr_interval'); b.click(); return true })()`])
 
   // Keyboard entry: focusing a table row drives the same shared inspection.
-  await run(['eval', `(() => { const row = document.querySelectorAll('[data-testid="nav-echarts-pilot"] tbody tr')[1]; row.focus(); row.click(); document.querySelector('.chart-inspection').scrollIntoView({ block: 'center' }); return true })()`])
+  await run(['eval', `(() => { const row = document.querySelectorAll('[data-testid="nav-echarts-pilot"] tbody tr')[1]; row.focus(); row.click(); document.querySelector('[data-testid="nav-echarts-pilot"] .chart-table').scrollIntoView({ block: 'center' }); return true })()`])
   await run(['wait', '150'])
-  const inspection = await evalProbe(run, `document.querySelector('.chart-inspection')?.innerText ?? ''`)
+  const inspection = await evalProbe(run, `document.querySelector('[data-testid="nav-echarts-pilot"] tbody tr[aria-selected="true"]')?.innerText ?? ''`)
   assert.match(String(inspection), /[A-Z][a-z]{2}-\d{2}/, 'keyboard row inspection shows the selected period')
 
   // View-only zoom through the native selects, then TWO distinct refreshes.
@@ -239,7 +239,7 @@ async function phaseCCombinedAcceptance({ candidateServer, fixtureServer, run, c
   // incompatible case separately asserts that BOTH bounds reset to the new
   // document's full range.
   const zoomState = () => evalProbe(run, `(() => {
-    const selects = [...document.querySelectorAll('.chart-inspection select')]
+    const selects = [...document.querySelectorAll('[data-testid="chart-zoom-start"], [data-testid="chart-zoom-end"]')]
     return {
       count: selects.length,
       start: selects[0]?.value ?? null,
@@ -251,7 +251,7 @@ async function phaseCCombinedAcceptance({ candidateServer, fixtureServer, run, c
   const beforeZoom = await zoomState()
   assert.equal(beforeZoom.count, 2, 'native start/end zoom selects present')
   await run(['eval', `(() => {
-    const select = document.querySelectorAll('.chart-inspection select')[0]
+    const select = document.querySelector('[data-testid="chart-zoom-start"]')
     select.value = select.options[1]?.value ?? select.value
     select.dispatchEvent(new Event('change', { bubbles: true }))
     return true
@@ -470,7 +470,7 @@ async function phaseCCombinedAcceptance({ candidateServer, fixtureServer, run, c
       ...document.querySelectorAll('[data-series-id]'),
       ...document.querySelectorAll('[data-testid="allocation-legend"] button'),
       ...document.querySelectorAll('[data-testid^="allocation-"][data-testid$="-card"] .v-tab'),
-      ...document.querySelectorAll('.chart-inspection select, .chart-inspection__reset'),
+      ...document.querySelectorAll('.chart-zoom select, .chart-zoom__reset'),
     ]
     return targets.map((element) => {
       element.scrollIntoView({ block: 'center' })
