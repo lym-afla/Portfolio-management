@@ -160,6 +160,51 @@ def get_accounts_with_positions(asset, date, investor):
 
 
 # ---------------------------------------------------------------------------
+# get_account_holdings
+# ---------------------------------------------------------------------------
+
+
+def get_account_holdings(asset, date, investor):
+    """Per-account remaining holdings of an asset as of a date.
+
+    The read model behind the security detail page's "Currently held with" /
+    "Previously held with" context. One row per account that transacted the
+    asset up to ``date``:
+
+    - ``quantity`` is the account's canonical remaining position at ``date``
+      (the same :func:`position` sums the position charts use — never lifetime
+      buys), as an exact Decimal string rounded to 6 dp.
+    - ``status`` is ``"open"`` when the remaining position is non-zero and
+      ``"closed"`` when the account held the asset at some point up to
+      ``date`` but the remaining position is zero. Partial disposals stay
+      ``"open"``; a holding sold out and bought again is ``"open"``.
+
+    Returns:
+        list[dict]: ``{"account_id", "quantity", "status"}`` rows, open
+        accounts first (each group ordered by account id).
+    """
+    account_ids = list(
+        asset.transactions.filter(
+            investor=investor, date__date__lte=date, account_id__isnull=False
+        )
+        .values_list("account_id", flat=True)
+        .distinct()
+    )
+    holdings = []
+    for account_id in account_ids:
+        quantity = position(asset, date=date, investor=investor, account_ids=[account_id])
+        holdings.append(
+            {
+                "account_id": account_id,
+                "quantity": str(quantity),
+                "status": "open" if quantity != 0 else "closed",
+            }
+        )
+    holdings.sort(key=lambda row: (0 if row["status"] == "open" else 1, row["account_id"]))
+    return holdings
+
+
+# ---------------------------------------------------------------------------
 # investment_date
 # ---------------------------------------------------------------------------
 
