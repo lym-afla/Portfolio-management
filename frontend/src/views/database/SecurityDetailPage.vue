@@ -18,6 +18,13 @@
           clearable
           outlined
         >
+          <!-- Phase C: the unfiltered request is visible as "All accounts"
+               in the field — the model stays null (no hidden scope change),
+               an explicit selection shows its display name and a selection
+               missing from the available choices shows the safe fallback. -->
+          <template v-slot:selection>
+            <span class="security-account-label" :title="selectedAccountLabel">{{ selectedAccountLabel }}</span>
+          </template>
           <template v-slot:item="{ props, item }">
             <v-list-item
               v-if="item.raw.type === 'option'"
@@ -253,6 +260,23 @@ const {
 watch(security, (value) => { emit('update-page-title', value?.name ?? '') }, { flush: 'sync' })
 
 const effectiveCurrentDate = computed(() => appStore.effectiveCurrentDate)
+
+// Phase C: the field's visible label. A null model IS the unfiltered
+// request, so it renders as "All accounts"; an explicit selection shows its
+// display name and a selection missing from the choices shows the shared
+// safe fallback (same semantics as committedAccountLabel, matched directly
+// against the formatted options — that helper formats raw wire input).
+const selectedAccountLabel = computed(() => {
+  const selection = selectedAccount.value
+  if (!selection) return 'All accounts'
+  const matched = accountOptions.value.find(
+    (option) =>
+      option.type === 'option' &&
+      option.value?.type === selection.type &&
+      option.value?.id === selection.id,
+  )
+  return matched?.title ?? 'Unavailable'
+})
 
 // C4: the gated modern history renderers — active only while the security
 // gate is on and the negotiated result is a validated v2 document; legacy_only
