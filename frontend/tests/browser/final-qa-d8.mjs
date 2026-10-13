@@ -173,6 +173,11 @@ async function assertD8ChartAcceptance({ appOrigin, fixtureServer, frontendRoot,
 
   // --- dashboard: NAV pilot with both IRR horizons --------------------------
   await run(['open', `${appOrigin}/dashboard`])
+  await waitFor(run, `document.querySelectorAll('[data-testid="chart-table-toggle"]').length > 0`)
+  // Phase C: the exact table is collapsed by default; expand for the
+  // keyboard-inspection flow below.
+  await run(['eval', `(() => { for (const button of document.querySelectorAll('[data-testid="chart-table-toggle"]')) { if (button.getAttribute('aria-expanded') === 'false') button.click() } return true })()`])
+  await run(['wait', '150'])
   await waitFor(run, `document.querySelectorAll('[data-testid="nav-echarts-pilot"] tbody tr').length > 0`)
   const navBefore = navRequestCount(fixtureServer)
 

@@ -289,6 +289,10 @@ export async function runChartsC3PilotFlow({
   try {
     await run(['open', `${pilotServer.origin}/dashboard`])
     await waitFor(run, `document.querySelectorAll('[data-series-id]').length > 0 && document.querySelector('[data-testid="nav-echarts-pilot"] canvas') !== null`)
+    // Phase C: the exact table is collapsed by default; expand it for the
+    // table/keyboard probes below.
+await run(['eval', `(() => { for (const button of document.querySelectorAll('[data-testid="chart-table-toggle"]')) { if (button.getAttribute('aria-expanded') === 'false') button.click() } return true })()`])
+  await run(['wait', '150'])
     let state = await evalProbe(run, chartState)
     assert.equal(state.pilot, true, 'flag on: pilot composition renders')
     assert.equal(state.notice, false, 'flag on: v2 shows no capability notice')

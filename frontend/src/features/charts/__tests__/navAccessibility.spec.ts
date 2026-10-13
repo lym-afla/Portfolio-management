@@ -81,12 +81,16 @@ describe('ChartLegend', () => {
 })
 
 describe('ChartDataTable', () => {
-  const mountTable = (doc: ChartDocument, interaction = defaultInteraction(doc)) =>
-    mount(ChartDataTable, { props: { document: doc, interaction } })
+  const mountTable = async (doc: ChartDocument, interaction = defaultInteraction(doc)) => {
+    const wrapper = mount(ChartDataTable, { props: { document: doc, interaction } })
+    // Phase C: the exact table is collapsed behind a disclosure by default.
+    await wrapper.get('[data-testid="chart-table-toggle"]').trigger('click')
+    return wrapper
+  }
 
-  it('exposes a caption, scoped headers, every series and the full-NAV column', () => {
+  it('exposes a caption, scoped headers, every series and the full-NAV column', async () => {
     const doc = parsedDocument()
-    const wrapper = mountTable(doc)
+    const wrapper = await mountTable(doc)
     expect(wrapper.find('caption').text()).toBe('Exact values by period')
     const columnHeaders = wrapper.findAll('thead th[scope="col"]')
     // Phase C: the two IRR columns carry the fixed distinct control names
@@ -98,11 +102,11 @@ describe('ChartDataTable', () => {
     expect(wrapper.findAll('tbody th[scope="row"]').length).toBe(doc.periods.length)
   })
 
-  it('renders exact server displays and marks unavailable points with status and reason', () => {
+  it('renders exact server displays and marks unavailable points with status and reason', async () => {
     // value_contributions carries an absent point (return, pattern 2).
     const contributions = parseNavEnvelope(navWireFixture('value_contributions', 'M'))
     if (contributions.capability !== 'v2') throw new Error('expected v2')
-    const wrapper = mountTable(contributions.document)
+    const wrapper = await mountTable(contributions.document)
     const rows = wrapper.findAll('tbody tr')
     const returnColumn = 2 // after Period/Interval: opening_nav 0, contributions 1, return 2
     const returnCells = rows.map((row) => row.findAll('td.chart-table__value')[returnColumn].text())
@@ -118,10 +122,10 @@ describe('ChartDataTable', () => {
     expect(rows[3].find('th .chart-table__partial').text()).toBe('partial calendar period')
   })
 
-  it('shows the full NAV regardless of hidden categories', () => {
+  it('shows the full NAV regardless of hidden categories', async () => {
     const doc = parsedDocument()
     const hidden = { ...defaultInteraction(doc), visibleSeriesIds: ['metric:irr_inception'] }
-    const wrapper = mountTable(doc, hidden)
+    const wrapper = await mountTable(doc, hidden)
     const header = wrapper.findAll('thead th[scope="col"]').at(-1)!.text()
     expect(header).toBe('Portfolio NAV (all categories)')
     expect(wrapper.findAll('tbody tr')[0].findAll('td.chart-table__value').at(-1)!.text())
@@ -131,7 +135,7 @@ describe('ChartDataTable', () => {
   it('selects the inspected period by click and by keyboard', async () => {
     const doc = parsedDocument()
     const interaction = defaultInteraction(doc)
-    const wrapper = mountTable(doc, interaction)
+    const wrapper = await mountTable(doc, interaction)
     const row = wrapper.findAll('tbody tr')[1]
     await row.trigger('click')
     let update = emittedInteraction(wrapper)
@@ -143,21 +147,21 @@ describe('ChartDataTable', () => {
     expect(update.inspectedPeriodKey).toBe(doc.periods[2].key)
   })
 
-  it('keeps HTML-looking series names inert text', () => {
+  it('keeps HTML-looking series names inert text', async () => {
     const doc = parsedDocument()
     const hostile = {
       ...doc,
       series: doc.series.map((series, index) =>
         index === 1 ? { ...series, label: '<img src=x onerror=window.__c3xss=1>Stock' } : series),
     }
-    const wrapper = mountTable(hostile)
+    const wrapper = await mountTable(hostile)
     expect(wrapper.find('thead img').exists()).toBe(false)
     expect(wrapper.findAll('thead th[scope="col"]')[3].text()).toContain('<img src=x')
   })
 
-  it('carries the detailed per-period horizons the tooltip no longer repeats (phase C)', () => {
+  it('carries the detailed per-period horizons the tooltip no longer repeats (phase C)', async () => {
     const doc = parsedDocument()
-    const wrapper = mountTable(doc)
+    const wrapper = await mountTable(doc)
     const rows = wrapper.findAll('tbody tr')
     // First sample: inception semantics.
     expect(rows[0].find('td').text()).toBe(`Inception to ${doc.periods[0].interval.endDate}`)

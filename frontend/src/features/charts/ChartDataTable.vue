@@ -4,8 +4,15 @@
        server display; unavailable/partial points state their status, reason
        and knownSubtotal as explicitly incomplete information. The full-NAV
        column comes only from document.totals and ignores hidden categories.
-       Text interpolation only — server names can never inject markup. -->
-  <div class="chart-table" role="region" aria-label="Exact chart values by period" tabindex="0">
+       Text interpolation only — server names can never inject markup.
+       Phase C: collapsed by default behind a labelled disclosure; totals and
+       all metadata stay intact inside. -->
+  <ChartDisclosure
+    show-label="Show exact values by period"
+    hide-label="Hide exact values by period"
+    test-id="chart-table-toggle"
+  >
+    <div class="chart-table" role="region" aria-label="Exact chart values by period" tabindex="0">
     <table>
       <caption>Exact values by period</caption>
       <thead>
@@ -43,13 +50,15 @@
         </tr>
       </tbody>
     </table>
-  </div>
+    </div>
+  </ChartDisclosure>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { ChartDocument, ChartPeriod, ChartValue } from './contracts'
 import { seriesControlName, type ChartInteraction } from './interaction'
+import ChartDisclosure from './ChartDisclosure.vue'
 
 const props = defineProps<{
   document: ChartDocument

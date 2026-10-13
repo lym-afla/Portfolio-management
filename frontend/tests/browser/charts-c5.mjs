@@ -97,6 +97,10 @@ async function openDashboardLegacyAllocation(run, origin) {
 async function openSecurityModern(run, origin) {
   await run(['open', `${origin}/database/securities/1`])
   await waitFor(run, `document.querySelectorAll('[data-testid="security-data-table"]').length === 2`)
+  // Phase C: observation tables are collapsed disclosures; expand for the
+  // exact-text probes.
+  await run(['eval', `(() => { for (const button of document.querySelectorAll('[data-testid="security-table-toggle"]')) { if (button.getAttribute('aria-expanded') === 'false') button.click() } return true })()`])
+  await run(['wait', '150'])
 }
 
 async function openSecurityLegacy(run, origin) {
@@ -427,6 +431,8 @@ async function phaseCCombinedAcceptance({ candidateServer, fixtureServer, run, c
   // range without carrying the stock zoom or crashing.
   await run(['open', `${candidateServer.origin}/database/securities/2`])
   await waitFor(run, `document.querySelectorAll('[data-testid="security-data-table"]').length === 2`)
+  await run(['eval', `(() => { for (const button of document.querySelectorAll('[data-testid="security-table-toggle"]')) { if (button.getAttribute('aria-expanded') === 'false') button.click() } return true })()`])
+  await run(['wait', '150'])
   await run(['wait', '300'])
   const bondState = await evalProbe(run, `(() => {
     const tables = [...document.querySelectorAll('[data-testid="security-data-table"]')]
@@ -455,6 +461,8 @@ async function phaseCCombinedAcceptance({ candidateServer, fixtureServer, run, c
 
   await run(['open', `${candidateServer.origin}/database/securities/3`])
   await waitFor(run, `document.querySelectorAll('[data-testid="security-data-table"]').length === 2`)
+  await run(['eval', `(() => { for (const button of document.querySelectorAll('[data-testid="security-table-toggle"]')) { if (button.getAttribute('aria-expanded') === 'false') button.click() } return true })()`])
+  await run(['wait', '150'])
   const cryptoState = await evalProbe(run, `[...document.querySelectorAll('[data-testid="security-data-table"]')].map((t) => t.innerText).join('\\n')`)
   assert.match(String(cryptoState), /0\.000216590/, 'crypto position table keeps exact quantity precision')
   await run(['eval', `(() => { document.querySelector('#security-position-history').scrollIntoView({ block: 'start' }); window.scrollBy(0, -200); return true })()`])

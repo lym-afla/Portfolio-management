@@ -337,6 +337,8 @@ export async function runChartsC4PilotFlow({
     // --- security histories: stock, bond, crypto ------------------------------
     await run(['open', `${pilotServer.origin}/database/securities/1`])
     await waitFor(run, `document.querySelectorAll('[data-testid="security-data-table"]').length === 2`)
+    await run(['eval', `(() => { for (const button of document.querySelectorAll('[data-testid="security-table-toggle"]')) { if (button.getAttribute('aria-expanded') === 'false') button.click() } return true })()`])
+    await run(['wait', '150'])
     await run(['wait', '400'])
     let priceState = await evalProbe(run, securityState('price'))
     let positionState = await evalProbe(run, securityState('position'))
@@ -360,6 +362,8 @@ export async function runChartsC4PilotFlow({
     await run(['open', `${pilotServer.origin}/database/securities/2`])
     await run(['wait', '3000'])
     await waitFor(run, `document.querySelectorAll('[data-testid="security-data-table"]').length === 2`)
+    await run(['eval', `(() => { for (const button of document.querySelectorAll('[data-testid="security-table-toggle"]')) { if (button.getAttribute('aria-expanded') === 'false') button.click() } return true })()`])
+    await run(['wait', '150'])
     await run(['wait', '300'])
     priceState = await evalProbe(run, securityState('price'))
     assert.match(String(priceState.table), /99\.875% of nominal/, 'bond price table keeps percent-of-nominal displays')
@@ -370,6 +374,8 @@ export async function runChartsC4PilotFlow({
     // Crypto: exact quantity precision.
     await run(['open', `${pilotServer.origin}/database/securities/3`])
     await waitFor(run, `document.querySelectorAll('[data-testid="security-data-table"]').length === 2`)
+    await run(['eval', `(() => { for (const button of document.querySelectorAll('[data-testid="security-table-toggle"]')) { if (button.getAttribute('aria-expanded') === 'false') button.click() } return true })()`])
+    await run(['wait', '150'])
     await run(['wait', '300'])
     positionState = await evalProbe(run, securityState('position'))
     assert.match(String(positionState.table), /0\.000216590/, 'crypto position table keeps exact quantity precision')
@@ -411,6 +417,8 @@ export async function runChartsC4PilotFlow({
     chartsC4.securityScenario = 'v2'
     await reload()
     await waitFor(run, `document.querySelectorAll('[data-testid="security-data-table"]').length === 2`)
+    await run(['eval', `(() => { for (const button of document.querySelectorAll('[data-testid="security-table-toggle"]')) { if (button.getAttribute('aria-expanded') === 'false') button.click() } return true })()`])
+    await run(['wait', '150'])
     await run(['wait', '300'])
     priceState = await evalProbe(run, securityState('price'))
     positionState = await evalProbe(run, securityState('position'))
@@ -474,6 +482,8 @@ export async function runChartsC4PilotFlow({
     // Security mobile tooltip.
     await run(['open', `${pilotServer.origin}/database/securities/1`])
     await waitFor(run, `document.querySelectorAll('[data-testid="security-data-table"]').length === 2`)
+    await run(['eval', `(() => { for (const button of document.querySelectorAll('[data-testid="security-table-toggle"]')) { if (button.getAttribute('aria-expanded') === 'false') button.click() } return true })()`])
+    await run(['wait', '150'])
     await run(['set', 'viewport', '390', '844'])
     await run(['wait', '400'])
     // Park the price canvas below the fixed header (top at ~350px) so the

@@ -191,9 +191,10 @@ describe('buildSecurityOption', () => {
 })
 
 describe('SecurityDataTable', () => {
-  it('keeps every observation row under its server key, duplicates included', () => {
+  it('keeps every observation row under its server key, duplicates included', async () => {
     const doc = positionDocument({ value: '0.000116590' })
     const wrapper = mount(SecurityDataTable, { props: { document: doc } })
+    await wrapper.get('[data-testid="security-table-toggle"]').trigger('click')
     const rows = wrapper.findAll('tbody tr')
     expect(rows).toHaveLength(2)
     expect(rows[0].attributes('data-period-key')).toBe('security:9:position:row:1')
@@ -203,13 +204,14 @@ describe('SecurityDataTable', () => {
     wrapper.unmount()
   })
 
-  it('states statuses, reasons and known subtotals verbatim', () => {
+  it('states statuses, reasons and known subtotals verbatim', async () => {
     const doc = priceDocument({
       points: [
         { value: null, plotValue: null, knownSubtotal: '98.125', status: 'partial', reason: 'missing_price', display: 'Partial price' },
       ],
     })
     const wrapper = mount(SecurityDataTable, { props: { document: doc } })
+    await wrapper.get('[data-testid="security-table-toggle"]').trigger('click')
     const text = wrapper.text()
     expect(text).toContain('Partial price')
     expect(text).toContain('partial')
@@ -218,9 +220,10 @@ describe('SecurityDataTable', () => {
     wrapper.unmount()
   })
 
-  it('never lists a carry-forward row', () => {
+  it('never lists a carry-forward row', async () => {
     const doc = priceDocument({ contextEffectiveDate: '2026-02-02' })
     const wrapper = mount(SecurityDataTable, { props: { document: doc } })
+    await wrapper.get('[data-testid="security-table-toggle"]').trigger('click')
     expect(wrapper.findAll('tbody tr')).toHaveLength(1)
     wrapper.unmount()
   })
@@ -252,6 +255,7 @@ describe('SecurityHistoryChart', () => {
   it('renders the renderer and the exact table for a populated document', { timeout: 20000 }, async () => {
     const wrapper = await mountChart(priceDocument())
     expect(chartState.captured).toHaveLength(1)
+    await wrapper.get('[data-testid="security-table-toggle"]').trigger('click')
     expect(wrapper.get('[data-testid="security-data-table"]').text()).toContain('98.5% of nominal')
     expect(wrapper.find('.incumbent-fallback').exists()).toBe(false)
     wrapper.unmount()

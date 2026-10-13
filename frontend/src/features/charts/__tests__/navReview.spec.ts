@@ -51,9 +51,12 @@ function v2Result(): NavResult {
 describe('finding 1: partial status, reason and knownSubtotal survive on the remaining surfaces (phase C)', () => {
   const mountTable = async (document: ChartDocument, inspectedKey: string) => {
     const table = await import('../ChartDataTable.vue')
-    return mount(table.default, {
+    const wrapper = mount(table.default, {
       props: { document, interaction: { ...defaultInteraction(document), inspectedPeriodKey: inspectedKey } },
     })
+    // Phase C: the exact table is collapsed by default; expand before reading.
+    await wrapper.get('[data-testid="chart-table-toggle"]').trigger('click')
+    return wrapper
   }
 
   it('shows status, reason and knownSubtotal for a partial series value with an ordinary currency display', async () => {
@@ -131,6 +134,7 @@ describe('finding 3: distinct IRR horizons without "raw ratio" (phase C: table s
     const wrapper = mount(table.default, {
       props: { document, interaction: defaultInteraction(document) },
     })
+    await wrapper.get('[data-testid="chart-table-toggle"]').trigger('click')
     const text = wrapper.text()
     // Column headers keep the two IRR identities distinct under their exact
     // control names; per-period intervals (the interval IRR horizon) and the
@@ -150,6 +154,7 @@ describe('finding 3: distinct IRR horizons without "raw ratio" (phase C: table s
     const wrapper = mount(table.default, {
       props: { document, interaction: defaultInteraction(document) },
     })
+    await wrapper.get('[data-testid="chart-table-toggle"]').trigger('click')
     // Both IRR columns show inception semantics at the first sample.
     expect(wrapper.text().match(/Inception to [0-9-]+/g)?.length).toBeGreaterThanOrEqual(1)
   })
@@ -350,6 +355,7 @@ describe('round 2: monetary displays render verbatim with separators', () => {
     const wrapper = mount(table.default, {
       props: { document, interaction: defaultInteraction(document) },
     })
+    await wrapper.get('[data-testid="chart-table-toggle"]').trigger('click')
     const text = wrapper.find('table').text()
     expect(text).toContain('USD 10,000.00')
     expect(text).toContain('(USD 1,234,567,890.12)')
@@ -364,9 +370,11 @@ describe('round 2: monetary displays render verbatim with separators', () => {
   it('keeps separators exact in the exact-value table and tooltips without Number conversion', async () => {
     const document = formatDocument()
     const table = await import('../ChartDataTable.vue')
-    const tableText = mount(table.default, {
+    const tableWrapper = mount(table.default, {
       props: { document, interaction: defaultInteraction(document) },
-    }).text()
+    })
+    await tableWrapper.get('[data-testid="chart-table-toggle"]').trigger('click')
+    const tableText = tableWrapper.text()
     expect(tableText).toContain('(USD 1,234,567,890.12)')
     expect(tableText).toContain('USD 9,007,199,254,740,993.12')
     expect(tableText).toContain('known subtotal 9007199254740993.123456789')
