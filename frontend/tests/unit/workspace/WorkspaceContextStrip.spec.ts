@@ -21,19 +21,30 @@ const view: WorkspaceContextView = {
   isTransitioning: true,
   errorMessage: null,
 }
-it('keeps confirmed context visible and announces only the pending choice', () => {
+// The header controls (account select, valuation date, currency) ARE the
+// committed-context display. The strip must not repeat that text — the
+// duplicated summary line was removed in the presentation corrections —
+// while the preferences action and pending/error feedback stay.
+it('keeps feedback and preferences without duplicating the committed context text', () => {
   const wrapper = mount(WorkspaceContextStrip, {
     props: { view },
     slots: { controls: '<button>Existing controls</button>' },
   })
-  expect(wrapper.get('[data-testid="committed-account"]').text()).toBe(
-    'Brokerage A'
-  )
+  const text = wrapper.text()
+  expect(text).not.toContain('Valuation date:')
+  expect(text).not.toContain('Reporting currency:')
+  expect(wrapper.find('[data-testid="committed-account"]').exists()).toBe(false)
   expect(wrapper.findAll('[role="status"]')).toHaveLength(1)
   expect(wrapper.get('[role="status"]').text()).toContain('Brokerage B')
-  expect(wrapper.text()).toContain('2026-09-08')
-  expect(wrapper.text()).toContain('USD')
-  expect(wrapper.findAll('button').at(-1)!.text()).toBe('Existing controls')
+  expect(
+    wrapper
+      .findAll('button')
+      .map((b) => b.text())
+      .join('|')
+  ).toContain('Existing controls')
+  expect(wrapper.get('[aria-label="Display preferences"]').text()).toBe(
+    'Display preferences'
+  )
 })
 it('announces failure without replacing confirmed data and emits preferences intent', async () => {
   const wrapper = mount(WorkspaceContextStrip, {
@@ -46,7 +57,7 @@ it('announces failure without replacing confirmed data and emits preferences int
   await wrapper.get('[aria-label="Display preferences"]').trigger('click')
   expect(wrapper.emitted('open-preferences')).toHaveLength(1)
 })
-it('shows unavailable initial settings and disables preferences', () => {
+it('disables preferences until the context is ready', () => {
   const wrapper = mount(WorkspaceContextStrip, {
     props: {
       view: {
@@ -57,7 +68,6 @@ it('shows unavailable initial settings and disables preferences', () => {
       },
     },
   })
-  expect(wrapper.text()).toContain('Unavailable')
   expect(
     wrapper.get('[aria-label="Display preferences"]').attributes('disabled')
   ).toBeDefined()

@@ -218,4 +218,18 @@ describe('AccountSelection safe label fallbacks (real Vuetify select)', () => {
     expect(inputValue(wrapper)).toBe('Second Broker – Second account')
     wrapper.unmount()
   })
+
+  it('renders the field without a clipping card wrapper and keeps the value single-line', async () => {
+    // The owner-visible defect: the flat v-card around the field clipped the
+    // floated "Account or Account group" label in half. Nothing with
+    // overflow-clipping semantics may wrap the field, and a long committed
+    // value renders on one ellipsised line so the field stays as tall as the
+    // date/currency controls beside it.
+    const { wrapper } = await mountSelector({ type: 'all', id: null })
+    expect(wrapper.find('.v-card').exists()).toBe(false)
+    const label = wrapper.find('.account-select__label')
+    expect(label.exists()).toBe(true)
+    expect(label.text()).toBe('All accounts')
+    wrapper.unmount()
+  })
 })

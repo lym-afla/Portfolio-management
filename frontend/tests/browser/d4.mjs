@@ -278,30 +278,21 @@ export async function assertD4TransactionsFlow({ appOrigin, context, initScript,
   await waitFor(run, `document.querySelectorAll('tbody button[aria-label^="Delete"]').length >= 4`)
 
   // --- Action hierarchy ---------------------------------------------------
+  // Presentation phase B: on a wide row every candidate action renders
+  // directly, in order, with no overflow menu (the narrow-layout menu with
+  // the same action ids is accepted by the presentation-b case).
   let probe = await evalProbe(run, `(() => ({
-    add: !!document.querySelector('[data-action="add-transaction"]'),
-    importBtn: !!document.querySelector('[data-action="import-transactions"]'),
+    direct: [...document.querySelectorAll('.workspace-actions-row [data-action]')].map(el => el.getAttribute('data-action')),
     overflow: !!document.querySelector('button[aria-label="More actions"]'),
     deleteLabels: [...document.querySelectorAll('tbody button[aria-label^="Delete"]')].map(b => b.getAttribute('aria-label')).slice(0, 2),
   }))()`, context)
-  assert.equal(probe.add, true, `${context}: primary Add transaction`)
-  assert.equal(probe.importBtn, true, `${context}: secondary Import transactions`)
-  assert.equal(probe.overflow, true, `${context}: overflow control`)
+  assert.equal(probe.overflow, false, `${context}: a wide row hides nothing, so the overflow menu is absent`)
+  assert.deepEqual(
+    probe.direct,
+    ['add-transaction', 'import-transactions', 'add-fx-transaction', 'transfer-asset', 'record-merger'],
+    `${context}: action hierarchy renders all actions directly, in order`,
+  )
   assert.match(probe.deleteLabels.join(' | '), /08-Sep-26/, `${context}: row controls named with dates`)
-
-  await run(['eval', `document.querySelector('button[aria-label="More actions"]').click()`])
-  await waitFor(run, `document.querySelectorAll('.v-overlay--active [data-action]').length === 3`)
-  probe = await evalProbe(run, `[...document.querySelectorAll('.v-overlay--active [data-action]')].map(el => el.getAttribute('data-action'))`, context)
-  assert.deepEqual(probe, ['add-fx-transaction', 'transfer-asset', 'record-merger'], `${context}: overflow hierarchy`)
-  await run(['press', 'Escape'])
-  await run(['wait', '200'])
-
-  // Keyboard: Enter on the focused overflow activator opens the menu.
-  await run(['eval', `document.querySelector('button[aria-label="More actions"]').focus()`])
-  await run(['press', 'Enter'])
-  await waitFor(run, `document.querySelectorAll('.v-overlay--active [data-action]').length === 3`)
-  await run(['press', 'Escape'])
-  await run(['wait', '200'])
 
   // --- Delete regular_5: identity, Cancel focus, Escape return ------------
   await run(['eval', `(() => { const btn = [...document.querySelectorAll('tbody button[aria-label^="Delete"]')].find(b => b.getAttribute('aria-label').includes('ACME Corp')); btn.focus(); btn.click(); return true })()`])

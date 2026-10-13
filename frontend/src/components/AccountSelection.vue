@@ -1,72 +1,75 @@
 <template>
+  <!-- No card wrapper: a flat v-card clips the floated label that rises
+       above the field box, cutting "Account or Account group" in half. -->
   <div class="account-selection">
-    <v-card flat>
-      <v-card-text class="pa-0">
-        <div class="d-flex align-center">
-          <v-btn
-            aria-label="Previous account"
-            @click="switchAccount(-1)"
-            :disabled="
-              context.isTransitioning || !context.isReady || !canSwitchLeft
-            "
-            class="arrow-btn"
-            variant="outlined"
+    <div class="d-flex align-center">
+      <v-btn
+        aria-label="Previous account"
+        @click="switchAccount(-1)"
+        :disabled="
+          context.isTransitioning || !context.isReady || !canSwitchLeft
+        "
+        class="arrow-btn"
+        variant="outlined"
+      >
+        <v-icon>mdi-chevron-left</v-icon>
+      </v-btn>
+      <v-select
+        :model-value="selectedAccount"
+        :disabled="context.isTransitioning || !context.isReady"
+        :loading="context.isTransitioning"
+        :items="accountOptions"
+        item-title="title"
+        item-value="value"
+        label="Account or Account group"
+        density="comfortable"
+        hide-details
+        @update:model-value="handleAccountChange"
+        class="account-select mx-2"
+      >
+        <template v-slot:selection>
+          <!-- Single line with ellipsis: a long committed name must not wrap
+               the field taller than the date/currency controls beside it. The
+               full label stays available in the dropdown and via title. -->
+          <span class="account-select__label" :title="selectedAccountLabel">{{
+            selectedAccountLabel
+          }}</span>
+        </template>
+        <template v-slot:item="{ props, item }">
+          <v-list-item
+            v-if="item.raw.type === 'option'"
+            v-bind="props"
+            :title="null"
           >
-            <v-icon>mdi-chevron-left</v-icon>
-          </v-btn>
-          <v-select
-            :model-value="selectedAccount"
-            :disabled="context.isTransitioning || !context.isReady"
-            :loading="context.isTransitioning"
-            :items="accountOptions"
-            item-title="title"
-            item-value="value"
-            label="Account or Account group"
-            density="comfortable"
-            hide-details
-            @update:model-value="handleAccountChange"
-            class="account-select mx-2"
+            {{ item.raw.title }}
+          </v-list-item>
+          <v-divider v-else-if="item.raw.type === 'divider'" class="my-2" />
+          <v-list-subheader
+            v-else-if="item.raw.type === 'header'"
+            class="custom-subheader"
           >
-            <template v-slot:selection>
-              {{ selectedAccountLabel }}
-            </template>
-            <template v-slot:item="{ props, item }">
-              <v-list-item
-                v-if="item.raw.type === 'option'"
-                v-bind="props"
-                :title="null"
-              >
-                {{ item.raw.title }}
-              </v-list-item>
-              <v-divider v-else-if="item.raw.type === 'divider'" class="my-2" />
-              <v-list-subheader
-                v-else-if="item.raw.type === 'header'"
-                class="custom-subheader"
-              >
-                {{ item.raw.title }}
-              </v-list-subheader>
-            </template>
-          </v-select>
-          <v-btn
-            aria-label="Next account"
-            @click="switchAccount(1)"
-            :disabled="
-              context.isTransitioning || !context.isReady || !canSwitchRight
-            "
-            class="arrow-btn"
-            variant="outlined"
-          >
-            <v-icon>mdi-chevron-right</v-icon>
-          </v-btn>
-        </div>
-        <v-alert
-          v-if="!intentOnly && context.transitionError"
-          type="error"
-          role="alert"
-          >{{ context.transitionError.message }}</v-alert
-        >
-      </v-card-text>
-    </v-card>
+            {{ item.raw.title }}
+          </v-list-subheader>
+        </template>
+      </v-select>
+      <v-btn
+        aria-label="Next account"
+        @click="switchAccount(1)"
+        :disabled="
+          context.isTransitioning || !context.isReady || !canSwitchRight
+        "
+        class="arrow-btn"
+        variant="outlined"
+      >
+        <v-icon>mdi-chevron-right</v-icon>
+      </v-btn>
+    </div>
+    <v-alert
+      v-if="!intentOnly && context.transitionError"
+      type="error"
+      role="alert"
+      >{{ context.transitionError.message }}</v-alert
+    >
   </div>
 </template>
 
@@ -156,6 +159,7 @@ function switchAccount(direction) {
 <style scoped>
 .account-selection {
   --select-height: 56px;
+  min-width: 0;
 }
 
 .custom-subheader {
@@ -179,8 +183,18 @@ function switchAccount(direction) {
   flex-grow: 1;
 }
 
-.v-card-text {
-  padding: 8px 0;
+.account-select :deep(.v-select__selection) {
+  display: block;
+  min-width: 0;
+  width: 100%;
+  overflow: hidden;
+}
+
+.account-select__label {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 :deep(.v-field__input) {

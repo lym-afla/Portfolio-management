@@ -374,6 +374,102 @@ export async function assertBrokersSecurityD7Flow({ appOrigin, context, initScri
     await waitFor(run, hasText('Page One Instrument'))
     await run(['wait', '200'])
 
+    // Counts and request page size agree: the range label mirrors the page
+    // size the requests carried, and changing rows-per-page refetches once
+    // with the new page size, back on page 1.
+    const page1After = d7.securityRequests.filter((r) => r.path.includes('/transactions')).at(-1)
+    assert.equal(page1After.query.page, '1', `${context}: back on page 1`)
+    assert.equal(
+      page1After.query.itemsPerPage,
+      '10',
+      `${context}: the initial page size reaches the wire`,
+    )
+    const rangeBefore = await evalProbe(run, `(() => {
+      const label = [...document.querySelectorAll('.activity-footer .activity-range')].at(0)
+      return label ? label.textContent.replace(/\\s+/g, ' ').trim() : null
+    })()`)
+    assert.match(
+      rangeBefore ?? '',
+      /Showing 1-10 of \d+ entries/,
+      `${context}: the range label must agree with the page size: ${rangeBefore}`,
+    )
+    const transactionsBeforeResize = d7.securityRequests.filter((r) => r.path.includes('/transactions')).length
+    const pickedRowsPerPage = await evalProbe(
+      run,
+      `(() => {
+        const select = document.querySelector('.activity-footer .rows-per-page-select')
+        if (!select) return false
+        select.scrollIntoView({ block: 'center' })
+        const field = select.querySelector('.v-field')
+        field?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+        field?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+        return true
+      })()`
+    )
+    assert.equal(pickedRowsPerPage, true, `${context}: rows-per-page select opens`)
+    await run(['wait', '300'])
+    const optionPicked = await evalProbe(
+      run,
+      `(() => {
+        const option = [...document.querySelectorAll('.v-overlay--active .v-list-item')]
+          .find((el) => el.textContent.trim() === '25')
+        if (!option) return false
+        option.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+        return true
+      })()`
+    )
+    assert.equal(optionPicked, true, `${context}: the 25 rows-per-page option exists`)
+    await waitFor(run, hasText('Page One Instrument'))
+    await run(['wait', '300'])
+    const resized = d7.securityRequests.filter((r) => r.path.includes('/transactions')).at(-1)
+    assert.equal(
+      d7.securityRequests.filter((r) => r.path.includes('/transactions')).length,
+      transactionsBeforeResize + 1,
+      `${context}: exactly one transactions refetch for the new page size`,
+    )
+    assert.equal(
+      resized.query.itemsPerPage,
+      '25',
+      `${context}: the new page size reaches the wire`,
+    )
+    assert.equal(resized.query.page, '1', `${context}: a page-size change resets to page 1`)
+    const rangeAfter = await evalProbe(run, `(() => {
+      const label = [...document.querySelectorAll('.activity-footer .activity-range')].at(0)
+      return label ? label.textContent.replace(/\\s+/g, ' ').trim() : null
+    })()`)
+    assert.match(
+      rangeAfter ?? '',
+      /Showing 1-23 of 23 entries/,
+      `${context}: the range label must clamp to the total with the larger page: ${rangeAfter}`,
+    )
+    // Restore the page size for the following steps.
+    const resetRows = await evalProbe(
+      run,
+      `(() => {
+        const select = document.querySelector('.activity-footer .rows-per-page-select')
+        if (!select) return false
+        const field = select.querySelector('.v-field')
+        field?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+        field?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+        return true
+      })()`
+    )
+    assert.equal(resetRows, true)
+    await run(['wait', '300'])
+    const restoredRows = await evalProbe(
+      run,
+      `(() => {
+        const option = [...document.querySelectorAll('.v-overlay--active .v-list-item')]
+          .find((el) => el.textContent.trim() === '10')
+        if (!option) return false
+        option.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+        return true
+      })()`
+    )
+    assert.equal(restoredRows, true, `${context}: the 10 rows-per-page option exists`)
+    await waitFor(run, hasText('Page One Instrument'))
+    await run(['wait', '200'])
+
     // Account change: detail+price+position+transactions refetch with
     // account_id=7; the account-choices resource is NOT refetched.
     const recordCountBeforeAccount = d7.securityRequests.length

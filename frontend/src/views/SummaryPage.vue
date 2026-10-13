@@ -448,10 +448,13 @@ watch([() => context.canRead, () => appStore.dataRefreshTrigger, selectedYear], 
   border-spacing: 0;
 }
 
+/* Cell separators and header/total rules come from the shared workspace
+   table rules (assets/workspace.css): visible neutral row separators, a
+   black header-bottom rule and clear totals rules. Only padding and
+   emphasis stay here. */
 .workspace-table :deep(th),
 .workspace-table :deep(td) {
   padding: 8px;
-  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.12);
 }
 
 /* Remove highlight from table headings */
@@ -499,11 +502,11 @@ watch([() => context.canRead, () => appStore.dataRefreshTrigger, selectedYear], 
   background-color: rgba(var(--v-theme-on-surface), 0.03);
 }
 
-/* Add top border to TOTAL lines */
+/* TOTAL lines keep their bold emphasis; the ink top/bottom rules come from
+   the shared workspace table rules (tr.total-row). */
 .total-row {
   font-weight: bold;
   background-color: rgba(var(--v-theme-on-surface), 0.06);
-  border-top: 2px solid rgba(var(--v-theme-on-surface), 0.12);
 }
 
 /* Add vertical lines between year groups in the main part of the first table */

@@ -58,17 +58,26 @@ describe('WorkspaceActions', () => {
     wrapper.unmount()
   })
 
-  it('exposes overflow actions behind a labelled keyboard-focusable menu control', async () => {
+  it('shows every candidate action directly when no measured width hides any', async () => {
+    // Without real layout (unit jsdom) nothing may be hidden: the overflow
+    // tier renders as ordinary direct buttons in order, and each still emits
+    // its exact action id. The measured narrow-layout menu is accepted by the
+    // rendered browser case.
     const wrapper = mountActions()
-    const activator = wrapper.element.querySelector('button[aria-label="More actions"]') as HTMLButtonElement
-    expect(activator).toBeTruthy()
-    activator.click()
-    await new Promise((resolve) => setTimeout(resolve, 50))
-    const items = [...document.querySelectorAll('.v-overlay--active [data-action]')]
-    expect(items.map((item) => item.getAttribute('data-action'))).toEqual([
-      'add-fx-transaction', 'transfer-asset', 'record-merger',
+    const ids = [...wrapper.element.querySelectorAll('[data-action]')].map(
+      (el) => el.getAttribute('data-action')
+    )
+    expect(ids).toEqual([
+      'add-transaction',
+      'import-transactions',
+      'add-fx-transaction',
+      'transfer-asset',
+      'record-merger',
     ])
-    ;(items[0] as HTMLElement).click()
+    const fx = wrapper.element.querySelector(
+      '[data-action="add-fx-transaction"]'
+    ) as HTMLButtonElement
+    fx.click()
     await new Promise((resolve) => setTimeout(resolve, 30))
     expect(wrapper.emitted('action')).toEqual([['add-fx-transaction']])
     wrapper.unmount()

@@ -118,17 +118,38 @@ const capture = async (run, name) => {
 }
 
 const openImportDialog = async (run, context) => {
+  // Measured action tiers (presentation phase B): the secondary import
+  // action is a direct button on wide rows and menu-hosted behind the
+  // overflow activator on narrow ones. Both paths reach the same dialog.
   const clicked = await evalProbe(
     run,
     `(() => {
       const el = document.querySelector('button[data-action="import-transactions"]')
-      if (!el || el.disabled) return false
-      el.scrollIntoView({ block: 'center' })
-      el.click()
+      if (el) {
+        if (el.disabled) return false
+        el.scrollIntoView({ block: 'center' })
+        el.click()
+        return true
+      }
+      const more = document.querySelector('[data-testid="workspace-actions-more"]')
+      if (!more) return false
+      more.click()
       return true
     })()`
   )
   assert.equal(clicked, true, `${context}: import action reachable`)
+  await waitFor(run, `document.querySelector('.v-dialog.v-overlay--active') !== null || document.querySelectorAll('.v-overlay--active [data-action]').length >= 1`)
+  await evalProbe(
+    run,
+    `(() => {
+      const dialog = document.querySelector('.v-dialog.v-overlay--active')
+      if (dialog) return true
+      const item = [...document.querySelectorAll('.v-overlay--active [data-action]')].find(el => el.getAttribute('data-action') === 'import-transactions')
+      if (!item) throw new Error('menu import-transactions missing')
+      item.click()
+      return true
+    })()`
+  )
   await waitFor(run, hasText('Direct Import'))
   await run(['wait', '400'])
 }
@@ -485,7 +506,7 @@ const runZoomProbe = async ({ appOrigin, context, initScript, log, session }) =>
     })
 
   await run(['open', `${appOrigin}/transactions`])
-  await waitFor(run, `document.querySelector('button[data-action="import-transactions"]') !== null`)
+  await waitFor(run, `document.querySelector('.workspace-actions-row [data-action]') !== null || document.querySelector('[data-testid="workspace-actions-more"]') !== null`)
   const zoomed = await zoomTo(200)
   assert.equal(zoomed.code, 0, `${context}: native 200% zoom verified (${zoomed.out.trim()})`)
   await run(['wait', '300'])
@@ -521,7 +542,7 @@ export async function assertImportsD6Flow({ appOrigin, context, initScript, log,
     // Mobile layout probe: the configuration surface stays contained and
     // hittable at 390px.
     await run(['open', `${appOrigin}/transactions`])
-    await waitFor(run, `document.querySelector('button[data-action="import-transactions"]') !== null`)
+    await waitFor(run, `document.querySelector('.workspace-actions-row [data-action]') !== null || document.querySelector('[data-testid="workspace-actions-more"]') !== null`)
     await openImportDialog(run, context)
     const probe = await evalProbe(
       run,
@@ -549,7 +570,7 @@ export async function assertImportsD6Flow({ appOrigin, context, initScript, log,
   }
 
   await run(['open', `${appOrigin}/transactions`])
-  await waitFor(run, `document.querySelector('button[data-action="import-transactions"]') !== null`)
+  await waitFor(run, `document.querySelector('.workspace-actions-row [data-action]') !== null || document.querySelector('[data-testid="workspace-actions-more"]') !== null`)
 
   // Stale-event containment on the idle-connected socket, before any run.
   await runStaleEventFlow({ run, importsWs, context: `${context} stale-events` })

@@ -1,11 +1,11 @@
 # Frontend modernization progress
 
-## Current handoff — 9 October 2026
+## Current handoff — 12 October 2026
 
-PR #61/D8 is merged into modernization; verified remote checkpoint `52545377`. The real-data validation exposed additional owner findings, so release acceptance and C5b removal remain pending. Earlier checkpoints below are historical.
+PR #62/phase A is merged into modernization; verified remote checkpoint `20cc3c81`. Phase B (presentation) has been executed and stops at a draft PR for review. Earlier checkpoints below are historical.
 
-- [Correction plan](2026-10-09-release-validation-fixes.md): planned, not implemented; covers functional defects, shell/tables, chart/security presentation and owner-selected dashboard summary.
-- [GLM phase A prompt](2026-10-09-release-validation-fixes-glm-prompt.md): next assignment is Tasks 1–3 only, in a dedicated worktree and bounded draft PRs. Later presentation phases follow separately.
+- [Correction plan](2026-10-09-release-validation-fixes.md): phase A (Tasks 1–3) merged as PR #62; **phase B (Tasks 4–5) executed** on `codex/release-validation-presentation-b` (dedicated worktree, base `20cc3c81`), draft PR into `codex/frontend-modernization`, not merged. The compact expanding navigation rail, the honest header geometry (no duplicated context text, no empty header line, equal 56px control heights, unclipped account labels), shared table rules (visible separators, ink header-bottom rule, clear totals rules), modernized security links, italic allocation share cells and the measured responsive transaction actions are in ([phase B ledger](../../design/release-validation-presentation-b.md)); final gates on the committed head: unit 1081/1081, type checks ×3 / api:types / lint / build 0, full 18×4 route matrix zero mismatches, all focused browser cases 0, unflagged final-qa-d8 acceptance clean (90+12+37+3, 0 failures, dashboard 485,118 gzip), delivery 0, backend 1399/10. Phase C (charts), phase D (dashboard summary) and C5b remain pending owner direction.
+- [GLM phase A prompt](2026-10-09-release-validation-fixes-glm-prompt.md): phase A assignment (Tasks 1–3), completed through owner review round 5 and merged.
 - The previous 11/11 claim covers partial display parity, not all owner acceptance scenarios. Retain Chart.js until corrections and renewed real-data acceptance are complete and removal is separately approved.
 
 ### Phase A executed — 10 October 2026

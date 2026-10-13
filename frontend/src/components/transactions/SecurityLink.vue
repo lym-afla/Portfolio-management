@@ -1,8 +1,11 @@
 <template>
+  <!-- Modernized link styling (presentation only): restrained primary color,
+       underline on hover/focus; the shared focus outline and router-link
+       semantics stay. -->
   <router-link
     v-if="id && name"
     :to="{ name: 'SecurityDetail', params: { id } }"
-    class="text-primary text-decoration-none font-weight-medium"
+    class="security-link"
   >
     {{ name }}
   </router-link>

@@ -138,10 +138,13 @@ async function assertD5SummaryFlow({ appOrigin, context, initScript, log, sessio
   assert.equal(probe.yearSelect, true, `${context}: breakdown year control present`)
   assert.equal(probe.region, true, `${context}: performance table scrolls table-locally`)
 
-  // The breakdown-year select still owns its request.
+  // The breakdown-year select still owns its request. The default year is
+  // the current one ('2026' on the string year wire since the phase A
+  // adapter), so the probe picks the genuinely different 2025 — re-picking
+  // the selected value correctly fires no request.
   const breakdownBefore = fixtureServer.requests.filter((entry) => entry.path === '/summary/api/portfolio_breakdown/').length
   await openSelectByTestId(run, 'breakdown-year-select')
-  await pickOverlayItem(run, '2026')
+  await pickOverlayItem(run, '2025')
   await run(['wait', '400'])
   const breakdownAfter = fixtureServer.requests.filter((entry) => entry.path === '/summary/api/portfolio_breakdown/').length
   assert.ok(breakdownAfter > breakdownBefore, `${context}: breakdown year change issues its own request`)
@@ -204,7 +207,13 @@ const familyFlows = {
       filters: ['Asset Types', 'Accounts', 'Securities', 'Start Date', 'End Date'].map((label) => [...document.querySelectorAll('label')].some((l) => l.textContent.trim() === label)),
       apply: [...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Apply Filters'),
       addPrice: [...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Add Price Entry'),
-      importPrices: [...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Import Prices'),
+      // The secondary action renders directly on wide rows; on narrow ones it
+      // lives inside the (lazily rendered) overflow menu behind the
+      // activator (presentation phase B). The exact menu items are asserted
+      // by the presentation-b case.
+      importPrices: window.innerWidth < 960
+        ? !!document.querySelector('[data-testid="workspace-actions-more"]')
+        : [...document.querySelectorAll('[data-action="import-prices"]')].length > 0,
       priceCell: document.querySelector('h2#prices-section')?.closest('section')?.querySelector('.v-data-table')?.textContent.includes('100.00'),
     }))()`)
     assert.equal(probe.sectionHeading, 'Prices', `${context}: prices section heading`)
@@ -489,7 +498,10 @@ const MOBILE_CONTROL_SPECS = {
   '/database/brokers': { kind: 'shared', actions: ['Add Broker'] },
   '/database/accounts': { kind: 'shared', actions: ['Add Account'] },
   '/database/securities': { kind: 'shared', actions: ['Add Security', 'Record Merger'] },
-  '/database/prices': { kind: 'filters', actions: ['Apply Filters', 'Add Price Entry', 'Import Prices'] },
+  // Presentation phase B: the secondary Import Prices action moves into the
+  // overflow menu on narrow layouts, so its direct-button probe is replaced
+  // by the overflow activator plus the exact menu action id.
+  '/database/prices': { kind: 'filters', actions: ['Apply Filters', 'Add Price Entry'], overflowAction: 'import-prices' },
   '/database/fx': { kind: 'shared', actions: ['Add FX Rate', 'Import FX Rates'] },
 }
 
@@ -510,6 +522,10 @@ export async function assertMobilePageControlsFlow({ appOrigin, context, initScr
       const el = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === label)
       return { label, present: !!el, contained: el ? withinViewportX(el) : false, reachable: el ? reachable(el) : false }
     })
+    const overflowActivator = ${JSON.stringify(spec.overflowAction)} ? (() => {
+      const el = document.querySelector('[data-testid="workspace-actions-more"]')
+      return { present: !!el, contained: el ? withinViewportX(el) : false, reachable: el ? reachable(el) : false }
+    })() : null
     const tabs = [...document.querySelectorAll('[data-testid="database-nav"] a')]
     let search = null, rows = null, filterFields = []
     if (${JSON.stringify(spec.kind)} === 'shared') {
@@ -528,12 +544,12 @@ export async function assertMobilePageControlsFlow({ appOrigin, context, initScr
     return {
       viewport: innerWidth,
       descWidth: desc ? Math.round(desc.getBoundingClientRect().width) : null,
-      search, rows, filterFields, actions,
+      search, rows, filterFields, actions, overflowActivator,
       tabsReachable: tabs.map((t) => reachable(t)),
     }
   })()`
 
-  const assertProbe = (route, probe, phase, kind) => {
+  const assertProbe = (route, probe, phase, kind, spec) => {
     assert.ok(probe.descWidth !== null && probe.descWidth <= probe.viewport + 1,
       `${context}: ${route} ${phase}: page description wraps inside the viewport (width ${probe.descWidth} at ${probe.viewport}px)`)
     if (kind === 'shared') {
@@ -551,6 +567,11 @@ export async function assertMobilePageControlsFlow({ appOrigin, context, initScr
       assert.ok(action.present, `${context}: ${route} ${phase}: action ${action.label} present`)
       assert.ok(action.reachable, `${context}: ${route} ${phase}: action ${action.label} scrollable into view and hittable (${JSON.stringify(action)})`)
     }
+    if (spec && spec.overflowAction) {
+      assert.ok(probe.overflowActivator && probe.overflowActivator.present
+        && probe.overflowActivator.contained && probe.overflowActivator.reachable,
+        `${context}: ${route} ${phase}: overflow activator for ${spec.overflowAction} present and hittable (${JSON.stringify(probe.overflowActivator)})`)
+    }
     if (probe.tabsReachable.length) {
       assert.ok(probe.tabsReachable.every(Boolean),
         `${context}: ${route} ${phase}: every data-nav section reachable via its scroll group (${JSON.stringify(probe.tabsReachable)})`)
@@ -563,7 +584,7 @@ export async function assertMobilePageControlsFlow({ appOrigin, context, initScr
     await waitFor(run, `document.querySelector('.workspace-table-toolbar') !== null || [...document.querySelectorAll('label')].some((l) => l.textContent.trim() === 'Asset Types')`, 8000).catch(() => {})
     await run(['wait', '400'])
     const probe = await evalProbe(run, PROBE(spec))
-    assertProbe(route, probe, 'fresh mobile load', spec.kind)
+    assertProbe(route, probe, 'fresh mobile load', spec.kind, spec)
   }
 
   // Resize transitions on one representative family: desktop -> 390 -> desktop.
@@ -574,7 +595,7 @@ export async function assertMobilePageControlsFlow({ appOrigin, context, initScr
   await run(['set', 'viewport', '390', '844'])
   await run(['wait', '300'])
   let probe = await evalProbe(run, PROBE(MOBILE_CONTROL_SPECS['/database/securities']))
-  assertProbe('/database/securities', probe, 'desktop->390 transition', 'shared')
+  assertProbe('/database/securities', probe, 'desktop->390 transition', 'shared', MOBILE_CONTROL_SPECS['/database/securities'])
   await run(['set', 'viewport', '1440', '1000'])
   await run(['wait', '300'])
   probe = await evalProbe(run, PROBE(MOBILE_CONTROL_SPECS['/database/securities']))
@@ -655,8 +676,10 @@ export async function captureD5Screenshots({ appOrigin, context, initScript, log
       const probe = await evalProbe(run, `(() => {
         const withinViewportX = (el) => { const b = el.getBoundingClientRect(); return b.left >= -1 && b.right <= innerWidth + 1 }
         const desc = document.querySelector('[data-testid="workspace-page-heading"]')?.parentElement?.querySelector('p')
+        // Presentation phase B: Import Prices moves into the overflow menu at
+        // mobile widths, so only actions that stay direct are probed here.
         const buttons = [...document.querySelectorAll('button')]
-          .filter((b) => ['Add Security', 'Record Merger', 'Add Broker', 'Add Account', 'Add Price Entry', 'Import Prices', 'Add FX Rate', 'Import FX Rates', 'Apply Filters'].includes(b.textContent.trim()))
+          .filter((b) => ['Add Security', 'Record Merger', 'Add Broker', 'Add Account', 'Add Price Entry', 'Add FX Rate', 'Import FX Rates', 'Apply Filters'].includes(b.textContent.trim()))
           .map((b) => ({ label: b.textContent.trim(), contained: withinViewportX(b), inDoc: b.getBoundingClientRect().width > 0 }))
         return { viewport: innerWidth, descWidth: desc ? Math.round(desc.getBoundingClientRect().width) : null, buttons }
       })()`)

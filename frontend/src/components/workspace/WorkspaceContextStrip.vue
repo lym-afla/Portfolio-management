@@ -12,20 +12,12 @@ defineEmits<{
     aria-label="Portfolio context"
     :aria-busy="view.isTransitioning"
   >
-    <div class="workspace-context__summary">
-      <span
-        data-testid="committed-account"
-        class="workspace-context__account"
-        >{{ view.accountLabel }}</span
-      >
-      <span
-        >Valuation date:
-        {{ view.committed.effectiveCurrentDate ?? 'Unavailable' }}</span
-      >
-      <span
-        >Reporting currency:
-        {{ view.committed.currency ?? 'Unavailable' }}</span
-      >
+    <!-- The controls slot IS the committed-context display (account, valuation
+         date, currency); repeating it as summary text duplicated the header.
+         Only the display-preferences action and pending/error feedback live
+         beside it. -->
+    <div class="workspace-context__bar">
+      <slot name="controls" />
       <button
         type="button"
         class="workspace-context__preferences"
@@ -36,7 +28,6 @@ defineEmits<{
         Display preferences
       </button>
     </div>
-    <slot name="controls" />
     <p v-if="view.isTransitioning" role="status" aria-live="polite">
       {{
         view.pendingLabel
@@ -51,19 +42,14 @@ defineEmits<{
 .workspace-context {
   width: 100%;
 }
-.workspace-context__summary {
+.workspace-context__bar {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 8px 16px;
-  font-size: 0.875rem;
-  color: rgb(var(--v-theme-text-secondary));
-  margin-bottom: 8px;
-}
-.workspace-context__account {
-  font-weight: 600;
-  color: rgb(var(--v-theme-text-primary));
-  overflow-wrap: anywhere;
+  /* Room for the outlined fields' floated labels, which rise above the
+     field boxes. */
+  padding-top: 10px;
 }
 .workspace-context__preferences {
   margin-left: auto;
@@ -83,9 +69,6 @@ defineEmits<{
   margin: 8px 0 0;
 }
 @media (max-width: 599px) {
-  .workspace-context__account {
-    flex-basis: 100%;
-  }
   .workspace-context__preferences {
     margin-left: 0;
   }
