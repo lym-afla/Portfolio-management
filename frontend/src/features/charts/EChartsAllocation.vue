@@ -6,6 +6,7 @@
   <div ref="host" class="echarts-allocation">
     <VChart
       ref="chart"
+      :key="`dpr-${dprKey}`"
       class="echarts-allocation__chart"
       :option="option"
       :update-options="{ notMerge: true }"
@@ -25,6 +26,7 @@ import type { EChartsOption } from 'echarts'
 import type { ChartDocument } from './contracts'
 import type { AllocationInteraction } from './allocationInteraction'
 import { buildAllocationOption } from './buildAllocationOption'
+import { watchDevicePixelRatio } from './devicePixelRatio'
 
 use([
   PieChart,
@@ -47,6 +49,14 @@ const host = ref<HTMLElement | null>(null)
 // The wrapper exposes the ECharts instance; highlight/downplay/showTip are
 // the only actions we dispatch, and a disposed instance is never touched.
 const chart = ref<{ dispatchAction: (payload: Record<string, unknown>) => void } | null>(null)
+
+// A devicePixelRatio change (native zoom, monitor switch) invalidates the
+// painter's backing-store resolution; the key bump re-initializes the chart
+// at the new dpr. The focus interaction lives in the parent and survives.
+const dprKey = ref(0)
+watchDevicePixelRatio(() => {
+  dprKey.value += 1
+})
 
 onMounted(() => {
   // Browser-acceptance hook: the rendered-acceptance case drives showTip
