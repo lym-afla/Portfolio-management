@@ -422,6 +422,10 @@ const fixtures = new Map([
       unrealized: '$0.00',
       capital_distribution: '$100.00',
       irr: '0.00%',
+      holdings: [
+        { account_id: 11, account_name: 'Main', broker_name: 'IBKR', display_name: 'IBKR \u2013 Main', quantity: '1.000000000', status: 'open' },
+        { account_id: 12, account_name: 'IIS', broker_name: 'Tinkoff', display_name: 'Tinkoff \u2013 IIS', quantity: '0.000000000', status: 'closed' },
+      ],
     },
   ],
   ['GET /database/api/securities/1/price-history/', []],
