@@ -1,8 +1,8 @@
 # Real-data validation corrections — phase B evidence ledger (presentation)
 
-Date: 12 October 2026. Branch `codex/release-validation-presentation-b` (dedicated worktree `D:\Developing\Portfolio-management-relval-pres-b`), base `20cc3c81` (`origin/codex/frontend-modernization`: PR #62/phase A merged). Scope: **phase B Tasks 4–5 implemented** (navigation/header geometry; shared tables and responsive actions). Phase A's functional fixes are preserved untouched — the context/date ownership, year options, zero-versus-absent handling and import lifecycle guards all keep their regressions green (full unit suite and the `dates`/`context`/`imports-d6`/`imports-prices` browser cases pass on this branch). No backend file touched; no financial calculation, string or precision changed.
+Date: 12 October 2026 (review round 1 incorporated 13 October). Branch `codex/release-validation-presentation-b` (dedicated worktree `D:\Developing\Portfolio-management-relval-pres-b`), base `20cc3c81` (`origin/codex/frontend-modernization`: PR #62/phase A merged). Scope: **phase B Tasks 4–5 implemented** (navigation/header geometry; shared tables and responsive actions) **including the full review round**. Phase A's functional fixes are preserved untouched — the context/date ownership, year options, zero-versus-absent handling and import lifecycle guards all keep their regressions green (full unit suite and the `dates`/`context`/`imports-d6`/`imports-prices` browser cases pass on this branch). No backend file touched; no financial calculation, string or precision changed.
 
-Implementation commit: `8d569dcc` (single task-sized commit; every behavioral change regression-pinned RED-first as listed below). Gates on the committed head are in [Gates](#gates-actual-exit-codes-committed-head-8d569dcc).
+Commits: `8d569dcc` (Tasks 4–5), `bd740078` (ledger/tracker/captures), `d0b78bec` (review round). Gates on the committed review head are in [Gates](#gates-actual-exit-codes).
 
 ## Task 4 — navigation and header geometry
 
@@ -56,11 +56,25 @@ Implementation commit: `8d569dcc` (single task-sized commit; every behavioral ch
 - `Navigation.spec.ts` desktop full-drawer assertions → compact rail semantics.
 - `d5.mjs` breakdown-year pick: the probe re-picked the already-selected year and relied on the OLD integer wire (string '2026' vs number 2026) to coerce a "change"; on the phase A string wire a same-value pick correctly fires no request. The probe now picks the genuinely different 2025 (pre-existing failure on the pristine base `20cc3c81`, reproduced there before fixing — phase A never ran the d5 case).
 
+## Review round 1 (draft PR #63) — all four findings corrected RED-first (`d0b78bec`)
+
+1. **WorkspaceActions focus preservation.** The focused action's identity is captured BEFORE any tier change (menu items live in a teleported overlay, so containment alone is not enough — a candidate id that belongs to this component counts as inside; once a button unmounts, `activeElement` is already lost to `<body>`). After the fit lands, focus returns to the same action where it still exists (either tier), otherwise to the More actions activator, otherwise — when widening removed the activator entirely — to the last direct action. Rendered regressions in `presentation-b`: desktop→narrow restores focus to the activator and never drops to `<body>`; narrow→desktop WHILE THE MENU IS OPEN with a menu item focused lands focus on that exact action, now direct; a resize whose fit keeps the focused action direct does not steal it. Unit regressions: `WorkspaceActions.fit.spec.ts` (activator follows the disappeared slot; no steal when the action survives).
+2. **Residual-overflow convergence.** The old loop restored all candidates and recomputed the same estimate each iteration — it never shed an action. The verification pass now reduces the RETAINED count by one per correction and re-checks the real row, bounded by the candidate count. A usable layout when even the primary action and the activator cannot share one line is now DEFINED: the row wraps (both controls stay visible; measured from the real `fixedWidth + gap + menuWidth > availableWidth`), and the wrap survives later refits whose "no overflow" is achieved BY the wrap (the degenerate flag is computed per fit and guards the reset). Regressions: an over-estimate leaving genuine overflow converges to the truly fitting count (estimate says 4, real row fits 2 → 2); the degenerate case wraps and releases; rendered probes at 260px assert wrap + visibility + no horizontal overflow + release on widen.
+3. **Unmount-safe asynchronous fitting.** Every fit takes a generation token and re-checks ownership (`disposed`, token, element availability) after EVERY await; unmount invalidates immediately, so a stale continuation stops at the next check and cannot touch a replacement instance. A width change observed while a fit is running queues a refit that runs when the active one finishes (not swallowed, not interleaved). Two further root causes surfaced and were fixed while driving these regressions:
+   - **rAF does not fire in occluded windows** — the fit path was rAF-based (`nextFrame` + rAF-coalesced scheduling), so a backgrounded/occluded tab stalled mid-measurement with the candidates unmounted and the menu closed until a frame happened to be produced. This was the source of the intermittent `dialogs`/`d5` failures (reproduced live: `requestAnimationFrame` counter static at 0 with the page `visible` but the window occluded). The fit is now entirely microtask-based (Vue `nextTick` flushes the DOM; the width reads force layout synchronously); queueing coalesces on the microtask queue.
+   - **The fit's own measuring toggle fed the ResizeObserver** (the activator joins the row for the measure pass, jittering the strip box) — honoring those self-induced events refit forever. The observer now filters same-width events (<1px), and a resize arriving while the USER'S overflow menu is open closes the menu via its model (a refit would reshuffle its items mid-interaction; programmatic model changes emit no `update:model-value`, so the fit is chained on `nextTick`) and runs right after. Regressions: unmount during measurement (no unhandled rejection, replacement untouched, replacement fits normally), mid-fit resize at a new width triggers the refit (mount fit + both events = three estimator calls), plus the previously green convergence/wrap/focus cases.
+   - Measuring passes now stage the candidates with `aria-hidden` on the row (layout boxes kept for their widths, excluded from the accessibility tree), so a snapshot can never catch a candidate that is about to move tiers; the `dialogs` click helper retries a tier move like it already retries a covered click.
+4. **Bare-shell allowance restricted.** `assertLayoutGeometry` takes an explicit `allowBareShell` (only `/profile*` and `/database*` routes pass it, only honored at ≥960px); anything else missing both header and context strip FAILS. Negative regression `assertBareShellGuard` (in the `layout` case, every viewport): removes the dashboard's `.v-app-bar` AND `.workspace-context` from the DOM and requires the probe to fail citing the restriction.
+
+The four finding regressions were observed RED against the pre-fix component (6/6 failing) before implementation.
+
 ## Not reproduced (recorded honestly)
 
 - Arrow-border defect: not reproducible at DPR 1/2 on this base (pixel-decoded both scales — complete borders, rounded corners only); the adjacent label-clip and height defects were real and fixed.
 
-## Gates (actual exit codes, committed head `8d569dcc`)
+## Gates (actual exit codes)
+
+Implementation head `8d569dcc` (round 1, historical):
 
 | Gate | Result | Exit |
 |---|---|---|
@@ -76,7 +90,22 @@ Implementation commit: `8d569dcc` (single task-sized commit; every behavioral ch
 | browser `delivery` | PASS | 0 |
 | backend `uv run python -m pytest` (test settings) | **1399 passed / 10 skipped**, coverage 83.57% | 0 |
 
-Captures (inspected, synthetic fixtures only): `docs/design/assets/presentation-b/` — `rail-expanded-hover.png`, `rail-collapsed-desktop.png`, `positions-desktop-rules.png`, `transactions-desktop-actions.png`, `transactions-390-menu.png`, `transactions-390-mobile.png`.
+Review head `d0b78bec` (round 1 corrections):
+
+| Gate | Result | Exit |
+|---|---|---|
+| `npx vitest run --no-file-parallelism` | 109 files / **1087 passed** | 0 |
+| `npm run type-check` / `:reliability` / `:charts` | clean | 0 / 0 / 0 |
+| `npm run api:types:check` | match | 0 |
+| `npm run lint` | 0 errors / 8 baseline warnings | 0 |
+| `npm run build` | ok | 0 |
+| FULL browser route matrix (18 routes × 4 viewports, zero mismatches) | `routeFailures: []`, `fixtureMismatches: []` | 0 |
+| ALL 18 focused browser cases (incl. the extended `presentation-b` and the new bare-shell guard in `layout`) | **all PASS sequentially, no reruns needed** (the rAF fix removed the stall class that previously forced clean reruns of `dialogs`/`d5`/`charts-c5`) | 0 |
+| browser `final-qa-d8` (unflagged default-on acceptance, committed head) | first attempt died on the recorded agent-browser daemon ECONNRESET mid-flow (harness process crash, not an assertion); clean rerun **PASS — 90 route probes + 12 long-name + 37 workflows + 3 rollback spot-checks, 0 failures**; dashboard 485,131 gzip < 535,000 target | 0 |
+| browser `delivery` | PASS | 0 |
+| backend `uv run python -m pytest` (test settings) | **1399 passed / 10 skipped**, coverage 83.57% | 0 |
+
+Captures (inspected, synthetic fixtures only): `docs/design/assets/presentation-b/` — `rail-expanded-hover.png`, `rail-collapsed-desktop.png`, `positions-desktop-rules.png`, `transactions-desktop-actions.png`, `transactions-390-menu.png`, `transactions-390-mobile.png` (retaken on the review head; `transactions-390-menu.png` now shows the menu open with an item focused across the desktop-restore transition).
 
 ## Boundaries
 
