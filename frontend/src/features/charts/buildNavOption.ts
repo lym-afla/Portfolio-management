@@ -10,11 +10,19 @@
 // exclusively from server strings: tooltips show exact displays with status/
 // reason/knownSubtotal (never plotted numbers), and every server string is
 // HTML-escaped because ECharts renders tooltip strings as markup.
+//
+// Phase C presentation rules: only the primary money axis draws grid lines
+// (the percentage axis keeps its formatted ticks without a second competing
+// grid); tooltip lines carry the control name plus the exact display with
+// status detail only — server displays already identify their currency/unit
+// and the money axis names its scale, so per-line unit suffixes, IRR horizon
+// date-range brackets and the separate all-categories NAV line are gone (the
+// full-NAV totals and per-period intervals live in the exact-value table).
 import type { EChartsOption } from 'echarts'
 import type { ChartDocument, ChartSeries, ChartUnit, ChartValue } from './contracts'
 import { toPlotNumber } from './renderBoundary'
 import { irrLineStyle, seriesColor } from './seriesStyles'
-import { seriesControlName, seriesHorizon, type ChartInteraction } from './interaction'
+import { seriesControlName, type ChartInteraction } from './interaction'
 import { navTooltipPosition } from './tooltipPlacement'
 
 function escapeHtml(text: string): string {
@@ -26,14 +34,6 @@ function axisUnitLabel(unit: ChartUnit): string {
   if (unit.kind === 'money') {
     return unit.plotDivisor === '1000' ? `${unit.currency} thousands` : unit.currency
   }
-  if (unit.kind === 'ratio') return '%'
-  if (unit.kind === 'percent_of_nominal') return '% of nominal'
-  return 'quantity'
-}
-
-/** Value label: exact amounts are named in their stated unit, never the plotting scale. */
-function valueUnitLabel(unit: ChartUnit): string {
-  if (unit.kind === 'money') return unit.currency
   if (unit.kind === 'ratio') return '%'
   if (unit.kind === 'percent_of_nominal') return '% of nominal'
   return 'quantity'
@@ -113,8 +113,12 @@ export function buildNavOption(
       axisLabel: { formatter: (value: string) => labelsByKey.get(value) ?? value },
     }],
     yAxis: [
-      moneyAxisName ? { type: 'value', name: moneyAxisName } : { type: 'value' },
-      { type: 'value', scale: true, name: '%', axisLabel: { formatter: percentTickLabel } },
+      // Grid lines live on the primary money axis only; the percentage axis
+      // keeps its formatted ticks without a second competing grid.
+      moneyAxisName
+        ? { type: 'value', name: moneyAxisName, splitLine: { show: true } }
+        : { type: 'value', splitLine: { show: true } },
+      { type: 'value', scale: true, name: '%', axisLabel: { formatter: percentTickLabel }, splitLine: { show: false } },
     ],
     dataZoom: [
       { type: 'inside', xAxisIndex: 0, startValue: interaction.viewport ? undefined : 0, endValue: interaction.viewport ? undefined : 100, start: startValue, end: endValue },
@@ -139,18 +143,11 @@ function navTooltip(
   for (const param of list) {
     const series = param?.seriesId ? seriesById.get(param.seriesId) : undefined
     if (!series) continue
-    // Exact IRR control names and per-series horizons match the inspection
-    // panel; exact amounts carry their stated unit, never the plotting scale.
+    // Exact IRR control names stay distinct; displays already identify their
+    // unit and the axis names its scale, so no per-line suffix or horizon
+    // brackets. Full-NAV totals live in the exact-value table.
     const label = seriesControlName(series)
-    const horizon = seriesHorizon(series, period)
-    const horizonText = horizon ? ` <em>(${escapeHtml(horizon)})</em>` : ''
-    lines.push(
-      `${escapeHtml(label)}: ${escapeHtml(valueLine(series.points[index]))} <em>(${escapeHtml(valueUnitLabel(series.unit))})</em>${horizonText}`,
-    )
-  }
-  const total = document.totals?.[index]
-  if (total) {
-    lines.push(`Portfolio NAV (all categories): ${escapeHtml(valueLine(total))}`)
+    lines.push(`${escapeHtml(label)}: ${escapeHtml(valueLine(series.points[index]))}`)
   }
   return lines.join('<br/>')
 }

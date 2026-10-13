@@ -58,23 +58,32 @@ function toggle(id: string): void {
   padding: 8px 0;
 }
 
+/* Phase C: no per-button outline in the resting state — the pressed state is
+   a light fill plus a thin inset ring, so the legend reads lighter while the
+   toggle state and the keyboard focus ring stay plainly visible. */
 .chart-legend__button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  border: 1px solid rgba(23, 43, 77, 0.24);
-  background: #fff;
+  border: 1px solid transparent;
+  background: transparent;
   border-radius: 4px;
   padding: 4px 10px;
   min-height: 32px;
   cursor: pointer;
   font-size: 0.875rem;
-  color: #172b4d;
+  color: #526477;
 }
 
 .chart-legend__button[aria-pressed='true'] {
-  border-color: #0f4c81;
+  color: #172b4d;
+  background: #eef3f8;
   box-shadow: inset 0 0 0 1px #0f4c81;
+}
+
+.chart-legend__button:focus-visible {
+  outline: 2px solid #0f4c81;
+  outline-offset: 2px;
 }
 
 .chart-legend__swatch {

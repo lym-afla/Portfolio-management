@@ -83,10 +83,14 @@ describe('finding 2: exact server displays in tooltips and labelled axes', () =>
       yAxis?: Array<{ name?: string }>
     }
     expect(typeof option.tooltip?.formatter).toBe('function')
-    const params = [{ axisValue: document.periods[2].key, seriesId: 'metric:nav' }]
+    // Phase C note: this case previously passed through the removed
+    // all-categories totals line ('metric:nav' is not an asset_type-mode
+    // series); it now queries the real first money series, keeping the exact
+    // display + partial-status coverage on the series line itself.
+    const params = [{ axisValue: document.periods[2].key, seriesId: document.series[0].id }]
     const tooltip = option.tooltip!.formatter(params)!
     expect(tooltip).toContain(document.periods[2].displayLabel)
-    // The NAV series' partial point shows its exact display + status, not 0.
+    // The money series' partial point shows its exact display + status, not 0.
     expect(tooltip).toContain('USD 90,000.00')
     expect(tooltip).toMatch(/partial/i)
     expect(tooltip).toContain('known subtotal 90000')
@@ -236,7 +240,7 @@ describe('round 2: tooltip units and horizons', () => {
     expect(String(option.yAxis![0].name)).toMatch(/thousands/i)
   })
 
-  it('uses the annualized IRR names with per-series horizons', () => {
+  it('keeps the two IRR control names distinct without unit suffixes, horizon brackets or a totals line', () => {
     const document = parsedDocument()
     const option = buildNavOption(document, defaultInteraction(document)) as {
       tooltip?: { formatter?: (params: unknown) => string }
@@ -244,13 +248,36 @@ describe('round 2: tooltip units and horizons', () => {
     const formatter = option.tooltip!.formatter!
     const second = document.periods[1]
     const tooltip = formatter([{ axisValue: second.key, seriesId: 'metric:irr_inception' }, { axisValue: second.key, seriesId: 'metric:irr_interval' }])!
+    // Phase C: distinct since-inception/interval names stay; the repeated
+    // unit suffix, the date-range horizon brackets and the separate
+    // all-categories NAV line are owner-superseded (exact displays already
+    // identify their unit; totals live in the exact-value table).
     expect(tooltip).toContain('Since-inception IRR (annualized)')
-    expect(tooltip).toContain(`Inception to ${second.endDate}`)
     expect(tooltip).toContain('Interval IRR (annualized)')
-    expect(tooltip).toContain(`${second.interval.startDate} – ${second.interval.endDate}`)
+    expect(tooltip).not.toContain(`<em>`)
+    expect(tooltip).not.toContain(`(${second.interval.startDate} – ${second.interval.endDate})`)
+    expect(tooltip).not.toContain(`Inception to ${second.endDate})`)
+    expect(tooltip).not.toContain('(USD)')
+    expect(tooltip).not.toContain('(%)')
+    expect(tooltip).not.toContain('Portfolio NAV (all categories)')
     const first = document.periods[0]
     const firstTooltip = formatter([{ axisValue: first.key, seriesId: 'metric:irr_inception' }])!
-    expect(firstTooltip).toContain(`Inception to ${first.endDate}`)
+    expect(firstTooltip).toContain('Since-inception IRR (annualized)')
+    expect(firstTooltip).not.toContain(`Inception to ${first.endDate}`)
+  })
+})
+
+describe('phase C: grid lines on the primary money axis only', () => {
+  it('draws split lines on the money axis and none on the percentage axis', () => {
+    const document = parsedDocument()
+    const option = buildNavOption(document, defaultInteraction(document)) as {
+      yAxis?: Array<{ name?: string; splitLine?: { show?: boolean }; axisLabel?: { formatter?: (value: number) => string } }>
+    }
+    expect(option.yAxis![0].splitLine?.show).toBe(true)
+    expect(option.yAxis![1].splitLine?.show).toBe(false)
+    // The percentage ticks keep their formatted labels.
+    expect(option.yAxis![1].axisLabel?.formatter!(0.05)).toBe('5%')
+    expect(String(option.yAxis![1].name)).toBe('%')
   })
 })
 
