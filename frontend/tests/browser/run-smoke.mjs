@@ -13,7 +13,7 @@ import {
 } from './lifecycle.mjs'
 import { runAgentBrowser } from './protocol.mjs'
 import { runRoute, routeSlug } from './route-probe.mjs'
-import { assertFocusedLayoutFlow, assertPositionsToolbarFlow } from './layout.mjs'
+import { assertBareShellGuard, assertFocusedLayoutFlow, assertPositionsToolbarFlow } from './layout.mjs'
 import { assertContextFailureFlow } from './context.mjs'
 import { assertMountedDateFlow } from './dates.mjs'
 import { assertRequestOrderFlow } from './requests.mjs'
@@ -314,6 +314,18 @@ async function main() {
           } catch (error) {
             routeFailures.push({ route: 'positions toolbar', viewport: viewport.name, error: error.message })
             console.error(`FAIL ${viewport.name} positions toolbar: ${error.message}`)
+          }
+          try {
+            await assertBareShellGuard({
+              appOrigin: appServer.origin,
+              context: `${viewport.name} bare-shell guard`,
+              initScript,
+              log,
+              session,
+            })
+          } catch (error) {
+            routeFailures.push({ route: 'bare-shell guard', viewport: viewport.name, error: error.message })
+            console.error(`FAIL ${viewport.name} bare-shell guard: ${error.message}`)
           }
         }
       }

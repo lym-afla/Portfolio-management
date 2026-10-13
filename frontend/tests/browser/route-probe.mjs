@@ -94,7 +94,11 @@ export async function runRoute({ appOrigin, authenticated, route, session, viewp
 
   let geometry
   if (authenticated) {
-    geometry = await assertLayoutGeometry({ context, initScript, log, session })
+    // The bare-shell allowance is restricted to the explicitly intended
+    // non-context routes; the dashboard (and every other context route)
+    // must always render the header.
+    const allowBareShell = route.path.startsWith('/profile') || route.path.startsWith('/database')
+    geometry = await assertLayoutGeometry({ context, initScript, log, session, allowBareShell })
   }
 
   const errorData = await runAgentBrowser({

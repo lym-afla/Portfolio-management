@@ -58,7 +58,13 @@ export async function assertDialogDeliveryFlow({ context, initScript, log, sessi
       const ref = Object.entries(snapshot.refs).find(([, item]) => item.role === 'button' && names.some(name => item.name.toLowerCase() === name.toLowerCase()))?.[0]
       if (ref) {
         try { await run(['click', `@${ref}`]); return }
-        catch (error) { if (!error.message.includes('is covered by')) throw error; lastError = error }
+        catch (error) {
+          // A refused click retries: a covering overlay OR a control that
+          // moved tiers between the snapshot and the click (the measured
+          // action hierarchy re-renders on resize).
+          if (!error.message.includes('is covered by') && !/Could not locate element/.test(error.message)) throw error
+          lastError = error
+        }
       } else lastError = new Error(`Missing button ${names}: ${JSON.stringify(snapshot)}`)
       await run(['wait', '100'])
     }

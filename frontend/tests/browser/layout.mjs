@@ -7,6 +7,7 @@ export async function assertLayoutGeometry({
   initScript,
   log,
   session,
+  allowBareShell = false,
 }) {
   await runAgentBrowser({
     args: ['snapshot', '-i'],
@@ -26,14 +27,19 @@ export async function assertLayoutGeometry({
         if (!bar) {
           // Bare shell (presentation phase B): routes without context
           // controls render no app bar on md+ viewports — the empty header
-          // line was removed. A missing bar beside a context strip would
-          // still be a defect, so only a strip-less page may be bare.
+          // line was removed. The allowance is EXPLICIT: only the intended
+          // non-context routes may be bare (the caller passes allowBareShell
+          // for /profile and /database routes), and only at the md+
+          // breakpoint. A dashboard stripped of both its header and its
+          // context strip must fail below, not qualify as a bare shell.
           const strip = document.querySelector('.workspace-context')
           if (strip) return { missing: { bar: true, content: false, withStrip: true } }
           const contentRect = content.getBoundingClientRect()
           return {
             bare: true,
+            allowBareShell: ${JSON.stringify(allowBareShell)},
             contentTop: Math.round(contentRect.top),
+            innerWidth: window.innerWidth,
             scrollY: window.scrollY,
             rawObjectLabel: document.body.innerText.includes('[object Object]'),
           }
@@ -82,6 +88,14 @@ export async function assertLayoutGeometry({
     `${context}: a raw [object Object] label must never render anywhere on the page`
   )
   if (result.bare) {
+    assert.ok(
+      result.allowBareShell,
+      `${context}: a page without both header and context strip must not qualify as a bare shell — the allowance is restricted to the intended non-context routes: ${JSON.stringify(result)}`
+    )
+    assert.ok(
+      result.innerWidth >= 960,
+      `${context}: the bare shell (no header region) is an md+-breakpoint state only: ${JSON.stringify(result)}`
+    )
     // Bare shell: no header region may cover the content and the route must
     // still be the mounted one.
     assert.ok(
@@ -350,6 +364,33 @@ export async function assertFocusedLayoutFlow({
   })
   assert.doesNotMatch(JSON.stringify(consoleData), /ResizeObserver loop/i)
   return { base, wrapped }
+}
+
+/**
+ * Negative regression for the bare-shell allowance: on the DASHBOARD — a
+ * context route that must always render the header + context strip — remove
+ * both from the DOM and require the geometry probe to FAIL. A page missing
+ * both must never silently qualify as a bare shell.
+ */
+export async function assertBareShellGuard({ appOrigin, context, initScript, log, session }) {
+  const run = (args) => runAgentBrowser({ args, context, initScript, log, session })
+  await run(['open', `${appOrigin}/dashboard`])
+  await run(['wait', '--fn', "document.querySelector('.v-app-bar') !== null && document.querySelector('.workspace-context') !== null"])
+  await run(['eval', `(() => { document.querySelector('.v-app-bar')?.remove(); document.querySelector('.workspace-context')?.remove(); return true })()`])
+  let failure = null
+  try {
+    await assertLayoutGeometry({ context: `${context} negative probe`, initScript, log, session, allowBareShell: false })
+  } catch (error) {
+    failure = error
+  }
+  assert.ok(failure, `${context}: a dashboard missing both header and context strip must FAIL the geometry probe`)
+  assert.match(
+    String(failure?.message ?? ''),
+    /bare shell|missing rendered layout node/,
+    `${context}: the refusal must cite the bare-shell restriction: ${String(failure?.message).slice(0, 200)}`
+  )
+  await log({ context, status: 'passed' })
+  console.log(`PASS ${context} bare-shell guard`)
 }
 
 /** Positions toolbar: every control must be really visible (hit-test, not

@@ -317,7 +317,9 @@ export async function assertPresentationBFlow({
   // ---------- /transactions: actions, grouped header, links, transitions --
   await run(['open', `${appOrigin}/transactions`])
   await waitFor(run, `document.querySelectorAll('.workspace-actions-row [data-action]').length > 0`)
-  await run(['wait', '400'])
+  // Wait out any in-flight fit measurement before probing the tiers.
+  await waitFor(run, `document.querySelector('.workspace-actions-row--measuring') === null`)
+  await run(['wait', '200'])
   const transactions = await evalProbe(run, `(() => {
     const table = document.querySelector('.v-data-table .v-table__wrapper > table')
     const theadRows = table ? table.querySelectorAll('thead tr') : []
@@ -388,8 +390,20 @@ export async function assertPresentationBFlow({
   }
 
   if (isDesktop) {
-    // Desktop -> mobile -> desktop: the candidate actions move into the menu
-    // on the narrow layout and back out on restore, one instance each.
+    // Keyboard focus preservation (review round): the focused action's
+    // identity is captured BEFORE the tiers change and restored to the same
+    // action where it still exists, otherwise to the More actions activator.
+    const focusProbe = await evalProbe(run, `(() => {
+      const el = document.querySelector('.workspace-actions-row [data-action="transfer-asset"]')
+      if (!el) return { missing: true }
+      el.focus()
+      return { focused: document.activeElement === el }
+    })()`)
+    assert.equal(focusProbe.missing, undefined, `${context}: transfer-asset renders directly on the wide row`)
+    assert.equal(focusProbe.focused, true, `${context}: keyboard focus lands on the direct action`)
+
+    // Desktop -> narrow: the focused action moves into the menu; focus must
+    // follow to the activator, never drop to <body>.
     await run(['set', 'viewport', '390', '844'])
     await run(['wait', '600'])
     const narrow = await evalProbe(run, `(() => {
@@ -399,11 +413,13 @@ export async function assertPresentationBFlow({
         direct: [...document.querySelectorAll('.workspace-actions-row [data-action]')].map(e => e.getAttribute('data-action')),
         menuButton: !!menu,
         overflow: row ? row.scrollWidth > row.clientWidth + 1 : null,
+        focusTarget: document.activeElement?.getAttribute('data-testid') ?? document.activeElement?.tagName ?? null,
       }
     })()`)
     assert.deepEqual(narrow.direct, ['add-transaction'], `${context}: narrow layouts keep only the primary action direct: ${JSON.stringify(narrow.direct)}`)
     assert.equal(narrow.menuButton, true, `${context}: hidden actions move into the overflow menu`)
     assert.equal(narrow.overflow, false, `${context}: the actions row must not overflow its container`)
+    assert.equal(narrow.focusTarget, 'workspace-actions-more', `${context}: desktop->narrow restores focus to the activator (got ${JSON.stringify(narrow.focusTarget)})`)
     // The menu lists exactly the hidden actions with their handlers.
     await evalProbe(run, `(() => { document.querySelector('[data-testid="workspace-actions-more"]').click(); return true })()`)
     await waitFor(run, `document.querySelector('.v-overlay--active .v-list-item[data-action]') !== null`)
@@ -415,27 +431,77 @@ export async function assertPresentationBFlow({
       ['import-transactions', 'add-fx-transaction', 'transfer-asset', 'record-merger'],
       `${context}: the menu lists the hidden actions in order`
     )
-    await run(['press', 'Escape'])
-    await run(['wait', '250'])
-    await shot('transactions-390-menu')
     // Mobile table region still scrolls horizontally (no hidden overflow).
     const mobileTable = await evalProbe(run, `(() => {
       const region = document.querySelector('.v-data-table .v-table__wrapper')
-      return { scrolls: region ? region.scrollWidth >= region.clientWidth : null, scrollableWidth: region ? region.scrollWidth : null }
+      return { scrolls: region ? region.scrollWidth >= region.clientWidth : null }
     })()`)
     assert.equal(mobileTable.scrolls, true, `${context}: the transactions table must scroll horizontally at 390px`)
+    // Narrow -> desktop WHILE THE MENU IS OPEN and a menu item focused: the
+    // action becomes direct again and focus lands on that exact button.
+    await evalProbe(run, `(() => {
+      const item = document.querySelector('.v-overlay--active [data-action="import-transactions"]')
+      item.focus()
+      return document.activeElement === item
+    })()`)
+    await shot('transactions-390-menu')
     await run(['set', 'viewport', String(viewport.width), String(viewport.height)])
     await run(['wait', '600'])
     const restored = await evalProbe(run, `(() => ({
       direct: [...document.querySelectorAll('.workspace-actions-row [data-action]')].map(e => e.getAttribute('data-action')),
       menuButton: !!document.querySelector('[data-testid="workspace-actions-more"]'),
+      focusAction: document.activeElement?.closest?.('[data-action]')?.getAttribute('data-action') ?? null,
+      focusIsBody: document.activeElement === document.body,
+      menuOpen: !!document.querySelector('.v-overlay--active .v-list-item[data-action]'),
+      wrapped: document.querySelector('.workspace-actions-row')?.classList.contains('workspace-actions-row--wrapped') ?? null,
     }))()`)
-    assert.equal(restored.menuButton, false, `${context}: restoring the width must reveal the actions again`)
+    assert.equal(restored.menuButton, false, `${context}: restoring the width must reveal the actions again: ${JSON.stringify(restored)}`)
     assert.deepEqual(
       restored.direct,
       ['add-transaction', 'import-transactions', 'add-fx-transaction', 'transfer-asset', 'record-merger'],
       `${context}: all actions return direct after restore`
     )
+    assert.equal(restored.focusAction, 'import-transactions', `${context}: narrow->desktop restores focus to the same action, now direct (got ${JSON.stringify(restored.focusAction)})`)
+    assert.equal(restored.focusIsBody, false, `${context}: focus must never drop to <body> across the transition`)
+    assert.equal(restored.menuOpen, false, `${context}: the menu closes once nothing is hidden`)
+    assert.equal(restored.wrapped, false, `${context}: a fitting row is not wrapped`)
+    await shot('transactions-desktop-actions')
+
+    // Focus survives a resize whose fit keeps the action direct — no steal.
+    await evalProbe(run, `(() => { document.querySelector('.workspace-actions-row [data-action="record-merger"]')?.focus(); return true })()`)
+    await run(['set', 'viewport', String(viewport.width - 80), String(viewport.height)])
+    await run(['wait', '500'])
+    const keptFocus = await evalProbe(run, `(() => ({
+      focusAction: document.activeElement?.closest?.('[data-action]')?.getAttribute('data-action') ?? null,
+    }))()`)
+    assert.equal(keptFocus.focusAction, 'record-merger', `${context}: focus stays on the same action across a refit that keeps it direct (got ${JSON.stringify(keptFocus.focusAction)})`)
+    await run(['set', 'viewport', String(viewport.width), String(viewport.height)])
+    await run(['wait', '400'])
+
+    // Degenerate width: even the primary action and the activator cannot
+    // share one line, so the row wraps instead of clipping anything.
+    await run(['set', 'viewport', '260', '844'])
+    await run(['wait', '700'])
+    const degenerate = await evalProbe(run, `(() => {
+      const row = document.querySelector('.workspace-actions-row')
+      const within = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.left >= -1 && r.right <= innerWidth + 1 }
+      return {
+        wrapped: row?.classList.contains('workspace-actions-row--wrapped') ?? null,
+        primaryVisible: within(document.querySelector('.workspace-actions-row [data-action="add-transaction"]')),
+        activatorVisible: within(document.querySelector('[data-testid="workspace-actions-more"]')),
+        overflow: row ? row.scrollWidth > row.clientWidth + 1 : null,
+      }
+    })()`)
+    assert.equal(degenerate.wrapped, true, `${context}: the degenerate row must wrap instead of clipping (got ${JSON.stringify(degenerate)})`)
+    assert.equal(degenerate.primaryVisible, true, `${context}: the primary action stays visible in the wrapped row`)
+    assert.equal(degenerate.activatorVisible, true, `${context}: the activator stays visible in the wrapped row`)
+    assert.equal(degenerate.overflow, false, `${context}: the wrapped row must not overflow horizontally`)
+    await run(['set', 'viewport', String(viewport.width), String(viewport.height)])
+    await run(['wait', '500'])
+    const unwrapped = await evalProbe(run, `(() => ({
+      wrapped: document.querySelector('.workspace-actions-row')?.classList.contains('workspace-actions-row--wrapped') ?? null,
+    }))()`)
+    assert.equal(unwrapped.wrapped, false, `${context}: the wrap fallback releases once the row fits again`)
     await shot('transactions-desktop-actions')
   } else {
     // Mobile pass: the explicit navigation toggle, trigger hit area and the
