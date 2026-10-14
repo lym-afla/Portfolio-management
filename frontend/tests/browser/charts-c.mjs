@@ -173,8 +173,12 @@ async function assertNativeZoomPhase({ run, cdpUrl, origin, log }) {
         await runNativeZoom(cdpUrl, origin, percent)
       } catch (zoomError) {
         // The CDP key delivery can flake; a reset plus a re-step self-heals.
+        // The intermediate reset itself must not propagate — the retry below
+        // is the recovery.
         if (attempt === 0) {
-          await runNativeZoom(cdpUrl, origin, 100)
+          try {
+            await runNativeZoom(cdpUrl, origin, 100)
+          } catch { /* the retry re-steps from wherever the zoom sits */ }
           continue
         }
         throw zoomError
