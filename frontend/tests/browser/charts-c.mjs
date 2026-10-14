@@ -312,7 +312,8 @@ async function assertSecurityPhase({ run, fixtureServer, log, initScript, sessio
       path: location.pathname,
       bodyStart: document.body.innerText.slice(0, 160),
       hasBrokerLabel: document.body.innerText.includes('Broker Account'),
-      vSelectAny: document.querySelectorAll('[class*="v-select"]').length,
+      vSelectClasses: [...document.querySelectorAll('[class*="v-select"]')].map((element) => element.className).slice(0, 6),
+      selectionNode: !!document.querySelector('.v-select__selection'),
     }
   })()`)
   const pageErrors = await runAgentBrowser({ args: ['errors'], context: 'charts c security errors', initScript, log, session })
