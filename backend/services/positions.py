@@ -168,8 +168,8 @@ def get_account_holdings(asset, date, investor):
     """Per-account remaining holdings of an asset as of a date.
 
     The read model behind the security detail page's "Currently held with" /
-    "Previously held with" context. One row per account that transacted the
-    asset up to ``date``:
+    "Previously held with" context. One row per account whose activity could
+    contribute to the asset's position up to ``date``:
 
     - ``quantity`` is the account's canonical remaining position at ``date``
       (the same :func:`position` sums the position charts use — never lifetime
@@ -179,19 +179,50 @@ def get_account_holdings(asset, date, investor):
       ``date`` but the remaining position is zero. Partial disposals stay
       ``"open"``; a holding sold out and bought again is ``"open"``.
 
+    Candidate discovery covers the SAME sources canonical :func:`position`
+    reads, under the same investor and historical cutoff: direct non-zero
+    quantity rows always, plus — for Crypto assets, mirroring ``position``'s
+    own gate — commissions paid in this coin and coin-settled option
+    cashflows recorded on other securities' rows. Records that could not
+    contribute (zero/null quantity, zero commission or cashflow) establish
+    nothing: an account with no real holding event never appears, not even
+    as "closed".
+
     Returns:
         list[dict]: ``{"account_id", "quantity", "status"}`` rows, open
         accounts first (each group ordered by account id).
     """
-    account_ids = list(
-        asset.transactions.filter(
-            investor=investor, date__date__lte=date, account_id__isnull=False
-        )
+    scoped = dict(investor=investor, date__date__lte=date, account_id__isnull=False)
+
+    # Direct rows that could move the position: a real (non-zero) quantity.
+    account_ids = set(
+        asset.transactions.filter(**scoped, quantity__isnull=False)
+        .exclude(quantity=0)
         .values_list("account_id", flat=True)
-        .distinct()
     )
+
+    # position() folds in these indirect sources ONLY for Crypto assets;
+    # discovery mirrors that gate so non-crypto accounts never surface from
+    # rows their position never read.
+    if asset.type == "Crypto":
+        from common.models import Transactions
+
+        account_ids.update(
+            Transactions.objects.filter(**scoped, commission_currency=asset.name)
+            .exclude(commission__isnull=True)
+            .exclude(commission=0)
+            .values_list("account_id", flat=True)
+        )
+        account_ids.update(
+            Transactions.objects.filter(
+                **scoped, currency=asset.name, security__type="Option", cash_flow__isnull=False
+            )
+            .exclude(cash_flow=0)
+            .values_list("account_id", flat=True)
+        )
+
     holdings = []
-    for account_id in account_ids:
+    for account_id in sorted(account_ids):
         quantity = position(asset, date=date, investor=investor, account_ids=[account_id])
         holdings.append(
             {

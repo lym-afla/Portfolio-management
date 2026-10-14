@@ -261,6 +261,10 @@ def get_security_detail(request, security_id, account_id=None):
             "broker_name": holding_accounts[row["account_id"]].broker.name,
             "display_name": format_account_display(holding_accounts[row["account_id"]]),
             "quantity": row["quantity"],
+            # Exact comma-grouped display for the page (Decimal format spec ','
+            # groups the integer part without any conversion or rounding —
+            # same grouping style as the established formatters).
+            "quantity_display": f"{Decimal(row['quantity']):,}",
             "status": row["status"],
         }
         for row in holding_rows
