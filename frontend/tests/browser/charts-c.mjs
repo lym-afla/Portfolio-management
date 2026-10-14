@@ -361,9 +361,14 @@ async function buildChartsCArtifact(frontendRoot, artifactsDir, name) {
   return dir
 }
 
-export async function runChartsCFlow({ appOrigin, frontendRoot, fixtureServer, log, cdpUrl, initScript, session }) {
+export async function runChartsCFlow({ appOrigin, frontendRoot, fixtureServer, log, cdpUrl, registerSession }) {
   const candidateDir = await buildChartsCArtifact(frontendRoot, resolve(here, 'artifacts'), 'app-charts-c-noflags')
   const candidateServer = await startBuiltAppServer(candidateDir)
+  // A dedicated session like the c4/c5 flows: the route-loop session's
+  // prior page state must not sit under the chart interactions.
+  const session = `charts-c-flow-${process.pid}`
+  registerSession(session)
+  const initScript = resolve(frontendRoot, 'tests/browser/auth-init.js')
   await mkdir(DESIGN_ASSETS, { recursive: true })
   fixtureServer.appOrigin = candidateServer.origin
   const run = (args) => runAgentBrowser({ args, context: `charts c ${args[0]}`, initScript, log, session })
