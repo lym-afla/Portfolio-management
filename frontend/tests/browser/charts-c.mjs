@@ -255,7 +255,7 @@ async function assertMobilePhase({ run, log }) {
   log('charts-c mobile phase: containment, hit tests, pie tooltip, restore verified')
 }
 
-async function assertSecurityPhase({ run, fixtureServer }) {
+async function assertSecurityPhase({ run, fixtureServer, log }) {
   fixtureServer.chartsC4.securityScenario = 'long'
   await run(['open', `${fixtureServer.appOrigin}/database/securities/1`])
   await waitFor(run, `document.querySelectorAll('[data-testid="security-data-table"]').length === 2`)
@@ -363,7 +363,7 @@ export async function runChartsCFlow({ appOrigin, frontendRoot, fixtureServer, l
   await run(['wait', '150'])
   await assertPiePhase({ run, log })
   await assertMobilePhase({ run, log })
-  await assertSecurityPhase({ run, fixtureServer })
+  await assertSecurityPhase({ run, fixtureServer, log })
 
   await writeFile(
     resolve(here, 'artifacts/charts-c.json'),
