@@ -311,11 +311,13 @@ async function assertSecurityPhase({ run, fixtureServer, log, initScript, sessio
       selectHtml: select ? select.querySelector('.v-select__selection')?.innerHTML?.slice(0, 200) ?? 'no selection node' : 'no v-select',
       path: location.pathname,
       bodyStart: document.body.innerText.slice(0, 160),
+      hasBrokerLabel: document.body.innerText.includes('Broker Account'),
+      vSelectAny: document.querySelectorAll('[class*="v-select"]').length,
     }
   })()`)
-  assert.equal(String(selectorProbe.label ?? '').trim(), 'All accounts', `unfiltered security selector visibly says All accounts (probe ${JSON.stringify(selectorProbe)})`)
   const pageErrors = await runAgentBrowser({ args: ['errors'], context: 'charts c security errors', initScript, log, session })
-  log(`charts-c security page errors: ${JSON.stringify(pageErrors.errors ?? pageErrors).slice(0, 600)}`)
+  log(`charts-c security page errors: ${JSON.stringify(pageErrors.errors ?? pageErrors).slice(0, 800)}`)
+  assert.equal(String(selectorProbe.label ?? '').trim(), 'All accounts', `unfiltered security selector visibly says All accounts (probe ${JSON.stringify(selectorProbe)})`)
 
   // Holdings context groups.
   const holdings = await evalProbe(run, `(() => {
