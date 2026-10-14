@@ -302,8 +302,16 @@ async function assertSecurityPhase({ run, fixtureServer, log }) {
   await waitFor(run, `document.querySelectorAll('[data-testid="security-data-table"]').length === 2`)
 
   // Selector visibly says All accounts while unfiltered.
-  const selectorLabel = await evalProbe(run, `document.querySelector('.security-account-label')?.innerText ?? document.querySelector('.v-select .v-field__input')?.innerText ?? ''`)
-  assert.equal(String(selectorLabel).trim(), 'All accounts', 'unfiltered security selector visibly says All accounts')
+  const selectorProbe = await evalProbe(run, `(() => {
+    const label = document.querySelector('.security-account-label')
+    const select = document.querySelector('.v-select')
+    return {
+      label: label ? label.innerText : null,
+      labelCount: document.querySelectorAll('.security-account-label').length,
+      selectHtml: select ? select.querySelector('.v-select__selection')?.innerHTML?.slice(0, 200) ?? 'no selection node' : 'no v-select',
+    }
+  })()`)
+  assert.equal(String(selectorProbe.label ?? '').trim(), 'All accounts', `unfiltered security selector visibly says All accounts (probe ${JSON.stringify(selectorProbe)})`)
 
   // Holdings context groups.
   const holdings = await evalProbe(run, `(() => {
