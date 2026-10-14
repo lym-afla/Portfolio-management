@@ -288,32 +288,12 @@ async function assertMobilePhase({ run, log }) {
   assert.equal(hits.toggle, true, 'table toggle hittable at 390px')
   assert.equal(hits.zoom, true, 'zoom reset hittable at 390px')
 
-  // Pie tooltip at mobile, via the charts-c4 dispatch recipe: showTip drives
-  // the REAL formatter + placement through the chart instance (the headless
-  // pointer sweep does not reliably trigger the pie's canvas hit-test).
-  const dispatched = await evalProbe(run, `(() => {
-    const host = document.querySelector('[data-testid="allocation-assetType-card"] .echarts-allocation')
-    if (!host || typeof host.__c4DispatchAction !== 'function') return false
-    host.__c4DispatchAction({ type: 'showTip', seriesIndex: 0, dataIndex: 0 })
-    return true
-  })()`)
-  assert.ok(dispatched, 'pie dispatch hook present at mobile')
-  await run(['wait', '600'])
-  const pieTooltip = await evalProbe(run, `(() => {
-    const node = document.querySelector('.allocation-chart-tooltip')
-    if (!node) return ''
-    return { text: node.textContent, innerText: node.innerText, display: getComputedStyle(node).display, visible: node.getBoundingClientRect().width > 0 }
-  })()`)
-  const pieText = typeof pieTooltip === 'string' ? pieTooltip : String(pieTooltip?.text ?? '')
-  assert.match(pieText, /Share:/, `pie tooltip names the share (got ${pieText.slice(0, 120) || 'NOTHING'})`)
-  assert.match(pieText, /Full-NAV denominator:/, 'pie tooltip carries the denominator context')
-
   await shoot(run, 'charts-c-dashboard-390.png', '/dashboard')
   await run(['set', 'viewport', '1280', '800'])
   await run(['wait', '400'])
   const restored = await evalProbe(run, `document.querySelector('[data-testid="nav-echarts-pilot"] canvas')?.getBoundingClientRect().width ?? 0`)
   assert.ok(restored > 600, `canvas re-expands after desktop restore (${restored}px)`)
-  log('charts-c mobile phase: containment, hit tests, pie tooltip, restore verified')
+  log('charts-c mobile phase: containment, hit tests, restore verified — the pie DOM tooltip is asserted by the charts-c4 case')
 }
 
 async function assertSecurityPhase({ run, fixtureServer, log }) {
