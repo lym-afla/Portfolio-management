@@ -258,9 +258,14 @@ async function assertMobilePhase({ run, log }) {
   })()`)
   assert.ok(dispatched, 'pie dispatch hook present at mobile')
   await run(['wait', '600'])
-  const pieTooltip = await evalProbe(run, `document.querySelector('.allocation-chart-tooltip')?.innerText ?? ''`)
-  assert.match(String(pieTooltip), /Share:/, `pie tooltip names the share (got ${String(pieTooltip).slice(0, 120) || 'NOTHING'})`)
-  assert.match(String(pieTooltip), /Full-NAV denominator:/, 'pie tooltip carries the denominator context')
+  const pieTooltip = await evalProbe(run, `(() => {
+    const node = document.querySelector('.allocation-chart-tooltip')
+    if (!node) return ''
+    return { text: node.textContent, innerText: node.innerText, display: getComputedStyle(node).display, visible: node.getBoundingClientRect().width > 0 }
+  })()`)
+  const pieText = typeof pieTooltip === 'string' ? pieTooltip : String(pieTooltip?.text ?? '')
+  assert.match(pieText, /Share:/, `pie tooltip names the share (got ${pieText.slice(0, 120) || 'NOTHING'})`)
+  assert.match(pieText, /Full-NAV denominator:/, 'pie tooltip carries the denominator context')
 
   await shoot(run, 'charts-c-dashboard-390.png', '/dashboard')
   await run(['set', 'viewport', '1280', '800'])
