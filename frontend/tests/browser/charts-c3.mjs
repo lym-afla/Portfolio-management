@@ -466,7 +466,8 @@ await run(['eval', `(() => { for (const button of document.querySelectorAll('[da
     }
     assert.match(String(lastMobile.tooltip.text), /Since-inception IRR \(annualized\)/, 'tooltip: inception control name')
     assert.match(String(lastMobile.tooltip.text), /Interval IRR \(annualized\)/, 'tooltip: interval control name')
-    assert.match(String(lastMobile.tooltip.text), /Inception to \d{4}-\d{2}-\d{2}/, 'tooltip: inception horizon')
+    // Phase C: the per-line horizon brackets moved to the exact-value table.
+    assert.notMatch(String(lastMobile.tooltip.text), /Inception to \d{4}-\d{2}-\d{2}/, 'tooltip: no horizon brackets')
     assert.match(String(lastMobile.tooltip.text), /N\/A — not_available \(solver_unavailable\)/, 'tooltip: unavailable IRR status text')
     // agent-browser's own screenshot closes the tooltip before capture, so
     // the mobile artifact is taken over CDP: hover, verify open, capture in
