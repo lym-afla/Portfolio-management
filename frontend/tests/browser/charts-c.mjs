@@ -203,7 +203,7 @@ async function assertNativeZoomPhase({ run, cdpUrl, origin }) {
   log('charts-c native zoom phase: DPR re-initialization keeps canvases sharp, reset verified')
 }
 
-async function assertMobilePhase({ run }) {
+async function assertMobilePhase({ run, log }) {
   await run(['set', 'viewport', '390', '844'])
   await run(['wait', '400'])
   const mobile = await evalProbe(run, `(() => {
@@ -362,7 +362,7 @@ export async function runChartsCFlow({ appOrigin, frontendRoot, fixtureServer, l
   await run(['mouse', 'move', '4', '4'])
   await run(['wait', '150'])
   await assertPiePhase({ run, log })
-  await assertMobilePhase({ run })
+  await assertMobilePhase({ run, log })
   await assertSecurityPhase({ run, fixtureServer })
 
   await writeFile(
