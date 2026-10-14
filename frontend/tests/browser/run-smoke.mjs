@@ -226,11 +226,10 @@ async function main() {
               await runChartsCFlow({
                 appOrigin: appServer.origin,
                 frontendRoot,
+                registerSession: (extra) => sessions.set(extra, resolve(browserDir, 'auth-init.js')),
                 fixtureServer,
                 log,
                 cdpUrl: cdpInfo.cdpUrl ?? (cdpInfo.result && cdpInfo.result.cdpUrl),
-                initScript,
-                session,
               })
               console.log('PASS charts c flow')
             }
