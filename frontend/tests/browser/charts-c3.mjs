@@ -319,7 +319,10 @@ await run(['eval', `(() => { for (const button of document.querySelectorAll('[da
     assert.equal(navRequestCount(fixtureServer) - beforeLegend, 0, 'legend toggles issue no requests')
 
     // --- keyboard/table inspection into the shared model ------------------
-    await run(['eval', `(() => { const row = document.querySelectorAll('[data-testid="nav-echarts-pilot"] tbody tr')[1]; row.focus(); row.click(); document.querySelector('[data-testid="nav-echarts-pilot"] .chart-table').scrollIntoView({ block: 'center' }); return true })()`])
+    // Click the Jul-26 row by CONTENT (the fixture's period count is not
+    // part of the contract): the clicked row must become the selected one.
+    const clicked = await evalProbe(run, `(() => { const row = [...document.querySelectorAll('[data-testid="nav-echarts-pilot"] tbody tr')].find((entry) => /Jul-26/.test(entry.innerText)); if (!row) return null; row.focus(); row.click(); document.querySelector('[data-testid="nav-echarts-pilot"] .chart-table').scrollIntoView({ block: 'center' }); return row.innerText })()`)
+    assert.ok(clicked, 'a Jul-26 row exists to click')
     await run(['wait', '150'])
     state = await evalProbe(run, chartState)
     const diag = await evalProbe(run, `({ rows: document.querySelectorAll('[data-testid="nav-echarts-pilot"] tbody tr').length, selected: document.querySelectorAll('[data-testid="nav-echarts-pilot"] tbody tr[aria-selected="true"]').length, expanded: document.querySelector('[data-testid="chart-table-toggle"]')?.getAttribute('aria-expanded') })`)
