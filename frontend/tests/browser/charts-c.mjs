@@ -152,6 +152,8 @@ async function assertPiePhase({ run, log }) {
   // below. The DOM tooltip is asserted in the mobile phase with the charts-c4
   // dispatch recipe (headless pointer sweeps do not reliably hit the pie's
   // canvas hit-test — recorded in the C4 evidence).
+  await run(['eval', `(() => { const section = document.querySelector('#allocation-section'); if (section) section.scrollIntoView({ block: 'start' }); window.scrollBy(0, -140); return true })()`])
+  await run(['wait', '200'])
   await shoot(run, 'charts-c-pies.png', '/dashboard')
   log('charts-c pie phase: three pies rendered, capture taken')
 }
