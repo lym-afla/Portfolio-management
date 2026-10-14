@@ -160,7 +160,7 @@ const WAIT_CANVASES_AT = (ratio) => `(() => {
   return canvases.length > 0 && canvases.every((canvas) => Math.abs(canvas.width / canvas.getBoundingClientRect().width - ${ratio}) <= 0.15)
 })()`
 
-async function assertNativeZoomPhase({ run, cdpUrl, origin }) {
+async function assertNativeZoomPhase({ run, cdpUrl, origin, log }) {
   // The DPR watcher remounts the charts asynchronously — wait for the
   // backing stores (bounded), never a fixed sleep. One deliberate re-step:
   // a missed watcher cycle self-heals by resetting and zooming again. The
@@ -354,7 +354,7 @@ export async function runChartsCFlow({ appOrigin, frontendRoot, fixtureServer, l
   assert.ok(cdpUrl, 'cdp url available for native zoom')
   // Native zoom runs on the pristine dashboard: the mobile phase's viewport
   // emulation must not be in play when the DPR re-initialization is proven.
-  await assertNativeZoomPhase({ run, cdpUrl, origin: candidateServer.origin })
+  await assertNativeZoomPhase({ run, cdpUrl, origin: candidateServer.origin, log })
   // The DPR re-initialization remounts every chart; a real pointer hover must
   // still drive the tooltip afterwards.
   await hoverCanvasPoint(run, 0.4)
