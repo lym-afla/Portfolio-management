@@ -322,7 +322,8 @@ await run(['eval', `(() => { for (const button of document.querySelectorAll('[da
     await run(['eval', `(() => { const row = document.querySelectorAll('[data-testid="nav-echarts-pilot"] tbody tr')[1]; row.focus(); row.click(); document.querySelector('[data-testid="nav-echarts-pilot"] .chart-table').scrollIntoView({ block: 'center' }); return true })()`])
     await run(['wait', '150'])
     state = await evalProbe(run, chartState)
-    assert.match(String(state.inspectedRow), /Jul-26/, 'keyboard row inspection selects the row in the exact table')
+    const diag = await evalProbe(run, `({ rows: document.querySelectorAll('[data-testid="nav-echarts-pilot"] tbody tr').length, selected: document.querySelectorAll('[data-testid="nav-echarts-pilot"] tbody tr[aria-selected="true"]').length, expanded: document.querySelector('[data-testid="chart-table-toggle"]')?.getAttribute('aria-expanded') })`)
+    assert.match(String(state.inspectedRow), /Jul-26/, `keyboard row inspection selects the row in the exact table (diag ${JSON.stringify(diag)})`)
     await run(['screenshot', resolve(DESIGN_ASSETS, 'c3-nav-keyboard.png')])
 
     // --- viewport controls: zoom is view-only ------------------------------
