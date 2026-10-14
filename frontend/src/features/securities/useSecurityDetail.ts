@@ -90,8 +90,11 @@ export function useSecurityDetail(options: {
     snapshotContext as (params: unknown) => unknown,
   )
 
-  // Account filter (raw select model + resolved id, incumbent semantics).
-  const selectedAccount = ref<{ type: string; id?: number | null } | null>(null)
+  // Account filter (raw select model + resolved id). Phase C: the model IS
+  // the All-accounts selection when unfiltered — Vuetify only invokes the
+  // selection slot for a non-null model, so a null model renders an empty
+  // field instead of a visible "All accounts".
+  const selectedAccount = ref<{ type: string; id?: number | null }>({ type: 'all', id: null })
   const selectedAccountId = computed(() => {
     if (!selectedAccount.value || selectedAccount.value.type === 'all') return null
     return selectedAccount.value.id as number

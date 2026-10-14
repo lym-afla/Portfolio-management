@@ -8,7 +8,8 @@
     <v-row class="mb-4">
       <v-col cols="12" sm="6" md="4">
         <v-select
-          v-model="selectedAccount"
+          :model-value="selectedAccount"
+          @update:model-value="selectedAccount = $event ?? { type: 'all', id: null }"
           :items="accountOptions"
           item-title="title"
           item-value="value"
