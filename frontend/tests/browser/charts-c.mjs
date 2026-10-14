@@ -144,6 +144,7 @@ async function assertDashboardPhase({ run, log }) {
 }
 
 async function assertPiePhase({ run, log }) {
+  await waitFor(run, `document.querySelectorAll('[data-testid^="allocation-"][data-testid$="-card"] canvas').length === 3`)
   const pies = await evalProbe(run, `document.querySelectorAll('[data-testid^="allocation-"][data-testid$="-card"] canvas').length`)
   assert.equal(pies, 3, 'three solid pies render')
   // The certified share labels, white separators and absent leader lines are
