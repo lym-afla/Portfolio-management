@@ -309,6 +309,8 @@ async function assertSecurityPhase({ run, fixtureServer, log }) {
       label: label ? label.innerText : null,
       labelCount: document.querySelectorAll('.security-account-label').length,
       selectHtml: select ? select.querySelector('.v-select__selection')?.innerHTML?.slice(0, 200) ?? 'no selection node' : 'no v-select',
+      path: location.pathname,
+      bodyStart: document.body.innerText.slice(0, 160),
     }
   })()`)
   assert.equal(String(selectorProbe.label ?? '').trim(), 'All accounts', `unfiltered security selector visibly says All accounts (probe ${JSON.stringify(selectorProbe)})`)
