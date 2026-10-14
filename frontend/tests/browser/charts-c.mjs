@@ -229,8 +229,23 @@ async function assertMobilePhase({ run, log }) {
   assert.equal(mobile.viewport, 390, 'viewport is 390px')
   assert.ok(mobile.panelWidth <= 390, `panel stays inside the viewport (${mobile.panelWidth}px)`)
   assert.ok(mobile.canvasWidth >= mobile.panelWidth - 8, `canvas fills the panel at 390px (${mobile.canvasWidth} vs ${mobile.panelWidth})`)
-  assert.equal(mobile.toggleHittable, true, 'table toggle hittable at 390px')
-  assert.equal(mobile.zoomHittable, true, 'zoom reset hittable at 390px')
+  // Hit-tests need each control scrolled into view first (a control below
+  // the fold cannot be hit — that is layout, not a defect); the scroll and
+  // the hit-test share one evaluation so the probe sees the settled position.
+  const hits = await evalProbe(run, `(() => {
+    const results = {}
+    for (const [name, selector] of [['toggle', '[data-testid="chart-table-toggle"]'], ['zoom', '[data-testid="chart-zoom-reset"]']]) {
+      const element = document.querySelector(selector)
+      if (!element) { results[name] = false; continue }
+      element.scrollIntoView({ block: 'center' })
+      const rect = element.getBoundingClientRect()
+      const point = document.elementFromPoint(rect.left + rect.width / 2, Math.max(rect.top + rect.height / 2, 8))
+      results[name] = point === element || element.contains(point)
+    }
+    return results
+  })()`)
+  assert.equal(hits.toggle, true, 'table toggle hittable at 390px')
+  assert.equal(hits.zoom, true, 'zoom reset hittable at 390px')
 
   // Pie tooltip at mobile, via the charts-c4 dispatch recipe: showTip drives
   // the REAL formatter + placement through the chart instance (the headless
