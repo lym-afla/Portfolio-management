@@ -168,25 +168,33 @@ async function assertNativeZoomPhase({ run, cdpUrl, origin, log }) {
   // devicePixelRatio vs the canvas backing ratios (a script-side dpr 2 with
   // a case-side dpr 1 would mean the keys zoomed a different target).
   const zoomTo = async (percent, ratio) => {
-    await runNativeZoom(cdpUrl, origin, percent)
-    const deadline = Date.now() + 8000
-    let last = null
-    while (Date.now() < deadline) {
-      last = await evalProbe(run, `({ dpr: window.devicePixelRatio, ratios: ${canvasDprRatios} })`)
-      const ratios = last?.ratios ?? []
-      if (ratios.length > 0 && ratios.every((value) => Math.abs(value - ratio) <= 0.15)) return
-      await new Promise((resolve) => setTimeout(resolve, 400))
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        await runNativeZoom(cdpUrl, origin, percent)
+      } catch (zoomError) {
+        // The CDP key delivery can flake; a reset plus a re-step self-heals.
+        if (attempt === 0) {
+          await runNativeZoom(cdpUrl, origin, 100)
+          continue
+        }
+        throw zoomError
+      }
+      const deadline = Date.now() + 8000
+      let last = null
+      let settled = false
+      while (Date.now() < deadline) {
+        last = await evalProbe(run, `({ dpr: window.devicePixelRatio, ratios: ${canvasDprRatios} })`)
+        const ratios = last?.ratios ?? []
+        if (ratios.length > 0 && ratios.every((value) => Math.abs(value - ratio) <= 0.15)) { settled = true; break }
+        await new Promise((resolve) => setTimeout(resolve, 400))
+      }
+      if (settled) return
+      if (attempt === 0) {
+        await runNativeZoom(cdpUrl, origin, 100)
+        continue
+      }
+      throw new Error(`canvases never reached dpr ${ratio}: case-tab dpr ${last?.dpr}, ratios ${JSON.stringify(last?.ratios)}`)
     }
-    await runNativeZoom(cdpUrl, origin, 100)
-    await runNativeZoom(cdpUrl, origin, percent)
-    const retryDeadline = Date.now() + 8000
-    while (Date.now() < retryDeadline) {
-      last = await evalProbe(run, `({ dpr: window.devicePixelRatio, ratios: ${canvasDprRatios} })`)
-      const ratios = last?.ratios ?? []
-      if (ratios.length > 0 && ratios.every((value) => Math.abs(value - ratio) <= 0.15)) return
-      await new Promise((resolve) => setTimeout(resolve, 400))
-    }
-    throw new Error(`canvases never reached dpr ${ratio}: case-tab dpr ${last?.dpr}, ratios ${JSON.stringify(last?.ratios)}`)
   }
   await zoomTo(200, 2)
   const zoomRatios = await evalProbe(run, canvasDprRatios)
