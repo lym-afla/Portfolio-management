@@ -296,7 +296,7 @@ async function assertMobilePhase({ run, log }) {
   log('charts-c mobile phase: containment, hit tests, restore verified — the pie DOM tooltip is asserted by the charts-c4 case')
 }
 
-async function assertSecurityPhase({ run, fixtureServer, log }) {
+async function assertSecurityPhase({ run, fixtureServer, log, initScript, session }) {
   fixtureServer.chartsC4.securityScenario = 'long'
   await run(['open', `${fixtureServer.appOrigin}/database/securities/1`])
   await waitFor(run, `document.querySelectorAll('[data-testid="security-data-table"]').length === 2`)
@@ -432,7 +432,7 @@ export async function runChartsCFlow({ appOrigin, frontendRoot, fixtureServer, l
   await run(['open', `${phaseOrigin}/dashboard`])
   await assertPiePhase({ run, log })
   await assertMobilePhase({ run, log })
-  await assertSecurityPhase({ run, fixtureServer, log })
+  await assertSecurityPhase({ run, fixtureServer, log, initScript, session })
 
   await writeFile(
     resolve(here, 'artifacts/charts-c.json'),
