@@ -205,6 +205,9 @@ async function phaseBPolicyMatrix({ appOrigin, candidateServer, noFlagsServer, n
 async function phaseCCombinedAcceptance({ candidateServer, fixtureServer, run, cdpUrl, initScript, log, session }) {
   // --- dashboard: NAV pilot interactions on the combined page --------------
   await openDashboardModern(run, candidateServer.origin)
+  await waitFor(run, `document.querySelectorAll('[data-testid="chart-table-toggle"]').length > 0`)
+  await run(['eval', `(() => { for (const button of document.querySelectorAll('[data-testid="chart-table-toggle"]')) { if (button.getAttribute('aria-expanded') === 'false') button.click() } return true })()`])
+  await run(['wait', '150'])
   await waitFor(run, `document.querySelectorAll('[data-testid="nav-echarts-pilot"] tbody tr').length > 0`)
   const navBefore = navRequestCount(fixtureServer)
 

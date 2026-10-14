@@ -300,8 +300,12 @@ await run(['eval', `(() => { for (const button of document.querySelectorAll('[da
     const inception = await legendButton(run, 'Since-inception IRR (annualized)')
     assert.equal(interval.id, 'metric:irr_interval')
     assert.equal(inception.id, 'metric:irr_inception')
+    // Phase C: the exact table is a collapsed disclosure — expand it and
+    // assert the caption there; the separate inspection panel is gone.
+    await run(['eval', `(() => { for (const button of document.querySelectorAll('[data-testid="chart-table-toggle"]')) { if (button.getAttribute('aria-expanded') === 'false') button.click() } return true })()`])
+    await run(['wait', '150'])
+    state = await evalProbe(run, chartState)
     assert.equal(state.tableCaption, 'Exact values by period')
-    assert.match(String(state.inspection), /Select a table row|Inspection/, 'inspection panel present')
 
     // --- independent IRR toggles; legend/zoom never request data ----------
     const beforeLegend = navRequestCount(fixtureServer)
