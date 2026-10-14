@@ -8,16 +8,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { h, ref } from 'vue'
 
-const chartState = vi.hoisted(() => ({ mounts: 0 }))
+const chartState = vi.hoisted(() => ({ mounts: 0, initOptions: [] as Array<{ devicePixelRatio?: number } | undefined> }))
 
 vi.mock('vue-echarts', async () => {
   const { h: hh } = await import('vue')
   return {
     default: {
       name: 'VChart',
-      props: ['option', 'updateOptions', 'autoresize', 'theme'],
-      setup() {
+      props: ['option', 'updateOptions', 'autoresize', 'theme', 'initOptions'],
+      setup(_props: unknown) {
         chartState.mounts += 1
+        chartState.initOptions.push((_props as { initOptions?: { devicePixelRatio?: number } }).initOptions)
         return () => hh('div', { class: 'echarts-stub' })
       },
     },
@@ -30,6 +31,7 @@ import { navWireFixture } from './navFixtures'
 import { parseNavEnvelope } from '../parseChartEnvelope'
 import { defaultInteraction } from '../interaction'
 import type { ChartDocument } from '../contracts'
+
 
 /** Minimal fake of the matchMedia surface the watcher uses: one resolution
     query alive at a time, test-controlled change firing. */
@@ -59,6 +61,7 @@ let dprValue = 1
 
 beforeEach(() => {
   chartState.mounts = 0
+  chartState.initOptions = []
   dprValue = 1
   active = null
   vi.stubGlobal('devicePixelRatio', { valueOf: () => dprValue } as unknown as number)
@@ -131,7 +134,7 @@ describe('watchDevicePixelRatio', () => {
 })
 
 describe('EChartsNav re-initializes on a devicePixelRatio change', () => {
-  it('remounts the chart (fresh painter dpr) and keeps the option contract', async () => {
+  it('remounts the chart with the CURRENT dpr in the init options', async () => {
     const document = navDocument()
     const interaction = ref(defaultInteraction(document))
     const wrapper = mount(EChartsNav, {
@@ -139,18 +142,24 @@ describe('EChartsNav re-initializes on a devicePixelRatio change', () => {
     })
     await wrapper.vm.$nextTick()
     expect(chartState.mounts).toBe(1)
-    // Native zoom changes the dpr → the painter must be re-created.
+    // The first painter initialized at the pre-zoom dpr.
+    expect(chartState.initOptions[0]?.devicePixelRatio).toBe(1)
+    // Native zoom changes the dpr → the painter must be re-created AND the
+    // fresh painter must carry the new dpr (zrender's module-level default is
+    // captured at bundle load and would stay stale).
     dprValue = 2
     window.devicePixelRatio = 2
     active!.fire()
     await wrapper.vm.$nextTick()
     expect(chartState.mounts).toBe(2)
+    expect(chartState.initOptions[1]?.devicePixelRatio).toBe(2)
     // And back down (reset) → a third fresh painter at dpr 1.
     dprValue = 1
     window.devicePixelRatio = 1
     active!.fire()
     await wrapper.vm.$nextTick()
     expect(chartState.mounts).toBe(3)
+    expect(chartState.initOptions[2]?.devicePixelRatio).toBe(1)
     wrapper.unmount()
   })
 })

@@ -7,6 +7,7 @@
     <VChart
       ref="chart"
       :key="`dpr-${dprKey}`"
+      :init-options="dprInitOptions"
       class="echarts-allocation__chart"
       :option="option"
       :update-options="{ notMerge: true }"
@@ -56,6 +57,15 @@ const chart = ref<{ dispatchAction: (payload: Record<string, unknown>) => void }
 const dprKey = ref(0)
 watchDevicePixelRatio(() => {
   dprKey.value += 1
+})
+
+// A remount must init with the CURRENT dpr: zrender’s module-level default
+// is captured at bundle load and stays stale after native zoom changes.
+// dprKey is the reactive dep: without it the computed caches its first
+// evaluation (window.devicePixelRatio is not reactive).
+const dprInitOptions = computed(() => {
+  void dprKey.value
+  return { devicePixelRatio: window.devicePixelRatio || 1 }
 })
 
 onMounted(() => {
