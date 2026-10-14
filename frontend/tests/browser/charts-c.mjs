@@ -340,7 +340,7 @@ async function assertSecurityPhase({ run, fixtureServer, log, initScript, sessio
   await run(['wait', '200'])
   const pagination = await evalProbe(run, `(() => {
     const tables = [...document.querySelectorAll('[data-testid="security-data-table"]')]
-    const positionTable = tables.find((table) => table.querySelectorAll('tbody tr').length > 0)
+    const positionTable = tables.slice().sort((a, b) => b.querySelectorAll('tbody tr').length - a.querySelectorAll('tbody tr').length)[0]
     if (!positionTable) return null
     return {
       rows: positionTable.querySelectorAll('tbody tr').length,
@@ -355,13 +355,13 @@ async function assertSecurityPhase({ run, fixtureServer, log, initScript, sessio
   assert.match(pagination.range, /1–25 of 60/, `range text (${pagination.range})`)
   assert.deepEqual(pagination.sizes, ['25', '50', '100'], '25/50/100 page-size choices')
   assert.equal(pagination.nextDisabled, false, 'next page available')
-  await run(['eval', `(() => { const tables = [...document.querySelectorAll('[data-testid="security-data-table"]')]; const table = tables.find((t) => t.querySelectorAll('tbody tr').length > 0); table.querySelector('[data-testid="security-table-next"]').click(); return true })()`])
+  await run(['eval', `(() => { const tables = [...document.querySelectorAll('[data-testid="security-data-table"]')]; const table = tables.slice().sort((a, b) => b.querySelectorAll('tbody tr').length - a.querySelectorAll('tbody tr').length)[0]; table.querySelector('[data-testid="security-table-next"]').click(); return true })()`])
   await run(['wait', '150'])
-  const pageTwo = await evalProbe(run, `(() => { const tables = [...document.querySelectorAll('[data-testid="security-data-table"]')]; const table = tables.find((t) => t.querySelectorAll('tbody tr').length > 0); return table.querySelector('tbody tr')?.getAttribute('data-period-key') ?? '' })()`)
+  const pageTwo = await evalProbe(run, `(() => { const tables = [...document.querySelectorAll('[data-testid="security-data-table"]')]; const table = tables.slice().sort((a, b) => b.querySelectorAll('tbody tr').length - a.querySelectorAll('tbody tr').length)[0]; return table.querySelector('tbody tr')?.getAttribute('data-period-key') ?? '' })()`)
   assert.match(String(pageTwo), /row:26$/, 'page two starts at observation 26')
   await run(['eval', `(() => { const tables = [...document.querySelectorAll('[data-testid="security-data-table"]')]; const table = tables.find((t) => t.querySelectorAll('tbody tr').length > 0); const select = table.querySelector('[data-testid="security-table-page-size"]'); select.value = '100'; select.dispatchEvent(new Event('change', { bubbles: true })); return true })()`])
   await run(['wait', '150'])
-  const expanded = await evalProbe(run, `(() => { const tables = [...document.querySelectorAll('[data-testid="security-data-table"]')]; const table = tables.find((t) => t.querySelectorAll('tbody tr').length > 0); return { rows: table.querySelectorAll('tbody tr').length, next: table.querySelector('[data-testid="security-table-next"]').disabled } })()`)
+  const expanded = await evalProbe(run, `(() => { const tables = [...document.querySelectorAll('[data-testid="security-data-table"]')]; const table = tables.slice().sort((a, b) => b.querySelectorAll('tbody tr').length - a.querySelectorAll('tbody tr').length)[0]; return { rows: table.querySelectorAll('tbody tr').length, next: table.querySelector('[data-testid="security-table-next"]').disabled } })()`)
   assert.equal(expanded.rows, 60, '100-row page shows all 60 observations')
   assert.equal(expanded.next, true, 'next disabled on the single full page')
   await shoot(run, 'charts-c-security-pagination.png', '/database/securities/1')
