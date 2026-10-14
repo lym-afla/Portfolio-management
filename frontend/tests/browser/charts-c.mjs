@@ -399,13 +399,24 @@ export async function runChartsCFlow({ appOrigin, frontendRoot, fixtureServer, l
   assert.ok(cdpUrl, 'cdp url available for native zoom')
   // Native zoom runs on the pristine dashboard: the mobile phase's viewport
   // emulation must not be in play when the DPR re-initialization is proven.
-  await assertNativeZoomPhase({ run, cdpUrl, origin: candidateServer.origin, log })
+  const zoomPhase = await assertNativeZoomPhase({ run, cdpUrl, origin: candidateServer.origin, log })
   // The DPR re-initialization remounts every chart; a real pointer hover must
   // still drive the tooltip afterwards.
   await hoverCanvasPoint(run, 0.4)
   await waitForNavTooltip(run)
   await run(['mouse', 'move', '4', '4'])
   await run(['wait', '150'])
+  let phaseOrigin = candidateServer.origin
+  if (!zoomPhase.resetVerified) {
+    // The keyboard reset failed (CDP key delivery, not the app): the same
+    // build served from a fresh port is a fresh origin at zoom 100%, so the
+    // remaining phases run in a sane environment.
+    const cleanServer = await startBuiltAppServer(candidateDir)
+    phaseOrigin = cleanServer.origin
+    log(`charts-c reset fallback: continuing on a fresh origin ${phaseOrigin}`)
+  }
+  fixtureServer.appOrigin = phaseOrigin
+  await run(['open', `${phaseOrigin}/dashboard`])
   await assertPiePhase({ run, log })
   await assertMobilePhase({ run, log })
   await assertSecurityPhase({ run, fixtureServer, log })
