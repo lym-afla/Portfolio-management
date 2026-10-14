@@ -345,7 +345,7 @@ async function assertSecurityPhase({ run, fixtureServer, log, initScript, sessio
     return {
       rows: positionTable.querySelectorAll('tbody tr').length,
       range: positionTable.querySelector('[data-testid="security-table-range"]')?.innerText ?? '',
-      sizes: [...positionTable.querySelectorAll('[data-testid="security-table-page-size"] option')].map((option) => option.text()),
+      sizes: [...positionTable.querySelectorAll('[data-testid="security-table-page-size"] option')].map((option) => option.textContent),
       nextDisabled: positionTable.querySelector('[data-testid="security-table-next"]')?.disabled ?? null,
       firstKey: positionTable.querySelector('tbody tr')?.getAttribute('data-period-key') ?? '',
     }
