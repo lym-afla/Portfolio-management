@@ -381,7 +381,7 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
     if (scenario === 'long' && !price) {
       // Phase C: 60 same-date observations under distinct server keys — the
       // accepted document paginates client-side (25 rows initially).
-      const longPoints = Array.from({ length: 60 }, (_entry, index) => ({
+      const longPoints = Array.from({ length: 60 }, () => ({
         value: '1.000000000', plotValue: '1.000000000', status: 'ok', reason: 'observed', display: '1.000000000',
       }))
       envelope.legacy = longPoints.map((_entry, index) => ({ date: '2026-08-15', position: '1.000000000', key: `security:${securityId}:position:row:${index + 1}` }))

@@ -158,10 +158,6 @@ async function assertPiePhase({ run, log }) {
   log('charts-c pie phase: three pies rendered, capture taken')
 }
 
-const WAIT_CANVASES_AT = (ratio) => `(() => {
-  const canvases = [...document.querySelectorAll('canvas')].filter((canvas) => canvas.getBoundingClientRect().width > 0)
-  return canvases.length > 0 && canvases.every((canvas) => Math.abs(canvas.width / canvas.getBoundingClientRect().width - ${ratio}) <= 0.15)
-})()`
 
 async function assertNativeZoomPhase({ run, cdpUrl, origin, log }) {
   // The DPR watcher remounts the charts asynchronously — wait for the
@@ -408,7 +404,7 @@ async function buildChartsCArtifact(frontendRoot, artifactsDir, name) {
   return dir
 }
 
-export async function runChartsCFlow({ appOrigin, frontendRoot, fixtureServer, log, cdpUrl, registerSession }) {
+export async function runChartsCFlow({ appOrigin: _appOrigin, frontendRoot, fixtureServer, log, cdpUrl, registerSession }) {
   const candidateDir = await buildChartsCArtifact(frontendRoot, resolve(here, 'artifacts'), 'app-charts-c-noflags')
   const candidateServer = await startBuiltAppServer(candidateDir)
   // A dedicated session like the c4/c5 flows: the route-loop session's
