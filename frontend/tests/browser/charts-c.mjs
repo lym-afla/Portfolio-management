@@ -314,6 +314,8 @@ async function assertSecurityPhase({ run, fixtureServer, log }) {
     }
   })()`)
   assert.equal(String(selectorProbe.label ?? '').trim(), 'All accounts', `unfiltered security selector visibly says All accounts (probe ${JSON.stringify(selectorProbe)})`)
+  const pageErrors = await runAgentBrowser({ args: ['errors'], context: 'charts c security errors', initScript, log, session })
+  log(`charts-c security page errors: ${JSON.stringify(pageErrors.errors ?? pageErrors).slice(0, 600)}`)
 
   // Holdings context groups.
   const holdings = await evalProbe(run, `(() => {
