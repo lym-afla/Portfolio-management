@@ -18,6 +18,11 @@ export function backendAccountOptions({ longAccountName = false } = {}) {
       [
         [longAccountName ? 'Long' : 'First', { type: 'account', id: 1, display_name: displayName }],
         ['Second', { type: 'account', id: 2, display_name: 'Second Broker – Second account' }],
+        // Phase C: the stock detail's holdings context references these
+        // accounts; the choices must list them so an explicit holdings
+        // filter can match.
+        ['Main', { type: 'account', id: 11, display_name: 'IBKR – Main' }],
+        ['IIS', { type: 'account', id: 12, display_name: 'Tinkoff – IIS' }],
       ],
     ],
     ['__SEPARATOR__', '__SEPARATOR__'],

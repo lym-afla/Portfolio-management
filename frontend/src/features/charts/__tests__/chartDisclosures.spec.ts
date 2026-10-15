@@ -36,6 +36,51 @@ function expandTable(wrapper: ReturnType<typeof mount>, testId = 'chart-table-to
   return wrapper.find(`[data-testid="${testId}"]`).trigger('click')
 }
 
+describe('per-IRR horizons in the exact table (review finding 3)', () => {
+  it('shows each IRR its own horizon in its own column, distinct on later periods', async () => {
+    const doc = navDocument()
+    const wrapper = mount(ChartDataTable, { props: { document: doc, interaction: defaultInteraction(doc) } })
+    await expandTable(wrapper)
+    const headerCells = wrapper.findAll('thead th')
+    const inceptionIndex = headerCells.findIndex((cell) => cell.text() === 'Since-inception IRR (annualized)')
+    const intervalIndex = headerCells.findIndex((cell) => cell.text() === 'Interval IRR (annualized)')
+    expect(inceptionIndex).toBeGreaterThan(-1)
+    expect(intervalIndex).toBeGreaterThan(inceptionIndex)
+    const rows = wrapper.findAll('tbody tr')
+    // First sample: BOTH horizons are inception semantics.
+    const firstCells = rows[0].findAll('td')
+    // The cell carries the value plus its horizon line.
+    expect(firstCells[inceptionIndex - 1].text()).toContain(`Inception to ${doc.periods[0].endDate}`)
+    expect(firstCells[intervalIndex - 1].text()).toContain(`Inception to ${doc.periods[0].endDate}`)
+    // A later period: the two horizons DIFFER — since-inception spans
+    // inception to the period end; the interval horizon is the period window.
+    const later = doc.periods[1]
+    const laterCells = rows[1].findAll('td')
+    expect(laterCells[inceptionIndex - 1].text()).toContain(`Inception to ${later.endDate}`)
+    expect(laterCells[inceptionIndex - 1].text()).not.toContain(`${later.interval.startDate}`)
+    expect(laterCells[intervalIndex - 1].text()).toContain(`${later.interval.startDate} – ${later.interval.endDate}`)
+    expect(laterCells[intervalIndex - 1].text()).not.toContain(`Inception to ${later.endDate}`)
+    wrapper.unmount()
+  })
+
+  it('adds no horizon text under non-IRR columns', async () => {
+    const doc = navDocument()
+    const wrapper = mount(ChartDataTable, { props: { document: doc, interaction: defaultInteraction(doc) } })
+    await expandTable(wrapper)
+    const rows = wrapper.findAll('tbody tr')
+    for (const row of rows) {
+      const cells = row.findAll('td')
+      // Period columns: Interval (0) and the two money columns (1, 2) carry
+      // no horizon text; the Interval column is the period window itself.
+      expect(cells[1].text()).not.toContain('Inception to')
+      for (const index of [1, 2]) {
+        expect(cells[index].text()).not.toMatch(/annualized/)
+      }
+    }
+    wrapper.unmount()
+  })
+})
+
 describe('NAV exact table disclosure (phase C)', () => {
   it('collapses the table behind a labelled button by default', () => {
     const wrapper = mount(ChartDataTable, { props: { document: navDocument(), interaction: defaultInteraction(navDocument()) } })

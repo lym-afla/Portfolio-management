@@ -89,7 +89,7 @@ beforeEach(() => {
     first_investment: 'None', open_position: '10.000000', current_value: '$100.00',
     realized: '–', unrealized: '–', capital_distribution: '–', irr: 'NA',
     holdings: [
-      { account_id: 11, account_name: 'Main', broker_name: 'IBKR', display_name: 'IBKR – Main', quantity: '10.000000', status: 'open' },
+      { account_id: 11, account_name: 'Main', broker_name: 'IBKR', display_name: 'IBKR – Main', quantity: '10000.000000', quantity_display: '10,000.000000', status: 'open' },
       { account_id: 12, account_name: 'IIS', broker_name: 'Tinkoff', display_name: 'Tinkoff – IIS', quantity: '0.000000', status: 'closed' },
     ],
   })
@@ -104,7 +104,11 @@ describe('SecurityDetailPage holdings context (phase C)', () => {
     const current = section.find('.holdings-group--current')
     expect(current.text()).toContain('Currently held with')
     expect(current.text()).toContain('IBKR – Main')
-    expect(current.text()).toContain('10.000000')
+    // The grouped display renders verbatim; the raw string stays available
+    // on the row (title attribute).
+    expect(current.text()).toContain('10,000.000000')
+    const button = current.get('.holdings-group__filter')
+    expect(button.attributes('title')).toContain('10000.000000')
     expect(current.text()).not.toContain('Tinkoff – IIS')
     wrapper.unmount()
   })

@@ -43,6 +43,7 @@
           <td>{{ intervalLabel(period) }}</td>
           <td v-for="series in document.series" :key="series.id" class="chart-table__value">
             {{ pointText(series.points[index]) }}
+            <span v-if="seriesHorizon(series, period)" class="chart-table__horizon">{{ seriesHorizon(series, period) }}</span>
           </td>
           <td v-if="hasTotals" class="chart-table__value">
             {{ pointText(document.totals![index]) }}
@@ -57,7 +58,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { ChartDocument, ChartPeriod, ChartValue } from './contracts'
-import { seriesControlName, type ChartInteraction } from './interaction'
+import { seriesControlName, seriesHorizon, type ChartInteraction } from './interaction'
 import ChartDisclosure from './ChartDisclosure.vue'
 
 const props = defineProps<{
@@ -128,6 +129,13 @@ td {
 .chart-table__value {
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+.chart-table__horizon {
+  display: block;
+  font-size: 0.75rem;
+  color: #5c6b7a;
+  font-weight: 400;
 }
 
 .chart-table__partial {

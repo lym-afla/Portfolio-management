@@ -9,7 +9,7 @@
       <v-col cols="12" sm="6" md="4">
         <v-select
           :model-value="selectedAccount"
-          @update:model-value="selectedAccount = $event ?? { type: 'all', id: null }"
+          @update:model-value="applySelection"
           :items="accountOptions"
           item-title="title"
           item-value="value"
@@ -20,9 +20,13 @@
           outlined
         >
           <!-- Phase C: the unfiltered request is visible as "All accounts"
-               in the field — the model stays null (no hidden scope change),
-               an explicit selection shows its display name and a selection
-               missing from the available choices shows the safe fallback. -->
+               in the field — the model is the All-accounts selection (Vuetify
+               invokes the selection slot only for a non-null model), an
+               explicit selection shows its display name, and a selection
+               missing from the available choices normalizes to the safe
+               "Unavailable" label string (PR #54: the input value derives
+               from the model — a raw unmatched object would render
+               '[object Object]'). -->
           <template v-slot:selection>
             <span class="security-account-label" :title="selectedAccountLabel">{{ selectedAccountLabel }}</span>
           </template>
@@ -180,12 +184,13 @@
                   type="button"
                   class="holdings-group__filter"
                   :data-account-id="account.accountId"
+                  :title="`Raw quantity ${account.quantity}`"
                   :aria-label="`Filter by ${account.displayName}`"
                   @click="filterByAccount(account)"
                 >
                   {{ account.displayName }}
                 </button>
-                <span class="holdings-group__quantity">{{ account.quantity }}</span>
+                <span class="holdings-group__quantity">{{ account.quantityDisplay }}</span>
               </li>
             </ul>
           </div>
@@ -197,12 +202,13 @@
                   type="button"
                   class="holdings-group__filter"
                   :data-account-id="account.accountId"
+                  :title="`Raw quantity ${account.quantity}`"
                   :aria-label="`Filter by ${account.displayName}`"
                   @click="filterByAccount(account)"
                 >
                   {{ account.displayName }}
                 </button>
-                <span class="holdings-group__quantity">{{ account.quantity }}</span>
+                <span class="holdings-group__quantity">{{ account.quantityDisplay }}</span>
               </li>
             </ul>
           </div>
@@ -318,6 +324,8 @@ const effectiveCurrentDate = computed(() => appStore.effectiveCurrentDate)
 const selectedAccountLabel = computed(() => {
   const selection = selectedAccount.value
   if (!selection) return 'All accounts'
+  if (typeof selection === 'string') return selection
+  if (selection.type === 'all') return 'All accounts'
   const matched = accountOptions.value.find(
     (option) =>
       option.type === 'option' &&
@@ -326,6 +334,33 @@ const selectedAccountLabel = computed(() => {
   )
   return matched?.title ?? 'Unavailable'
 })
+
+// PR #54: Vuetify's input value derives from the model. A matched selection
+// stores the option's own value (so the input shows the item title); an
+// identity with no matching option stores the safe label string instead of
+// the raw object; the All-accounts identity is preserved as-is and stays
+// honest regardless of the choices list.
+function applySelection(value) {
+  if (value == null) {
+    selectedAccount.value = { type: 'all', id: null }
+    return
+  }
+  if (typeof value === 'string') {
+    selectedAccount.value = value
+    return
+  }
+  if (value.type === 'all') {
+    selectedAccount.value = { type: 'all', id: null }
+    return
+  }
+  const matched = accountOptions.value.find(
+    (option) =>
+      option.type === 'option' &&
+      option.value?.type === value.type &&
+      option.value?.id === value.id,
+  )
+  selectedAccount.value = matched ? matched.value : 'Unavailable'
+}
 
 // Phase C: the backend's canonical holdings read model (open accounts first,
 // then closed) split into the two compact groups. Display strings stay
@@ -337,6 +372,7 @@ const holdingsView = computed(() => {
     accountId: row.account_id,
     displayName: asText(row.display_name),
     quantity: asText(row.quantity),
+    quantityDisplay: asText(row.quantity_display) || asText(row.quantity),
     status: row.status === 'closed' ? 'closed' : 'open',
   }))
   return {
@@ -346,7 +382,7 @@ const holdingsView = computed(() => {
 })
 
 function filterByAccount(account) {
-  selectedAccount.value = { type: 'account', id: account.accountId }
+  applySelection({ type: 'account', id: account.accountId })
 }
 
 // C4: the gated modern history renderers — active only while the security

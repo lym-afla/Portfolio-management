@@ -93,12 +93,18 @@ export function useSecurityDetail(options: {
   // Account filter (raw select model + resolved id). Phase C: the model IS
   // the All-accounts selection when unfiltered — Vuetify only invokes the
   // selection slot for a non-null model, so a null model renders an empty
-  // field instead of a visible "All accounts".
-  const selectedAccount = ref<{ type: string; id?: number | null }>({ type: 'all', id: null })
+  // field instead of a visible "All accounts". PR #54 lesson: Vuetify's
+  // input value derives from the model — an unmatched raw identity object
+  // would render '[object Object]', so the page normalizes unmatched
+  // selections to a safe label string; a string model resolves no filter.
+  const selectedAccount = ref<{ type: string; id?: number | null } | string>({ type: 'all', id: null })
   const selectedAccountId = computed(() => {
-    if (!selectedAccount.value || selectedAccount.value.type === 'all') return null
-    return selectedAccount.value.id as number
+    const selection = selectedAccount.value
+    if (!selection || typeof selection === 'string') return null
+    if (selection.type === 'all') return null
+    return selection.id as number
   })
+
 
   const selectedPeriod = ref('1Y')
 
@@ -141,6 +147,23 @@ export function useSecurityDetail(options: {
   const accountOptions = computed(() =>
     formatAccountChoices(accountsQuery.data.value?.options ?? []),
   )
+  // While the real choices have not arrived (or arrive empty), the
+  // All-accounts model parks as the safe label string: Vuetify stringifies a
+  // model that matches no item into its input ('[object Object]'). The
+  // identity object is restored as soon as choices exist, so the select can
+  // match the All-accounts option again. selectedAccountId stays null in
+  // every representation — the request scope never changes.
+  const ALL_ACCOUNTS_LABEL = 'All accounts'
+  const isAllAccountsSelection = (selection: unknown): boolean =>
+    typeof selection === 'object' && selection !== null && (selection as { type?: string }).type === 'all'
+  watch([selectedAccount, accountOptions], ([selection, options]) => {
+    const hasAllOption = options.some((option) => option.type === 'option' && option.value?.type === 'all')
+    if (selection === ALL_ACCOUNTS_LABEL && hasAllOption) {
+      selectedAccount.value = { type: 'all', id: null }
+    } else if (!hasAllOption && isAllAccountsSelection(selection)) {
+      selectedAccount.value = ALL_ACCOUNTS_LABEL
+    }
+  }, { immediate: true })
 
   const detailParams = () => ({
     context: committed(),

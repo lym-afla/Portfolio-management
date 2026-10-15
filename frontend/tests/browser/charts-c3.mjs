@@ -498,7 +498,7 @@ await run(['eval', `(() => { for (const button of document.querySelectorAll('[da
     await assertTooltipFullyVisible(run, 'mobile right-edge tooltip')
     // Phase C: an edge column whose values are all absent shows the control
     // names and honest gaps (the totals line moved to the exact table).
-    assert.match(String(tooltip.text), /IRR \(annualized\)|–|N\/A/, 'tooltip: exact server displays present')
+    assert.match(String(tooltip.text), /IRR \(annualized\)|–|\bN\/A\b/, 'tooltip: exact server displays present')
     // Sizing survives the tooltip interactions.
     const sizedAfterTooltips = await evalProbe(run, `(() => {
       const panel = document.querySelector('.nav-chart-panel__pilot')
