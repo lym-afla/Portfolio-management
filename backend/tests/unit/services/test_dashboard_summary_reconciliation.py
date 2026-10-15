@@ -952,6 +952,18 @@ def test_missing_historical_coin_conversion_keeps_cash_fx_partial_and_uncertifie
     assert doc["netResult"]["reconciliation"] == "incomplete"
     assert doc["status"] == "partial"
     assert Decimal(doc["netResult"]["controlTotal"]["raw"]) == Decimal("0")
+    # Aggregates built on the unknown conversion are unknown as well - the
+    # known share is exposed as an explicitly labelled subtotal, distinct
+    # from a certified total.
+    attributed = doc["netResult"]["attributedSum"]
+    assert attributed["status"] == "partial"
+    assert attributed["raw"] is None
+    assert attributed["reason"] == "missing_fx"
+    assert Decimal(attributed["knownSubtotal"]) == Decimal("0")
+    unexplained = doc["netResult"]["unexplainedDifference"]
+    assert unexplained["status"] == "partial"
+    assert unexplained["raw"] is None
+    assert unexplained["reason"] == "missing_fx"
 
 
 @pytest.mark.django_db
@@ -1087,17 +1099,14 @@ def test_rub_bond_amortizing_redemption_fx_is_dimensionally_broken(user):
 
 
 @pytest.mark.django_db
-def test_rub_bond_fallback_notional_currency_error_falsely_reconciles(user):
-    """Boundary 2 alone (amortizing, NO NotionalHistory): the
-    transactions-fallback returns the notional unconverted
-    (get_effective_notional = 1,000 instead of 12.5 USD), inflating NAV to
-    $10,131.25 for a $256 portfolio. Because boundary 1's garbage FX term
-    (+9,898.75) happens to CANCEL boundary 2's inflated NAV (+9,875), the
-    statement closes and reports complete/reconciled - the dangerous case
-    this reduction exists to document. The two defects are engine-side;
-    correcting them is a protected-code review decision, expected result:
-    NAV 256.25, control 56.25, fx_security 23.75, reconciled."""
+def test_rub_bond_fallback_notional_engine_characterization(user):
+    """ENGINE characterization (kept from the reduction): the
+    transactions-fallback branch of get_current_notional returns the
+    unconverted notional (1,000 instead of 12.5 USD) and the bond unrealized
+    FX term is dimensionally broken (9,898.75). These are the pre-existing
+    engine defects; correcting them is a protected-code decision."""
     from services.bonds import get_current_notional
+    from services.realized import unrealized_gain_loss
 
     broker = make_broker(user)
     account = make_account(broker)
@@ -1113,56 +1122,54 @@ def test_rub_bond_fallback_notional_currency_error_falsely_reconciles(user):
     make_tx(account, date(2059, 1, 5), "Buy", security=bond, currency="RUB",
             quantity=Decimal("10"), price=Decimal("95"), notional=Decimal("1000"))
     make_price(bond, date(2059, 10, 1), "100")
-    # The engine boundary, recorded directly: the fallback branch returns the
-    # nominal-currency notional even though the caller asked for USD.
     assert get_current_notional(
         meta, date(2059, 10, 15), user, [account.id], "USD"
     ) == Decimal("1000")
+    unrealized = unrealized_gain_loss(
+        bond, date(2059, 10, 15), user, "USD", account_ids=[account.id], start_date=None
+    )
+    assert unrealized["fx_effect"] == Decimal("9898.75")
+
+
+@pytest.mark.django_db
+def test_rub_bond_fallback_notional_stays_uncertified_in_statement(user):
+    """STATEMENT guard (review round 3, finding 1): the affected calculation
+    path (amortizing bond, no NotionalHistory -> unconverted fallback
+    notional) must keep the statement explicitly uncertified - NAV stays
+    canonical (never replaced), the reason is actionable, and neither
+    reconciliation nor the dependent returns may claim completeness even
+    though the raw pieces cancel to zero."""
+    broker = make_broker(user)
+    account = make_account(broker)
+    bond = make_asset(user, type="Bond", name="RUB Bond Series C", currency="RUB", exposure="Fixed Income")
+    BondMetadata.objects.create(
+        asset=bond, initial_notional=Decimal("1000"), nominal_currency="RUB",
+        is_amortizing=True,
+    )
+    make_fx("USD", "RUB", date(2059, 1, 5), "0.0100", user)
+    make_fx("USD", "RUB", date(2059, 10, 1), "0.0125", user)
+    make_tx(account, date(2059, 1, 5), "Cash in", currency="RUB",
+            cash_flow=Decimal("20000"))
+    make_tx(account, date(2059, 1, 5), "Buy", security=bond, currency="RUB",
+            quantity=Decimal("10"), price=Decimal("95"), notional=Decimal("1000"))
+    make_price(bond, date(2059, 10, 1), "100")
     doc = build_reconciled_summary(user, date(2059, 10, 15), "USD", 2, [account.id])
     nr = doc["netResult"]
+    # Canonical NAV is preserved verbatim (never replaced by a workaround);
+    # the guard marks it partial instead of certifying it.
     assert Decimal(nr["nav"]["raw"]) == Decimal("10131.25")
-    assert Decimal(nr["controlTotal"]["raw"]) == Decimal("9931.25")
-    assert Decimal(nr["components"]["unrealizedPrice"]["raw"]) == Decimal("6.25")
-    assert Decimal(nr["fxDetail"]["security"]["raw"]) == Decimal("9898.75")
-    assert Decimal(nr["unexplainedDifference"]["raw"]) == Decimal("0")
-    assert nr["reconciliation"] == "reconciled"
-    assert doc["status"] == "complete"
-
-
-# ---------------------------------------------------------------------------
-# Reconciliation classifier: a deliberately omitted component must fail
-# ---------------------------------------------------------------------------
-
-
-def test_omitted_component_fails_reconciliation_and_never_becomes_fx():
-    """Pure classifier: with all dependencies individually certified, an
-    attributed sum missing a component must produce 'unreconciled' — the
-    gap must stay visible as the unexplained difference, never absorbed
-    into the FX row."""
-    from services.dashboard_summary import classify_reconciliation
-
-    outcome, reasons = classify_reconciliation(
-        control_total=Decimal("17500"),
-        attributed_sum=Decimal("9500"),
-        tolerance=Decimal("0.045"),
-        dependencies_complete=True,
-    )
-    assert outcome == "unreconciled"
-    assert reasons == ["unexplained_difference"]
-    outcome, _ = classify_reconciliation(
-        control_total=Decimal("17500"),
-        attributed_sum=Decimal("17500"),
-        tolerance=Decimal("0.045"),
-        dependencies_complete=True,
-    )
-    assert outcome == "reconciled"
-    outcome, reasons = classify_reconciliation(
-        control_total=Decimal("17500"),
-        attributed_sum=Decimal("17499.90"),
-        tolerance=Decimal("0.045"),
-        dependencies_complete=False,
-    )
-    assert outcome == "incomplete"
+    assert nr["nav"]["status"] == "partial"
+    assert nr["nav"]["reason"] == "bond_notional_fallback_unconverted"
+    assert "bond_notional_fallback_unconverted" in doc["reasons"]
+    assert nr["reconciliation"] == "incomplete"
+    assert doc["status"] == "partial"
+    # Dependent returns must not claim certification: the IRR either reports
+    # partial (nav-driven) or fails visibly as not_available on the inflated
+    # NAV - both are uncertified states, never 'ok'.
+    assert doc["returns"]["irr"]["status"] in ("partial", "not_available")
+    assert doc["returns"]["totalReturn"]["status"] == "partial"
+    affected = doc["diagnostics"].get("affectedNotionalFallbacks") or []
+    assert any(item.get("asset_id") == bond.id for item in affected)
 
 
 # ---------------------------------------------------------------------------

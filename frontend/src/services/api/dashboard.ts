@@ -154,6 +154,10 @@ function decodeAmount(value: unknown, field: string): StatementAmount {
   if (value.reason !== undefined && typeof value.reason !== 'string') {
     throw invalid(`${field}.reason`)
   }
+  // Status/reason coherence: a partial or unavailable amount must say WHY.
+  if (status !== 'ok' && (typeof value.reason !== 'string' || value.reason === '')) {
+    throw invalid(`${field}.reason`)
+  }
   if (value.knownSubtotal !== undefined) {
     if (status !== 'partial') throw invalid(`${field}.knownSubtotal`)
     if (!isDecimalString(value.knownSubtotal)) throw invalid(`${field}.knownSubtotal`)
@@ -237,6 +241,9 @@ function decodeStatement(value: unknown): ReconciledStatement {
   ) {
     throw invalid('context.accountIds')
   }
+  if (new Set(accountIds as number[]).size !== (accountIds as number[]).length) {
+    throw invalid('context.accountIds')
+  }
   if (value.status !== 'complete' && value.status !== 'partial' && value.status !== 'unavailable') {
     throw invalid('status')
   }
@@ -272,6 +279,7 @@ function decodeStatement(value: unknown): ReconciledStatement {
     throw invalid('status/reconciliation')
   }
   if (!isDecimalString(netResult.toleranceRaw)) throw invalid('toleranceRaw')
+  if (netResult.toleranceRaw.startsWith('-')) throw invalid('toleranceRaw')
   if (typeof netResult.toleranceBasis !== 'string') throw invalid('toleranceBasis')
   if (!isRecord(returns) || !isRecord(diagnostics) || !Array.isArray(diagnostics.omittedValuations)) {
     throw invalid('returns/diagnostics')
@@ -289,6 +297,35 @@ function decodeStatement(value: unknown): ReconciledStatement {
   }
   if (!Array.isArray(diagnostics.notes) || !diagnostics.notes.every((note) => typeof note === 'string')) {
     throw invalid('notes')
+  }
+  // A complete, reconciled statement cannot carry partial/unavailable
+  // monetary dependencies, omitted valuations, declared unclassified
+  // in-kind dependencies or remaining reasons. Returns are NOT monetary
+  // reconciliation dependencies: an unavailable IRR on zero capital is a
+  // legitimate part of a certified statement.
+  if (value.status === 'complete' && netResult.reconciliation === 'reconciled') {
+    const monetary: Array<[string, unknown]> = [
+      ['netResult.nav', netResult.nav],
+      ['netResult.controlTotal', netResult.controlTotal],
+      ['netResult.attributedSum', netResult.attributedSum],
+      ['netResult.unexplainedDifference', netResult.unexplainedDifference],
+      ['netResult.fxDetail.security', fxDetail.security],
+      ['netResult.fxDetail.cashFlows', fxDetail.cashFlows],
+      ...Object.entries(components).map(([k, v]): [string, unknown] => [`netResult.components.${k}`, v]),
+      ...Object.entries(capital).map(([k, v]): [string, unknown] => [`capital.${k}`, v]),
+    ]
+    for (const [name, amount] of monetary) {
+      if (!isRecord(amount) || amount.status !== 'ok') throw invalid(`${name} (complete statement requires ok)`)
+    }
+    if ((diagnostics.omittedValuations as unknown[]).length > 0) {
+      throw invalid('omittedValuations on a complete statement')
+    }
+    if ((inKind as { present?: unknown }).present === true) {
+      throw invalid('unclassifiedInKindFlows on a complete statement')
+    }
+    if ((value.reasons as string[]).length > 0) {
+      throw invalid('reasons on a complete statement')
+    }
   }
   const amountField = (name: string): StatementAmount => {
     const source = name.split('.').reduce<unknown>(
@@ -365,6 +402,21 @@ function assertResponseContext(
       'Statement response account selection does not match the committed selection',
     )
   }
+  if (expected.accountSelection.type === 'account') {
+    // For a single-account selection the resolved set is fully checkable:
+    // it must be exactly that account, once - not a sibling, not a superset.
+    if (
+      context.accountIds.length !== 1 ||
+      context.accountIds[0] !== expected.accountSelection.id
+    ) {
+      throw new SummaryContextMismatchError(
+        'Statement response account ids do not match the selected account',
+      )
+    }
+  }
+  // For all/group/broker selections the client cannot reconstruct
+  // authoritative membership from the selection token; only the token and
+  // document shape are checkable here (documented limitation, not a proof).
   if (context.effectiveDate !== expected.effectiveCurrentDate) {
     throw new SummaryContextMismatchError(
       `Statement response effective date ${context.effectiveDate} does not match the committed date ${expected.effectiveCurrentDate}`,

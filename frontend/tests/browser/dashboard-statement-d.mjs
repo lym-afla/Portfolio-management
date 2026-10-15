@@ -268,6 +268,18 @@ export async function runStatementDFlow({
       return nav ? nav.innerText.includes('(partial)') : null
     })()`)
     assert.equal(partialFlag, true, `${context}: partial NAV carries the (partial) flag`)
+    // Unknown cash FX renders as N/A with the partial marker - never as a
+    // fabricated number (round-3 finding 2 rendered regression).
+    const partialRows = await statementText()
+    assert.ok(
+      /FX effect \| N\/A\s*\(partial\)/.test(partialRows),
+      `${context}: unknown cash FX must render as N/A (partial), got ${JSON.stringify(partialRows)}`,
+    )
+    assert.equal(
+      partialRows.includes('Unreconciled difference'),
+      false,
+      `${context}: an unknown difference must not be presented as an exact amount`,
+    )
     assert.equal(
       (await evalProbe(run, `!!document.querySelector('[data-testid="nav-chart-panel"]')`)),
       true,

@@ -118,6 +118,7 @@ REASON_MISSING_FX = "missing_fx"
 REASON_OPTION_GAP = "option_unrealized_not_attributed"
 REASON_IN_KIND = "in_kind_flows_unclassified"
 REASON_COIN_FEE_GAP = "crypto_coin_fee_not_attributed"
+REASON_BOND_NOTIONAL_FALLBACK = "bond_notional_fallback_unconverted"
 
 
 class Component:
@@ -186,15 +187,19 @@ def _component_amount(component, currency, digits):
                    status=component.status, reason=component.first_reason)
 
 
-def _unknown_amount(reason):
+def _unknown_amount(reason, known_subtotal=None):
     """An amount that cannot be certified: unknown, never zero and never a
-    fabricated number."""
-    return {
+    fabricated number. The optionally labelled known subtotal stays distinct
+    from a certified total."""
+    amount = {
         "raw": None,
         "display": "N/A",
         "status": "partial",
         "reason": reason,
     }
+    if known_subtotal is not None:
+        amount["knownSubtotal"] = known_subtotal
+    return amount
 
 
 def _fx_rate(source, target, when):
@@ -300,9 +305,11 @@ def build_reconciled_summary(user, effective_date, currency_target, digits,
     )
     nav_known = analysis["Total NAV"]
     nav_status = "ok"
+    nav_reason = None
     for item in nav_diagnostics:
         nav_status = "partial"
-        reasons.add(item.get("reason", REASON_MISSING_FX))
+        nav_reason = item.get("reason", REASON_MISSING_FX)
+        reasons.add(nav_reason)
 
     # ------------------------------------------------------------------
     # Flow rows (single pass): capital, income, fees, taxes, other flows.
@@ -469,9 +476,35 @@ def build_reconciled_summary(user, effective_date, currency_target, digits,
     from services.pricing import price_at_date as pricing_price_at_date
     from services.positions import position as positions_position
 
+    bond_fallback_affected = []
     for asset in candidates:
         asset_precisions.append(_cash_precision_for(asset, account_ids))
         open_option = options.is_option_asset(asset)
+        if asset.is_bond:
+            # Detect the affected calculation path precisely: an amortizing
+            # bond whose effective notional resolves through
+            # get_current_notional's transactions-fallback (no
+            # NotionalHistory on/before the effective date). That branch
+            # returns the nominal-currency notional unconverted, so both NAV
+            # and the FX decomposition are uncertifiable for this asset.
+            # Not classified indiscriminately: converted branches
+            # (NotionalHistory present / non-amortizing) are unaffected.
+            from common.models import BondMetadata, NotionalHistory
+
+            bond_meta = BondMetadata.objects.filter(asset=asset).first()
+            if (
+                bond_meta is not None
+                and bond_meta.is_amortizing
+                and not NotionalHistory.objects.filter(
+                    asset=asset, date__lte=effective_date
+                ).exists()
+            ):
+                bond_fallback_affected.append(
+                    {"asset_id": asset.id, "currency": asset.currency}
+                )
+                reasons.add(REASON_BOND_NOTIONAL_FALLBACK)
+                unrealized_price.fail(REASON_BOND_NOTIONAL_FALLBACK)
+                unrealized_fx.fail(REASON_BOND_NOTIONAL_FALLBACK)
         if open_option:
             if positions_position(asset, effective_date, user,
                                   account_ids) != 0:
@@ -519,6 +552,14 @@ def build_reconciled_summary(user, effective_date, currency_target, digits,
         if unrealized is not None:
             unrealized_price.add(unrealized["price_appreciation"])
             unrealized_fx.add(unrealized["fx_effect"])
+
+    if bond_fallback_affected:
+        # The defect lives inside the canonical NAV for the affected assets;
+        # the read model never replaces canonical values - it marks them
+        # partial with an actionable reason and refuses certification.
+        nav_status = "partial"
+        nav_reason = REASON_BOND_NOTIONAL_FALLBACK
+        reasons.add(REASON_BOND_NOTIONAL_FALLBACK)
 
     # ------------------------------------------------------------------
     # Unclassified external (unmatched) crypto transfers in scope.
@@ -568,7 +609,7 @@ def build_reconciled_summary(user, effective_date, currency_target, digits,
     fx_total = (fx_security + fxcash) if fx_known else None
     net_capital = invested.value + cash_out.value
     control_total = nav_known - net_capital
-    attributed = (
+    known_components_sum = (
         realized_price.value
         + realized_fx.value
         + unrealized_price.value
@@ -576,10 +617,17 @@ def build_reconciled_summary(user, effective_date, currency_target, digits,
         + income.value
         + fees.value
         + taxes.value
-        + fxcash
         + other_flows.value
     )
-    unexplained = control_total - attributed
+    if fx_cash_known:
+        attributed = known_components_sum + fxcash
+        unexplained = control_total - attributed
+    else:
+        # A difference computed from missing inputs is not an exact
+        # unexplained amount: the aggregate stays unknown with the known
+        # share exposed as an explicitly labelled subtotal.
+        attributed = None
+        unexplained = None
     tolerance = _reconciliation_tolerance(asset_precisions, cash_precisions)
 
     capital_complete = invested.complete and cash_out.complete
@@ -595,7 +643,10 @@ def build_reconciled_summary(user, effective_date, currency_target, digits,
         and not coin_fee_gap
     )
     outcome, classifier_reasons = classify_reconciliation(
-        control_total, attributed, tolerance, dependencies_complete
+        control_total,
+        attributed if attributed is not None else control_total,
+        tolerance,
+        dependencies_complete,
     )
     reasons.update(classifier_reasons)
 
@@ -630,6 +681,7 @@ def build_reconciled_summary(user, effective_date, currency_target, digits,
         "netResult": {
             "nav": _amount(
                 nav_known, currency_target, digits, status=nav_status,
+                reason=(nav_reason if nav_status == "partial" else None),
                 known_subtotal=nav_known if nav_status == "partial" else None,
             ),
             "controlTotal": _amount(
@@ -676,9 +728,19 @@ def build_reconciled_summary(user, effective_date, currency_target, digits,
                                          or REASON_MISSING_FX)
                 ),
             },
-            "attributedSum": _amount(attributed, currency_target, digits),
-            "unexplainedDifference": _amount(unexplained, currency_target,
-                                             digits),
+            "attributedSum": (
+                _amount(attributed, currency_target, digits)
+                if attributed is not None
+                else _unknown_amount(
+                    REASON_MISSING_FX,
+                    known_subtotal=format(known_components_sum, "f"),
+                )
+            ),
+            "unexplainedDifference": (
+                _amount(unexplained, currency_target, digits)
+                if unexplained is not None
+                else _unknown_amount(REASON_MISSING_FX)
+            ),
             "toleranceRaw": format(tolerance, "f"),
             "toleranceBasis": (
                 "Sum of rounding half-ULPs: 4 per asset (realized/unrealized "
@@ -693,6 +755,10 @@ def build_reconciled_summary(user, effective_date, currency_target, digits,
         ),
         "diagnostics": {
             "omittedValuations": [dict(item) for item in nav_diagnostics],
+            **({"affectedNotionalFallbacks": [
+                    dict(item) for item in bond_fallback_affected
+                ]}
+                if bond_fallback_affected else {}),
             "unclassifiedInKindFlows": {
                 "present": in_kind_present,
                 "count": in_kind_count,

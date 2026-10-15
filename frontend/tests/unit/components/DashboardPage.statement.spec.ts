@@ -259,6 +259,23 @@ describe('DashboardPage reconciled statement', () => {
     wrapper.unmount()
   })
 
+  it('treats a wrong-account response as a mismatch, not content', async () => {
+    // A 200 resolved for a different account scope is a context mismatch:
+    // never rendered, surfaced with the typed failure (finding 3, through
+    // the request-owning path).
+    const { SummaryContextMismatchError } = await import('@/services/api/dashboard')
+    api.getDashboardSummaryV2.mockRejectedValue(
+      new SummaryContextMismatchError(
+        'Statement response account ids do not match the selected account',
+      ),
+    )
+    const wrapper = await mountPage()
+    expect(wrapper.find('[data-testid="portfolio-statement-section"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="summary-error"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('do not match the selected account')
+    wrapper.unmount()
+  })
+
   it('fails visibly when the negotiated request itself fails', async () => {
     // A rejected negotiation (network, invalid document — the decoder
     // boundary itself is pinned in DashboardStatement.boundary.spec) keeps
