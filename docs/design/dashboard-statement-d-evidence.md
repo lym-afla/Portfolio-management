@@ -115,7 +115,62 @@ the effective date; price 100. **Correct statement**: bond value 125 + cash
   correcting either is a protected-code decision (expected numeric results in
   the test docstrings: fx_security 23.75, reconciled at 56.25).
 
-### Missing information vs reproducible engine defects
+### Round 3 - bounded corrections (PR #65, pre-financial-approval)
+
+Four bounded corrections, RED-first, on the same branch (head includes
+`72fc8a1c`); draft status and labels unchanged.
+
+1. **False certification prevented.** Amortizing bonds whose effective
+   notional resolves through `get_current_notional`'s UNCONVERTED
+   transactions-fallback (no NotionalHistory on/before the effective date;
+   converted branches untouched - never classified indiscriminately) are
+   detected per asset: NAV stays canonical but marked partial with reason
+   `bond_notional_fallback_unconverted`, the affected assets are listed in
+   `diagnostics.affectedNotionalFallbacks`, reconciliation goes incomplete,
+   and dependent returns report partial or visibly failed - even though the
+   raw pieces cancel to zero. The engine characterization remains split out
+   (direct `get_current_notional`/`unrealized_gain_loss` assertions).
+   Regressions: `test_rub_bond_fallback_notional_stays_uncertified_in_statement`
+   + the split characterization test.
+2. **Unknown attribution in aggregates.** When cash FX is unknown,
+   `attributedSum` and `unexplainedDifference` are UNKNOWN (`raw` null,
+   `partial`, `missing_fx`) instead of exact values computed from missing
+   inputs; the known share is exposed as an explicitly labelled
+   `knownSubtotal` distinct from certified totals. Rendered regression: the
+   partial fixture's unknown cash FX renders as `N/A (partial)` with no
+   exact difference claimed.
+3. **Account-scope validation completed.** For `account` selections the
+   resolved set must be exactly that account, once: sibling, superset and
+   duplicate sets are `SummaryContextMismatchError`. Duplicates/invalid ids
+   are structurally invalid on any shape. For `all`/`group`/`broker`
+   selections only the selection token and document shape are checkable
+   client-side - membership cannot be reconstructed from the token
+   (documented limitation, not a proof). Tested through the request-owning
+   path (mounted page) and the boundary.
+4. **Cross-document status validation completed.** Complete/reconciled
+   documents with any partial/unavailable monetary dependency (nav,
+   control total, attributed, unexplained, fxDetail, components, capital),
+   omitted valuations, declared unclassified in-kind dependencies, remaining
+   reasons, or a non-positive tolerance bound are rejected; partial/
+   unavailable amounts require a non-empty reason. Legitimate unavailable
+   returns (IRR on zero capital) stay distinct from monetary completeness.
+
+Gates on the round-3 head (actual exit codes): backend **0** (35 statement
+scenarios incl. the split characterization + guard + aggregate-unknown),
+unit **0** (119 files; boundary spec 41 cases), type-check/charts/reliability
+**0**, api:types **0**, lint **0**, build **0**, browser `dashboard-statement-d`
+**0** (3 viewports, incl. the FX-row N/A regression). The pre-existing
+final-qa-d8 failure remains recorded (base-reproduced).
+
+**Phase D is NOT financially accepted because the guard works**: the two bond
+engine defects are open; their correction is planned separately in
+[bond-engine-correction-plan.md](bond-engine-correction-plan.md) (protected
+code - currency-consistent unrealized decomposition, fallback-branch FX
+conversion, full bond-kind/event/currency/scope matrix with independent
+Decimal expectations - NAV 256.25, net result 56.25, security FX 23.75 for
+the sanitized example - and cross-consumer integration checks).
+
+## Missing information vs reproducible engine defects
 
 - **Missing information (no policy invented; statement goes incomplete):**
   external (unmatched) crypto transfer-outs book no realized result and

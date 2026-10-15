@@ -272,4 +272,20 @@ the fallback case, falsely reporting complete/reconciled), pinned as sanitized
 hand-derived regressions with expected post-correction numbers; corrections are
 protected-code decisions kept OUT of this branch. Gates on review head
 `9d057b44`: backend 1455 (84.23%), unit 119 files, tcs x3 / api:types / lint /
-build 0, dashboard-statement-d browser case 0 (3 viewports). Stop: financial + design review pending; no merge.
+build 0, dashboard-statement-d browser case 0 (3 viewports). Round 3 (same day, bounded): the false-certification case is prevented -
+amortizing bonds on the unconverted fallback notional path are detected per
+asset and keep the statement explicitly uncertified (NAV partial with reason
+`bond_notional_fallback_unconverted`, affected assets in diagnostics,
+reconciliation incomplete, dependent returns uncertified; canonical NAV never
+replaced); unknown cash FX propagates into attributedSum/unexplainedDifference
+as UNKNOWN with a labelled knownSubtotal instead of exact values from missing
+inputs (rendered as N/A (partial)); account-type selections validate the
+resolved set exactly once-over; complete/reconciled documents with any
+partial monetary dependency, omitted valuations, in-kind dependencies,
+remaining reasons or non-positive tolerance are rejected. The protected
+bond-engine corrections (unrealized decomposition dimensions; fallback-branch
+FX conversion) are planned separately in
+[ bond-engine-correction-plan.md](../../design/bond-engine-correction-plan.md)
+- NOT implemented in this branch. Gates on round-3 head: backend 1455
+(84.23%, 35 statement scenarios), unit 119 files (boundary 41), tcs x3 /
+api:types / lint / build 0, dashboard-statement-d browser case 0. Stop: financial + design review pending; no merge.
