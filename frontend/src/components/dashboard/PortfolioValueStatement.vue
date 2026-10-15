@@ -5,6 +5,9 @@
     data-testid="portfolio-statement-section"
   >
     <p class="workspace-meta" data-testid="portfolio-context-label">{{ contextLabel }}</p>
+    <p v-if="stale" class="workspace-meta statement-stale" data-testid="statement-stale">
+      Showing the previous statement while the update completes.
+    </p>
     <div class="statement-columns">
       <div class="statement">
         <dl class="statement-rows" data-testid="statement-capital">
@@ -112,6 +115,7 @@ import {
 const props = defineProps<{
   statement: ReconciledStatement
   contextLabel: string
+  stale?: boolean
 }>()
 
 const expanded = ref(true)
@@ -151,11 +155,48 @@ function reasonText(reasons: readonly string[]): string {
     .join('; ')
 }
 
+// A display-rounding claim is only honest when the BACKEND certifies the
+// statement (complete, reconciled, every amount individually ok) — the raw
+// reconciliation then explains any remaining display-level difference as
+// rounding. Never otherwise.
+const rawReconciliationSupportsRounding = computed(() => {
+  const s = props.statement
+  if (s.status !== 'complete' || s.netResult.reconciliation !== 'reconciled') return false
+  if (s.netResult.nav.status !== 'ok' || s.netResult.controlTotal.status !== 'ok') return false
+  const parts = [
+    ...Object.values(s.netResult.components),
+    s.netResult.fxDetail.security,
+    s.netResult.fxDetail.cashFlows,
+  ]
+  return parts.every((part) => part.status === 'ok')
+})
+
+// Exact fixed-point raw strings scaled to BigInt for materiality checks; no
+// float ever touches a financial value.
+function scaledRaw(raw: string | null | undefined, digits: number): bigint | null {
+  if (raw === null || raw === undefined) return null
+  const match = /^(-?)([0-9]+)(?:\.([0-9]+))?$/.exec(raw.trim())
+  if (!match) return null
+  const frac = (match[3] ?? '').padEnd(digits, '0').slice(0, digits)
+  return BigInt(`${match[1]}${match[2]}${frac}`)
+}
+
+const unexplainedIsMaterial = computed(() => {
+  const { statement } = props
+  const unexplained = scaledRaw(statement.netResult.unexplainedDifference.raw, statement.context.digits)
+  const tolerance = scaledRaw(statement.netResult.toleranceRaw, statement.context.digits)
+  if (unexplained === null || tolerance === null) return false
+  return unexplained > tolerance || unexplained < -tolerance
+})
+
 const statusNotice = computed(() => {
   const { statement } = props
   if (statement.status === 'unavailable') {
     return `The statement is unavailable: ${reasonText(statement.reasons) || 'reason unavailable'}.`
   }
+  const difference = unexplainedIsMaterial.value
+    ? ` Unreconciled difference ${statement.netResult.unexplainedDifference.display}: the shown components do not fully explain the net result.`
+    : ''
   if (statement.netResult.reconciliation === 'unreconciled') {
     return (
       `Unreconciled difference ${statement.netResult.unexplainedDifference.display}: ` +
@@ -164,7 +205,7 @@ const statusNotice = computed(() => {
   }
   if (statement.status === 'partial') {
     const detail = reasonText(statement.reasons)
-    return detail ? `Partial statement: ${detail}.` : 'Partial statement.'
+    return `${detail ? `Partial statement: ${detail}.` : 'Partial statement.'}${difference}`
   }
   return null
 })
@@ -238,6 +279,10 @@ const breakdownRows = computed<readonly BreakdownRow[]>(() => {
 
 const displayRoundingNote = computed(() => {
   const { statement } = props
+  // Only a backend-certified statement may explain a display difference as
+  // rounding; incomplete or unreconciled statements show their actual
+  // unexplained difference instead (see statusNotice).
+  if (!rawReconciliationSupportsRounding.value) return null
   const digits = statement.context.digits
   const adjustment = displayRoundingAdjustment(
     breakdownRows.value,
@@ -263,6 +308,10 @@ const displayRoundingNote = computed(() => {
   display: grid;
   gap: 12px;
   min-width: 0;
+}
+
+.statement-stale {
+  color: rgb(var(--v-theme-warning));
 }
 
 .statement-columns {
@@ -414,7 +463,11 @@ const displayRoundingNote = computed(() => {
 }
 
 @media (max-width: 959px) {
-  .statement-columns {
+  .statement-stale {
+  color: rgb(var(--v-theme-warning));
+}
+
+.statement-columns {
     grid-template-columns: minmax(0, 1fr);
   }
 }

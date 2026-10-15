@@ -979,6 +979,157 @@ def test_in_kind_fmv_conversion_failure_propagates_to_diagnostics(user):
     assert doc["capital"]["invested"]["status"] == "partial"
 
 # ---------------------------------------------------------------------------
+# RUB-bond FX discrepancy reduction (review round: acceptance follow-up)
+# ---------------------------------------------------------------------------
+# The real-data review found fxSecurity ~ +$421k against a $136k NAV on RUB
+# bonds and an unexplained difference of ~ -$426k. These sanitized, hand-
+# derived regressions reduce that to two EXACT engine boundaries (both
+# verified numerically; both are PRE-EXISTING ENGINE DEFECTS that this branch
+# only surfaces - correcting them requires a separate protected-code review):
+#
+# Boundary 1 (dimensional, services/realized.py unrealized_gain_loss bond
+# branch): the unrealized FX term multiplies the bond's LOCAL-currency
+# notional by TARGET-currency prices:
+#     fx = notional_lcl x (price_target - buy_in_target) x pos / 100
+# With buy-in 95 x entry-rate and price 100 the bracket is ~ par-as-USD, so
+# the "FX effect" approximates the RUB par value of the position.
+#
+# Boundary 2 (currency, services/bonds.py get_current_notional
+# transactions-fallback): that branch returns the notional WITHOUT the
+# `* fx_rate` the other two branches apply, so an amortizing bond without
+# NotionalHistory is valued at RUB-par as if it were reporting currency.
+#
+# Sanitized dataset (all three scenarios): 10 RUB bonds, par 1,000, bought
+# at 95% for 9,500 RUB funded by 20,000 RUB cash; RUB->USD 0.0100 at entry,
+# 0.0125 at the effective date; price 100 at the effective date.
+# Hand-derived CORRECT statement: bond value 10,000 RUB x 0.0125 = 125; cash
+# 10,500 x 0.0125 = 131.25; NAV 256.25; net capital 200; control 56.25;
+# unrealized price (100-95) x notional x pos x f_eop / 100 = 6.25; certified
+# FX = basis 9,500 RUB x 0.0025 = 23.75 (security) + cash FX 131.25 - 105 =
+# 26.25; attributed 56.25 -> reconciled. Every test below records how far
+# current engine behavior deviates from these numbers.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_rub_bond_nonamortizing_unrealized_fx_is_dimensionally_broken(user):
+    """Boundary 1 alone (non-amortizing: value IS converted correctly, NAV
+    256.25), but the FX term = 1,000 x (100 - 0.95) x 10 / 100 = 9,905 ->
+    fx_security 9,898.75 and the honest statement refuses: unreconciled
+    -9,875.00. Expected after an engine correction: fx_security 23.75,
+    attributed 56.25, reconciled."""
+    broker = make_broker(user)
+    account = make_account(broker)
+    bond = make_asset(user, type="Bond", name="RUB Bond Series A", currency="RUB", exposure="Fixed Income")
+    BondMetadata.objects.create(
+        asset=bond, initial_notional=Decimal("1000"), nominal_currency="RUB",
+        is_amortizing=False,
+    )
+    make_fx("USD", "RUB", date(2059, 1, 5), "0.0100", user)
+    make_fx("USD", "RUB", date(2059, 10, 1), "0.0125", user)
+    make_tx(account, date(2059, 1, 5), "Cash in", currency="RUB",
+            cash_flow=Decimal("20000"))
+    make_tx(account, date(2059, 1, 5), "Buy", security=bond, currency="RUB",
+            quantity=Decimal("10"), price=Decimal("95"), notional=Decimal("1000"))
+    make_price(bond, date(2059, 10, 1), "100")
+    doc = build_reconciled_summary(user, date(2059, 10, 15), "USD", 2, [account.id])
+    nr = doc["netResult"]
+    assert Decimal(nr["nav"]["raw"]) == Decimal("256.25")
+    assert Decimal(nr["controlTotal"]["raw"]) == Decimal("56.25")
+    assert Decimal(nr["components"]["unrealizedPrice"]["raw"]) == Decimal("6.25")
+    assert Decimal(nr["fxDetail"]["security"]["raw"]) == Decimal("9898.75")
+    assert Decimal(nr["fxDetail"]["cashFlows"]["raw"]) == Decimal("26.25")
+    assert Decimal(nr["attributedSum"]["raw"]) == Decimal("9931.25")
+    assert Decimal(nr["unexplainedDifference"]["raw"]) == Decimal("-9875")
+    assert nr["reconciliation"] == "unreconciled"
+    assert doc["status"] == "partial"
+    assert "unexplained_difference" in doc["reasons"]
+
+
+@pytest.mark.django_db
+def test_rub_bond_amortizing_redemption_fx_is_dimensionally_broken(user):
+    """Boundary 1 on an amortizing bond whose redemption created
+    NotionalHistory (value converts correctly via the history branch):
+    adding a par-200 redemption (cash 2,000 at 0.0125 = 25) keeps NAV at
+    256.25 and control at 56.25, but the FX term = 800 x (100 - 0.95) x
+    10 / 100 = 7,923.75 -> unreconciled -7,900.00. Realized price splits as
+    1.25 (redemption) and unrealized price 5.00."""
+    broker = make_broker(user)
+    account = make_account(broker)
+    bond = make_asset(user, type="Bond", name="RUB Bond Series B", currency="RUB", exposure="Fixed Income")
+    BondMetadata.objects.create(
+        asset=bond, initial_notional=Decimal("1000"), nominal_currency="RUB",
+        is_amortizing=True,
+    )
+    make_fx("USD", "RUB", date(2059, 1, 5), "0.0100", user)
+    make_fx("USD", "RUB", date(2059, 6, 1), "0.0125", user)
+    make_fx("USD", "RUB", date(2059, 10, 1), "0.0125", user)
+    make_tx(account, date(2059, 1, 5), "Cash in", currency="RUB",
+            cash_flow=Decimal("20000"))
+    make_tx(account, date(2059, 1, 5), "Buy", security=bond, currency="RUB",
+            quantity=Decimal("10"), price=Decimal("95"), notional=Decimal("1000"))
+    make_tx(account, date(2059, 6, 1), "Bond redemption", security=bond,
+            currency="RUB", quantity=Decimal("0"), price=Decimal("100"),
+            cash_flow=Decimal("2000"), notional_change=Decimal("200"),
+            notional=Decimal("1000"))
+    make_price(bond, date(2059, 10, 1), "100")
+    doc = build_reconciled_summary(user, date(2059, 10, 15), "USD", 2, [account.id])
+    nr = doc["netResult"]
+    assert Decimal(nr["nav"]["raw"]) == Decimal("256.25")
+    assert Decimal(nr["controlTotal"]["raw"]) == Decimal("56.25")
+    assert Decimal(nr["components"]["realizedPrice"]["raw"]) == Decimal("1.25")
+    assert Decimal(nr["components"]["unrealizedPrice"]["raw"]) == Decimal("5")
+    assert Decimal(nr["fxDetail"]["security"]["raw"]) == Decimal("7923.75")
+    assert Decimal(nr["attributedSum"]["raw"]) == Decimal("7956.25")
+    assert Decimal(nr["unexplainedDifference"]["raw"]) == Decimal("-7900")
+    assert nr["reconciliation"] == "unreconciled"
+    assert doc["status"] == "partial"
+
+
+@pytest.mark.django_db
+def test_rub_bond_fallback_notional_currency_error_falsely_reconciles(user):
+    """Boundary 2 alone (amortizing, NO NotionalHistory): the
+    transactions-fallback returns the notional unconverted
+    (get_effective_notional = 1,000 instead of 12.5 USD), inflating NAV to
+    $10,131.25 for a $256 portfolio. Because boundary 1's garbage FX term
+    (+9,898.75) happens to CANCEL boundary 2's inflated NAV (+9,875), the
+    statement closes and reports complete/reconciled - the dangerous case
+    this reduction exists to document. The two defects are engine-side;
+    correcting them is a protected-code review decision, expected result:
+    NAV 256.25, control 56.25, fx_security 23.75, reconciled."""
+    from services.bonds import get_current_notional
+
+    broker = make_broker(user)
+    account = make_account(broker)
+    bond = make_asset(user, type="Bond", name="RUB Bond Series C", currency="RUB", exposure="Fixed Income")
+    meta = BondMetadata.objects.create(
+        asset=bond, initial_notional=Decimal("1000"), nominal_currency="RUB",
+        is_amortizing=True,
+    )
+    make_fx("USD", "RUB", date(2059, 1, 5), "0.0100", user)
+    make_fx("USD", "RUB", date(2059, 10, 1), "0.0125", user)
+    make_tx(account, date(2059, 1, 5), "Cash in", currency="RUB",
+            cash_flow=Decimal("20000"))
+    make_tx(account, date(2059, 1, 5), "Buy", security=bond, currency="RUB",
+            quantity=Decimal("10"), price=Decimal("95"), notional=Decimal("1000"))
+    make_price(bond, date(2059, 10, 1), "100")
+    # The engine boundary, recorded directly: the fallback branch returns the
+    # nominal-currency notional even though the caller asked for USD.
+    assert get_current_notional(
+        meta, date(2059, 10, 15), user, [account.id], "USD"
+    ) == Decimal("1000")
+    doc = build_reconciled_summary(user, date(2059, 10, 15), "USD", 2, [account.id])
+    nr = doc["netResult"]
+    assert Decimal(nr["nav"]["raw"]) == Decimal("10131.25")
+    assert Decimal(nr["controlTotal"]["raw"]) == Decimal("9931.25")
+    assert Decimal(nr["components"]["unrealizedPrice"]["raw"]) == Decimal("6.25")
+    assert Decimal(nr["fxDetail"]["security"]["raw"]) == Decimal("9898.75")
+    assert Decimal(nr["unexplainedDifference"]["raw"]) == Decimal("0")
+    assert nr["reconciliation"] == "reconciled"
+    assert doc["status"] == "complete"
+
+
+# ---------------------------------------------------------------------------
 # Reconciliation classifier: a deliberately omitted component must fail
 # ---------------------------------------------------------------------------
 

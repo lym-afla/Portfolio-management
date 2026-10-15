@@ -32,6 +32,13 @@ const legacyFive = {
   irr: '8.4%',
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (error: Error) => void
+  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no })
+  return { promise, resolve, reject }
+}
+
 const vuetify = createVuetify({ components, directives })
 
 async function mountPage() {
@@ -160,6 +167,95 @@ describe('DashboardPage reconciled statement', () => {
     expect(wrapper.text()).toContain('$112,500.00')
     expect(wrapper.find('[data-testid="statement-capability-notice"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="portfolio-statement-section"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('keeps the retained statement visible with busy and failure states across a refresh cycle', async () => {
+    // Successful initial load -> parked (pending) refresh -> rejected
+    // refresh -> successful retry. The retained statement stays mounted with
+    // a visible stale/busy marker and the failure shows its own Retry; no
+    // additional summary requests are issued by the state changes.
+    api.getDashboardSummaryV2.mockResolvedValue({
+      capability: 'v2',
+      legacy: legacyFive,
+      statement: statementFixture(),
+    })
+    const wrapper = await mountPage()
+    expect(wrapper.find('[data-testid="portfolio-statement-section"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="summary-updating"]').exists()).toBe(false)
+
+    const parked = deferred<{ capability: string; legacy: typeof legacyFive; statement?: unknown }>()
+    api.getDashboardSummaryV2.mockReturnValueOnce(parked.promise)
+    const context = usePortfolioContextStore()
+    context.triggerDataRefresh()
+    await flushPromises()
+    expect(wrapper.find('[data-testid="portfolio-statement-section"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="summary-updating"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="summary-error"]').exists()).toBe(false)
+    expect(api.getDashboardSummaryV2).toHaveBeenCalledTimes(2)
+
+    parked.reject(new Error('refresh failed'))
+    await flushPromises()
+    expect(wrapper.find('[data-testid="portfolio-statement-section"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="summary-error"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('refresh failed')
+
+    api.getDashboardSummaryV2.mockResolvedValueOnce({
+      capability: 'v2',
+      legacy: legacyFive,
+      statement: statementFixture(),
+    })
+    await wrapper.find('[data-testid="summary-retry"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-testid="summary-error"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="summary-updating"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="portfolio-statement-section"]').exists()).toBe(true)
+    expect(api.getDashboardSummaryV2).toHaveBeenCalledTimes(3)
+    wrapper.unmount()
+  })
+
+  it('keeps the legacy-only metrics visible with busy and failure states across a refresh cycle', async () => {
+    api.getDashboardSummaryV2.mockResolvedValue({ capability: 'legacy_only', legacy: legacyFive })
+    const wrapper = await mountPage()
+    expect(wrapper.find('[data-testid="summary-card"]').exists()).toBe(true)
+
+    const parked = deferred<{ capability: string; legacy: typeof legacyFive }>()
+    api.getDashboardSummaryV2.mockReturnValueOnce(parked.promise)
+    usePortfolioContextStore().triggerDataRefresh()
+    await flushPromises()
+    expect(wrapper.find('[data-testid="summary-card"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="summary-updating"]').exists()).toBe(true)
+
+    parked.reject(new Error('refresh failed'))
+    await flushPromises()
+    expect(wrapper.find('[data-testid="summary-card"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="summary-error"]').exists()).toBe(true)
+
+    api.getDashboardSummaryV2.mockResolvedValueOnce({ capability: 'legacy_only', legacy: legacyFive })
+    await wrapper.find('[data-testid="summary-retry"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-testid="summary-error"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="summary-card"]').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('treats a wrong-context response as a mismatch, not content', async () => {
+    // The boundary throws the typed mismatch when a document context
+    // disagrees with the captured request; the page must never render that
+    // content and must surface the failure with its Retry (the bounded
+    // reconcile is owned by the fetcher's catch, the same convention as the
+    // chart runners).
+    const { SummaryContextMismatchError } = await import('@/services/api/dashboard')
+    api.getDashboardSummaryV2.mockRejectedValue(
+      new SummaryContextMismatchError(
+        'Statement response effective date 2025-01-01 does not match the committed date 2026-10-15',
+      ),
+    )
+    const wrapper = await mountPage()
+    expect(wrapper.find('[data-testid="portfolio-statement-section"]').exists()).toBe(false)
+    const error = wrapper.find('[data-testid="summary-error"]')
+    expect(error.exists()).toBe(true)
+    expect(error.text()).toContain('does not match')
     wrapper.unmount()
   })
 

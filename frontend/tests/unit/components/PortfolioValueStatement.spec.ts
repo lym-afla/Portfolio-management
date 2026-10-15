@@ -101,6 +101,54 @@ describe('PortfolioValueStatement', () => {
   })
 })
 
+describe('display rounding vs reconciliation separation', () => {
+  it('shows no rounding note when a component is missing', () => {
+    const statement = statementFixture()
+    statement.status = 'partial'
+    statement.reasons = ['missing_fx']
+    statement.netResult.reconciliation = 'incomplete'
+    statement.netResult.components.income = {
+      raw: null,
+      display: 'N/A',
+      status: 'unavailable',
+      reason: 'missing_fx',
+    }
+    const wrapper = mountStatement(statement)
+    expect(wrapper.find('[data-testid="display-rounding-note"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('shows the actual unexplained difference for incomplete statements too', () => {
+    const statement = statementFixture()
+    statement.status = 'partial'
+    statement.reasons = ['missing_fx']
+    statement.netResult.reconciliation = 'incomplete'
+    statement.netResult.unexplainedDifference = {
+      raw: '500',
+      display: '$500.00',
+      status: 'ok',
+    }
+    const wrapper = mountStatement(statement)
+    const status = wrapper.find('[data-testid="statement-status"]')
+    expect(status.exists()).toBe(true)
+    expect(status.text()).toContain('Unreconciled difference')
+    expect(status.text()).toContain('$500.00')
+    wrapper.unmount()
+  })
+
+  it('keeps a small incomplete difference out of the rounding claim but visible as partial', () => {
+    const statement = statementFixture()
+    statement.status = 'partial'
+    statement.reasons = ['missing_fx']
+    statement.netResult.reconciliation = 'incomplete'
+    statement.netResult.unexplainedDifference = { raw: '0.01', display: '$0.01', status: 'ok' }
+    const wrapper = mountStatement(statement)
+    expect(wrapper.find('[data-testid="display-rounding-note"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="statement-status"]').text()).toContain('Partial statement')
+    wrapper.unmount()
+  })
+})
+
 describe('statementDisplay', () => {
   it('parses backend display strings into scaled integers without floats', async () => {
     const { parseDisplayScaled, formatScaledInteger, displayRoundingAdjustment } =
@@ -108,6 +156,9 @@ describe('statementDisplay', () => {
     expect(parseDisplayScaled('$1,234.56', 2)).toBe(123456n)
     expect(parseDisplayScaled('($5.00)', 2)).toBe(-500n)
     expect(parseDisplayScaled('–', 2)).toBe(0n)
+    expect(parseDisplayScaled('N/A', 2)).toBe(null)
+    expect(parseDisplayScaled('NA', 2)).toBe(null)
+    expect(parseDisplayScaled('N/R', 2)).toBe(null)
     expect(parseDisplayScaled('$0.00', 2)).toBe(0n)
     expect(parseDisplayScaled('junk', 2)).toBe(null)
     expect(formatScaledInteger(123456n, 2)).toBe('1,234.56')

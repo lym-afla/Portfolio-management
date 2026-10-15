@@ -145,7 +145,8 @@ it.each(['ytd', 'custom', 'all_time'])('invalidates old context content and rede
   api.getDashboardSummaryV2.mockReturnValueOnce(old.promise)
   context.triggerDataRefresh()
   await flushPromises()
-  const oldSignal = api.getDashboardSummaryV2.mock.calls[1][0].signal
+  // Options (carrying the abort signal) are the summary request's second argument.
+  const oldSignal = api.getDashboardSummaryV2.mock.calls[1][1].signal
   const change = context.changeContext({ effectiveCurrentDate: '2025-12-31' })
   expect(oldSignal.aborted).toBe(true)
   await wrapper.vm.$nextTick()

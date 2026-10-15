@@ -15,9 +15,13 @@ export interface DisplayAmount {
  */
 export function parseDisplayScaled(display: string, digits: number): bigint | null {
   const text = display.trim()
-  if (text === '' || text === '–' || text === 'N/A' || text === 'NA' || text === 'N/R') {
-    return BigInt(0)
-  }
+  if (text === '') return null
+  // The backend renders a genuine ZERO as the en-dash marker; textual
+  // unavailable markers (N/A, NA, N/R) are MISSING values and must never
+  // be treated as zero.
+  if (text === '–') return BigInt(0)
+  if (text === 'N/A' || text === 'NA' || text === 'N/R') return null
+
   const match = /^(\()?\$?€?£?¥?([0-9][0-9,]*(?:\.[0-9]+)?)(\))?$/.exec(text)
   if (!match) return null
   const negative = match[1] === '(' || match[3] === ')'
