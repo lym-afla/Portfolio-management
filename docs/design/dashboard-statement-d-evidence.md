@@ -65,18 +65,78 @@ minted against the copy. Completed checks:
 - Legacy parity on real data: the five legacy fields are byte-identical with
   and without the negotiation parameter (same endpoint, same handler).
 
+## Review round - 15 October 2026 (PR #65 corrections before financial approval)
+
+All five review findings verified against the head and corrected RED-first on the
+same branch (`fadc0f60`, `9d057b44`); labels unchanged (`needs-approval`,
+`area:calculations`, `risk:high`).
+
+| Finding | Resolution | Regressions |
+|---|---|---|
+| 1. Display rounding vs reconciliation | The rounding note is gated on backend certification (status complete, reconciliation reconciled, nav/controlTotal and every component + fxDetail amount `ok`) AND a raw-level check that the unexplained difference is within tolerance. `N/A`/`NA`/`N/R` parse as MISSING (null), never zero - only the en-dash zero marker maps to zero. Incomplete and unreconciled statements surface their actual material unexplained difference (raw vs tolerance, BigInt-scaled) in the status line, which stays visible while the detail is collapsed. | material difference on incomplete; missing component never yields a rounding note; genuine small rounding difference still noted |
+| 2. Historical cash-flow FX completeness | Certified cash FX requires BOTH own-date flow conversions (ledger) and ending-balance valuation; failures make `fxDetail.cashFlows` and the fx component UNKNOWN (`raw` null, `partial`, `missing_fx`) instead of a fabricated difference; ledger completeness joined `dependencies_complete`; in-kind FMV conversion failures mark the diagnostic `fmvKnown: false`, drop `signedFmv`, and surface `missing_fx`. | missing historical trade/FX-leg conversion (coin leg at a date with no coin price while ending-date FX exists - deterministic crypto-lookup boundary; the arithmetic closing still reports `incomplete`); in-kind FMV conversion failure |
+| 3. Response context validation | `getDashboardSummaryV2(captured, options)` validates the document context against the captured request context - selection identity, effective date, currency, digits - with `SummaryContextMismatchError` (the chart-convention class); the page feeds the captured context through the existing request owner, discards the content, and triggers one bounded `reconcileContext()` per mismatch episode. | wrong-context 200 through the mounted page renders nothing and shows the typed failure; boundary cases for each mismatched field |
+| 4. Refresh loading/error visibility | Retained statements/legacy metrics stay mounted with an explicit stale/busy marker (`summary-updating`) while a refresh parks, and their own failure alert + Retry when it rejects - inside both the v2 and legacy-only branches; the skeleton/error branch now only serves the no-data cases. No additional requests. | successful load -> parked refresh -> rejected refresh -> successful retry; legacy-only cycle; mismatch case |
+| 5. Validator hardening | Rejects non-fixed-notation or non-finite decimals (`1e5`, `NaN`, `Infinity`, `abc`), impossible/non-ISO dates, fractional/negative account ids and digits, string digits, unsupported selection shapes, `knownSubtotal` on ok amounts, ok amounts with null raw, unavailable amounts with raw, ok returns with null values, terminal returns with values, complete/unreconciled and reconciled/partial incoherence, fractional in-kind counts, and malformed notes (no silent filtering). High-precision raw strings pass verbatim. | 24 boundary cases in `DashboardStatement.boundary.spec.ts` |
+
+Gates on the review head (actual exit codes): backend `uv run python -m pytest`
+**0** - 1455 passed / 10 skipped, coverage 84.23%; new backend suites 35 scenarios;
+unit **0** - 119 files; type-check / type-check:charts / type-check:reliability /
+api:types:check / lint / build all **0**; browser `dashboard-statement-d` **0**
+(3 viewports; the status-line and stale-marker changes covered by the mounted
+specs). The pre-existing final-qa-d8 failure (base-reproduced) is unchanged.
+
+### RUB-bond discrepancy - reduced to two exact engine boundaries
+
+Sanitized, hand-derived dataset (three pinned regressions in
+`test_dashboard_summary_reconciliation.py`): 10 RUB bonds, par 1,000, bought at
+95% for 9,500 RUB, funded by 20,000 RUB; RUB->USD 0.0100 at entry and 0.0125 at
+the effective date; price 100. **Correct statement**: bond value 125 + cash
+131.25 = NAV 256.25; control 56.25 = unrealized price 6.25 + certified FX
+23.75 (= 9,500 RUB basis x 0.0025 drift) + cash FX 26.25 -> reconciled.
+
+- **Boundary 1 (dimensional)** - `services/realized.py unrealized_gain_loss`,
+  bond branch: the FX term multiplies the bond's LOCAL-currency notional by
+  TARGET-currency prices (`notional_lcl x (price_target - buy_in_target) x pos
+  / 100`; buy_in_target is the % converted by entry FX while price_target is
+  not). Sanitized effect: 1,000 x (100 - 0.95) x 10 / 100 = 9,905 -> "FX"
+  9,898.75. This term IS the real-data +$421k (RUB par presented as USD).
+- **Boundary 2 (currency)** - `services/bonds.py get_current_notional`,
+  transactions-fallback branch: `return current_notional` without the
+  `* fx_rate` the other two branches apply -> an amortizing bond without
+  NotionalHistory is valued at RUB-par as USD (sanitized NAV $10,131.25 for a
+  $256 portfolio).
+- **Interaction**: with boundary 2 active, boundary 1's garbage FX exactly
+  cancels the inflated NAV -> the statement closes and reports
+  complete/reconciled for a portfolio valued 40x too high
+  (`test_rub_bond_fallback_notional_currency_error_falsely_reconciles`). With
+  boundary 1 alone the statement honestly refuses (unreconciled -9,875 /
+  -7,900). Both tests pin CURRENT behavior as engine-defect documentation;
+  correcting either is a protected-code decision (expected numeric results in
+  the test docstrings: fx_security 23.75, reconciled at 56.25).
+
+### Missing information vs reproducible engine defects
+
+- **Missing information (no policy invented; statement goes incomplete):**
+  external (unmatched) crypto transfer-outs book no realized result and
+  transfer-ins enter at zero basis - nothing in the recorded data supports
+  attribution; counted diagnostically (`unclassifiedInKindFlows`).
+- **Reproducible engine defects (sanitized regressions, engine-side fixes
+  require separate review):** the two bond boundaries above; the same-day
+  disposal+reacquisition buy-in wrap (basis -0, overstates unrealized);
+  coin-denominated fees invisible to the unrealized engine (raw quantity sum
+  vs fee-depleted `position()`). None of them is relabelled; each surfaces as
+  an explicit partial/unreconciled state with its reason.
+
 ## Unresolved reconciliation cases (acceptance gaps for financial review)
 
-1. **RUB bonds: engine FX decomposition does not compose with the cash-ledger
-   identity.** On real data the six RUB bonds produce `fxSecurity` ≈ $421,815
-   against a $136k NAV, and the All-accounts statement shows unexplained
-   ($426,569.74). The engine values bond basis in the reporting currency by
-   converting the buy-in *percentage* at entry-date FX; the resulting
-   attribution cannot be reconciled against the ledger identity. Surfaced
-   verbatim as the unexplained difference — never folded into FX by this
-   branch (this IS the certified-FX row's engine component; the gap is that
-   the pieces do not sum to the control total). Needs an engine-level
-   financial decision.
+1. **RUB bonds: REDUCED to two exact engine boundaries (see the review-round
+   section above).** The real-data fxSecurity ≈ $421,815 is the dimensional
+   defect in `unrealized_gain_loss`'s bond FX term (local notional x target
+   prices); the unexplained ($426,569.74) mixes it with the unconverted
+   fallback notional in `get_current_notional`. This branch surfaces both
+   verbatim; the corrections are protected-code decisions documented with
+   expected numeric results (sanitized: fx_security 23.75, reconciled 56.25).
 2. **Coin-denominated crypto fees** (e.g. BTC fee on a BTC-USDT trade): the
    unrealized engine values the raw quantity sum while NAV uses the
    fee-depleted `position()`; the fee burn is unattributed by the engine
