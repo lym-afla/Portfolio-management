@@ -12,7 +12,7 @@ const waitFor = (run, fn, timeout = 20000) =>
 
 const CAPTURE_DIR = resolve(
   dirname(fileURLToPath(import.meta.url)),
-  '../../docs/design/assets/dashboard-summary-d',
+  '../../../docs/design/assets/dashboard-summary-d',
 )
 
 // Phase D rendered acceptance: the approved reconciled statement driven
@@ -55,7 +55,8 @@ export async function runStatementDFlow({
     if (variant === 'legacy_only') {
       await waitFor(run, `document.body.innerText.includes('Total NAV')`)
     } else if (variant === 'malformed') {
-      await waitFor(run, `document.body.innerText.includes('Retry')`)
+      // v-btn labels are CSS-uppercased; innerText reads 'RETRY'.
+      await waitFor(run, `document.body.innerText.toLowerCase().includes('retry')`)
     } else {
       await waitFor(
         run,
@@ -140,8 +141,12 @@ export async function runStatementDFlow({
 
   // ---------------- reconciled (approved composition) ----------------
   fixtureServer.setStatementVariant('reconciled')
-  // runRoute already loaded /dashboard once; every assertion below counts
-  // DELTAS from this snapshot so the one-owner check stays exact.
+  // runRoute already loaded /dashboard once and its summary request may
+  // still be in flight; settle this load first so every assertion below
+  // counts clean DELTAS from the snapshot (observed straggler at tablet).
+  await run(['open', `${appOrigin}/dashboard`])
+  await waitFor(run, `document.body.innerText.includes('Net invested capital')`)
+  await run(['wait', '400'])
   const requestsBefore = fixtureServer.statementD.requests.length
   await run(['open', `${appOrigin}/dashboard`])
   await waitFor(run, `document.body.innerText.includes('Net invested capital')`)
@@ -367,6 +372,18 @@ export async function runStatementDFlow({
     const dpr = await evalProbe(run, `window.devicePixelRatio`)
     assert.equal(Number(dpr), 2, `${context}: native zoom must move devicePixelRatio to 2, got ${dpr}`)
     await waitFor(run, `document.body.innerText.includes('Net invested capital')`)
+    // At 200% the app bar is ~256 CSS px tall; bring the NAV row into the
+    // viewport (below the bar) before hit-testing it.
+    await evalProbe(run, `(() => {
+      const row = document.querySelector('.statement-row.total-row')
+      row?.scrollIntoView({ block: 'center' })
+      const bar = document.querySelector('.v-app-bar')
+      const barBottom = bar ? bar.getBoundingClientRect().bottom : 0
+      const rect = row?.getBoundingClientRect()
+      if (rect && rect.top < barBottom) window.scrollBy(0, barBottom - rect.top + 8)
+      return true
+    })()`)
+    await run(['wait', '200'])
     const zoomGeometry = await geometry()
     assert.equal(zoomGeometry.navHit, true, `${context}: NAV hit-test fails at 200% zoom`)
     assert.equal(zoomGeometry.anyClipped, false, `${context}: clipped amounts at 200% zoom`)
@@ -396,8 +413,8 @@ export async function runStatementDFlow({
       `${context}: back at desktop the returns card returns beside the statement`,
     )
     assert.equal(backDesktop.bodyScrollX, false, `${context}: transition back causes body scroll`)
-  } else {
-    // Tablet/mobile: stacked sections, contained amounts.
+  } else if (viewport.name === 'mobile') {
+    // Below 960px the sections stack.
     const stacked = await geometry()
     assert.equal(stacked.present, true, `${context}: statement present`)
     assert.ok(
@@ -408,5 +425,13 @@ export async function runStatementDFlow({
     assert.equal(stacked.anyOutside, false, `${context}: amounts outside viewport at ${viewport.width}px`)
     assert.equal(stacked.bodyScrollX, false, `${context}: horizontal scroll at ${viewport.width}px`)
     assert.equal(stacked.navHit, true, `${context}: NAV hit-test fails at ${viewport.width}px`)
+  } else {
+    // Tablet: the two-column composition holds; amounts must stay contained.
+    const tabletGeometry = await geometry()
+    assert.equal(tabletGeometry.present, true, `${context}: statement present`)
+    assert.equal(tabletGeometry.navHit, true, `${context}: NAV hit-test fails at ${viewport.width}px`)
+    assert.equal(tabletGeometry.anyClipped, false, `${context}: clipped amounts at ${viewport.width}px`)
+    assert.equal(tabletGeometry.anyOutside, false, `${context}: amounts outside viewport at ${viewport.width}px`)
+    assert.equal(tabletGeometry.bodyScrollX, false, `${context}: horizontal scroll at ${viewport.width}px`)
   }
 }
