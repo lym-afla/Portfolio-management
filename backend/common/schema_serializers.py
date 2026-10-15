@@ -68,10 +68,13 @@ class DashboardSummaryResponseSerializer(serializers.Serializer):
     """Response of ``dashboard/api/get-summary/``.
 
     Keys are dynamic metric names (e.g. ``Current NAV``, ``Invested``) mapped to
-    formatted string values.
+    formatted string values. With ``summary_contract=2`` the additive
+    ``summaryV2`` reconciled statement document is included; its typed shape
+    is owned by the frontend dashboard feature, not this schema.
     """
 
     metrics = serializers.DictField(child=serializers.CharField(allow_null=True, required=False))
+    summaryV2 = serializers.JSONField(required=False)
 
 
 class DashboardBreakdownResponseSerializer(serializers.Serializer):

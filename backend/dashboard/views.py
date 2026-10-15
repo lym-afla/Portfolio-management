@@ -31,6 +31,7 @@ from services.charts import (
     get_nav_chart_data,
 )
 from core.formatting_utils import currency_format, format_percentage, format_table_data
+from services.dashboard_summary import SUMMARY_CONTRACT_VERSION
 from services.fx import get_rate as fx_get_rate
 from services.nav import IRR, NAV_at_date
 from services.performance import (
@@ -66,6 +67,28 @@ def _requested_chart_contract(request):
     return CHART_CONTRACT_VERSION, None
 
 
+def _requested_summary_contract(request):
+    """Parse the opt-in summary contract negotiation parameter.
+
+    Same negotiation rules as the chart contract: absent means legacy; an
+    unsupported version is an explicit 400, never a silent downgrade.
+    """
+    raw = request.GET.get("summary_contract")
+    if raw is None:
+        return None, None
+    if raw != str(SUMMARY_CONTRACT_VERSION):
+        return None, Response(
+            chart_error_body(
+                "INVALID_SUMMARY_QUERY",
+                "Unsupported summary contract version; this server serves version "
+                f"{SUMMARY_CONTRACT_VERSION}.",
+                False,
+            ),
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    return SUMMARY_CONTRACT_VERSION, None
+
+
 def _chart_context(user, account_selection_type, account_selection_id, account_ids,
                    effective_date, currency, digits):
     return {
@@ -86,7 +109,16 @@ def _chart_context(user, account_selection_type, account_selection_id, account_i
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def get_dashboard_summary_api(request):
-    """Get dashboard summary API."""
+    """Get dashboard summary API.
+
+    Without ``summary_contract`` the legacy five-field payload is returned
+    unchanged. With ``summary_contract=2`` the SAME legacy keys are returned
+    plus the additive ``summaryV2`` reconciled statement document; an
+    unsupported version is an explicit 400 (never a silent downgrade).
+    """
+    summary_contract, contract_error = _requested_summary_contract(request)
+    if contract_error is not None:
+        return contract_error
     user = request.user
     # Use JWT middleware instead of session
     effective_current_date_str = getattr(
@@ -153,6 +185,31 @@ def get_dashboard_summary_api(request):
     )
 
     summary = format_table_data(summary, currency_target, number_of_digits)
+
+    if summary_contract is not None:
+        # Opt-in reconciled statement. A calculation failure under the
+        # contract is an explicit 500; the legacy path keeps its incumbent
+        # uncaught behavior.
+        try:
+            from services.dashboard_summary import build_reconciled_summary
+
+            summary["summaryV2"] = build_reconciled_summary(
+                user,
+                effective_current_date,
+                currency_target,
+                number_of_digits,
+                selected_account_ids,
+            )
+        except Exception:
+            logger.exception("Error building reconciled summary statement")
+            return Response(
+                chart_error_body(
+                    "SUMMARY_CALCULATION_FAILED",
+                    "The reconciled statement could not be calculated. Please try again.",
+                    True,
+                ),
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
     return Response(summary)
 
 
