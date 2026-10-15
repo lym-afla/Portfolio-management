@@ -300,7 +300,7 @@ describe('security detail characterization (incumbent surface)', () => {
 
   it('counts account changes as detail+price+position+transactions refetches, never accounts', async () => {
     const wrapper = await mountPage()
-    wrapper.vm.selectedAccount = { type: 'account', id: 7 }
+    wrapper.vm.applyAccountSelection({ type: 'account', id: 7 })
     await flush()
     expect(mocks.getSecurityDetail).toHaveBeenCalledTimes(2)
     expect(mocks.getSecurityDetail.mock.calls.at(-1)[1]).toBe(7)

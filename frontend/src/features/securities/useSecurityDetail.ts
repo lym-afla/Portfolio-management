@@ -90,22 +90,9 @@ export function useSecurityDetail(options: {
     snapshotContext as (params: unknown) => unknown,
   )
 
-  // Account filter (raw select model + resolved id). Phase C: the model IS
-  // the All-accounts selection when unfiltered — Vuetify only invokes the
-  // selection slot for a non-null model, so a null model renders an empty
-  // field instead of a visible "All accounts". PR #54 lesson: Vuetify's
-  // input value derives from the model — an unmatched raw identity object
-  // would render '[object Object]', so the page normalizes unmatched
-  // selections to a safe label string; a string model resolves no filter.
-  const selectedAccount = ref<{ type: string; id?: number | null } | string>({ type: 'all', id: null })
-  const selectedAccountId = computed(() => {
-    const selection = selectedAccount.value
-    if (!selection || typeof selection === 'string') return null
-    if (selection.type === 'all') return null
-    return selection.id as number
-  })
-
-
+  // Account filter: the canonical identity lives below, next to its derived
+  // Vuetify display model (identity and display are deliberately separate —
+  // see the block after accountOptions).
   const selectedPeriod = ref('1Y')
 
   const transactionOptions = ref({ page: 1, itemsPerPage: 10 })
@@ -147,23 +134,78 @@ export function useSecurityDetail(options: {
   const accountOptions = computed(() =>
     formatAccountChoices(accountsQuery.data.value?.options ?? []),
   )
-  // While the real choices have not arrived (or arrive empty), the
-  // All-accounts model parks as the safe label string: Vuetify stringifies a
-  // model that matches no item into its input ('[object Object]'). The
-  // identity object is restored as soon as choices exist, so the select can
-  // match the All-accounts option again. selectedAccountId stays null in
-  // every representation — the request scope never changes.
-  const ALL_ACCOUNTS_LABEL = 'All accounts'
-  const isAllAccountsSelection = (selection: unknown): boolean =>
-    typeof selection === 'object' && selection !== null && (selection as { type?: string }).type === 'all'
-  watch([selectedAccount, accountOptions], ([selection, options]) => {
-    const hasAllOption = options.some((option) => option.type === 'option' && option.value?.type === 'all')
-    if (selection === ALL_ACCOUNTS_LABEL && hasAllOption) {
+
+  // --- canonical selection identity (request-owning) ------------------------
+  // The identity NEVER degrades to a display string: selectedAccountId is
+  // derived from it alone, so display fallbacks can never silently broaden
+  // the request scope. Only explicit All-accounts/Clear sets the unfiltered
+  // identity.
+  const selectedAccount = ref<{
+    type: 'all' | 'account'
+    id?: number | null
+    displayName?: string
+  }>({ type: 'all', id: null })
+  const selectedAccountId = computed(() =>
+    selectedAccount.value.type === 'account' && typeof selectedAccount.value.id === 'number'
+      ? selectedAccount.value.id
+      : null,
+  )
+
+  function applyAccountSelection(value: unknown): void {
+    if (value == null) {
+      // Explicit Clear → the unfiltered scope, on purpose.
       selectedAccount.value = { type: 'all', id: null }
-    } else if (!hasAllOption && isAllAccountsSelection(selection)) {
-      selectedAccount.value = ALL_ACCOUNTS_LABEL
+      return
     }
-  }, { immediate: true })
+    if (typeof value === 'string') {
+      // Display-only echoes never change the identity.
+      return
+    }
+    const candidate = value as { type?: string; id?: unknown }
+    if (candidate.type === 'all') {
+      selectedAccount.value = { type: 'all', id: null }
+      return
+    }
+    if (candidate.type === 'account' && typeof candidate.id === 'number') {
+      // The identity is kept verbatim — matched or not, the request scope
+      // stays exactly what the user chose. The display name (when the
+      // caller knows it, e.g. a holdings row) rides along so the label
+      // fallback stays honest while the choices cannot match.
+      selectedAccount.value = {
+        type: 'account',
+        id: candidate.id,
+        displayName: (candidate as { displayName?: string }).displayName,
+      }
+    }
+  }
+
+  // --- Vuetify display model + label (derived, never request-owning) -------
+  const findOption = (predicate: (option: { type: string; value?: { type?: string; id?: number | null } }) => boolean) =>
+    accountOptions.value.find((option) => option.type === 'option' && predicate(option))
+  const ALL_ACCOUNTS_LABEL = 'All accounts'
+
+  // Vuetify's input value derives from the model (PR #54): a model matching
+  // no item renders String(model) — '[object Object]'. The model therefore
+  // resolves to the MATCHED option's own value whenever the choices contain
+  // it, and to a safe label string only as a display fallback. When choices
+  // arrive, the model re-derives onto the matched option automatically — no
+  // identity write, no extra scope change.
+  const selectModel = computed<{ type?: string; id?: number | null } | string>(() => {
+    const identity = selectedAccount.value
+    if (identity.type === 'all') {
+      const matched = findOption((option) => option.value?.type === 'all')
+      return matched ? matched.value : ALL_ACCOUNTS_LABEL
+    }
+    const matched = findOption((option) => option.value?.type === 'account' && option.value?.id === identity.id)
+    return matched ? matched.value : identity.displayName ?? 'Unavailable'
+  })
+
+  const selectLabel = computed(() => {
+    const identity = selectedAccount.value
+    if (identity.type === 'all') return ALL_ACCOUNTS_LABEL
+    const matched = findOption((option) => option.value?.type === 'account' && option.value?.id === identity.id)
+    return matched?.title ?? identity.displayName ?? 'Unavailable'
+  })
 
   const detailParams = () => ({
     context: committed(),
@@ -227,6 +269,9 @@ export function useSecurityDetail(options: {
   return {
     // selection state
     selectedAccount,
+    selectModel,
+    selectLabel,
+    applyAccountSelection,
     selectedAccountId,
     selectedPeriod,
     transactionOptions,

@@ -8,8 +8,8 @@
     <v-row class="mb-4">
       <v-col cols="12" sm="6" md="4">
         <v-select
-          :model-value="selectedAccount"
-          @update:model-value="applySelection"
+          :model-value="selectModel"
+          @update:model-value="applyAccountSelection"
           :items="accountOptions"
           item-title="title"
           item-value="value"
@@ -28,7 +28,7 @@
                from the model — a raw unmatched object would render
                '[object Object]'). -->
           <template v-slot:selection>
-            <span class="security-account-label" :title="selectedAccountLabel">{{ selectedAccountLabel }}</span>
+            <span class="security-account-label" :title="selectLabel">{{ selectLabel }}</span>
           </template>
           <template v-slot:item="{ props, item }">
             <v-list-item
@@ -285,7 +285,9 @@ const context = usePortfolioContextStore()
 // security feature owner; this entrypoint keeps the route/title surface and
 // the chart presentation unchanged.
 const {
-  selectedAccount,
+  selectModel,
+  selectLabel,
+  applyAccountSelection,
   selectedPeriod,
   transactionOptions,
   itemsPerPageOptions,
@@ -316,51 +318,10 @@ watch(security, (value) => { emit('update-page-title', value?.name ?? '') }, { f
 
 const effectiveCurrentDate = computed(() => appStore.effectiveCurrentDate)
 
-// Phase C: the field's visible label. A null model IS the unfiltered
-// request, so it renders as "All accounts"; an explicit selection shows its
-// display name and a selection missing from the choices shows the shared
-// safe fallback (same semantics as committedAccountLabel, matched directly
-// against the formatted options — that helper formats raw wire input).
-const selectedAccountLabel = computed(() => {
-  const selection = selectedAccount.value
-  if (!selection) return 'All accounts'
-  if (typeof selection === 'string') return selection
-  if (selection.type === 'all') return 'All accounts'
-  const matched = accountOptions.value.find(
-    (option) =>
-      option.type === 'option' &&
-      option.value?.type === selection.type &&
-      option.value?.id === selection.id,
-  )
-  return matched?.title ?? 'Unavailable'
-})
-
-// PR #54: Vuetify's input value derives from the model. A matched selection
-// stores the option's own value (so the input shows the item title); an
-// identity with no matching option stores the safe label string instead of
-// the raw object; the All-accounts identity is preserved as-is and stays
-// honest regardless of the choices list.
-function applySelection(value) {
-  if (value == null) {
-    selectedAccount.value = { type: 'all', id: null }
-    return
-  }
-  if (typeof value === 'string') {
-    selectedAccount.value = value
-    return
-  }
-  if (value.type === 'all') {
-    selectedAccount.value = { type: 'all', id: null }
-    return
-  }
-  const matched = accountOptions.value.find(
-    (option) =>
-      option.type === 'option' &&
-      option.value?.type === value.type &&
-      option.value?.id === value.id,
-  )
-  selectedAccount.value = matched ? matched.value : 'Unavailable'
-}
+// Phase C review round 2: the canonical identity and its request scope live
+// in useSecurityDetail; the Vuetify select model and the visible label are
+// derived there too (matched option value / safe fallback string). The page
+// only binds them — display fallbacks can never touch the request scope.
 
 // Phase C: the backend's canonical holdings read model (open accounts first,
 // then closed) split into the two compact groups. Display strings stay
@@ -382,7 +343,7 @@ const holdingsView = computed(() => {
 })
 
 function filterByAccount(account) {
-  applySelection({ type: 'account', id: account.accountId })
+  applyAccountSelection({ type: 'account', id: account.accountId, displayName: account.displayName })
 }
 
 // C4: the gated modern history renderers — active only while the security
