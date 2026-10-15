@@ -186,6 +186,17 @@ def _component_amount(component, currency, digits):
                    status=component.status, reason=component.first_reason)
 
 
+def _unknown_amount(reason):
+    """An amount that cannot be certified: unknown, never zero and never a
+    fabricated number."""
+    return {
+        "raw": None,
+        "display": "N/A",
+        "status": "partial",
+        "reason": reason,
+    }
+
+
 def _fx_rate(source, target, when):
     """Canonical cached rate lookup (the same one ``NAV_at_date`` uses).
     Raises ValueError when the rate is unknown."""
@@ -431,6 +442,11 @@ def build_reconciled_summary(user, effective_date, currency_target, digits,
             continue
         cash_eop += balance_value * rate
 
+    # Certified cash FX requires BOTH sides: the own-date flow conversions
+    # (ledger) and the ending-balance valuation (cash_component). A failed
+    # own-date conversion leaves a flow unknown, so the DIFFERENCE is unknown
+    # - never a fabricated number, never zero.
+    fx_cash_known = cash_component.complete and ledger.complete
     fxcash = cash_eop - flows_own
 
     # ------------------------------------------------------------------
@@ -510,6 +526,7 @@ def build_reconciled_summary(user, effective_date, currency_target, digits,
     in_kind_count = 0
     in_kind_signed_fmv = Decimal(0)
     in_kind_fmv_known = True
+    in_kind_fmv_component = Component()
     transfer_rows = Transactions.objects.filter(
         investor=user,
         account_id__in=account_ids,
@@ -524,12 +541,17 @@ def build_reconciled_summary(user, effective_date, currency_target, digits,
                 else Decimal(-1))
         if transfer.price is not None and transfer.quantity is not None:
             # Transfer rows carry the coin's USD spot price (crypto
-            # convention): FMV = |qty| x price in USD.
+            # convention): FMV = |qty| x price in USD. A failed conversion
+            # makes the reporting-currency FMV UNKNOWN, not zero.
             fmv_usd = abs(transfer.quantity) * transfer.price
-            in_kind_signed_fmv += sign * own_value(
-                fmv_usd, "USD", transfer.date, Component())
+            converted = own_value(fmv_usd, "USD", transfer.date,
+                                  in_kind_fmv_component)
+            in_kind_signed_fmv += sign * converted
         else:
             in_kind_fmv_known = False
+    if not in_kind_fmv_component.complete:
+        in_kind_fmv_known = False
+        reasons.add(REASON_MISSING_FX)
     in_kind_present = in_kind_count > 0
     if in_kind_present:
         reasons.add(REASON_IN_KIND)
@@ -538,7 +560,12 @@ def build_reconciled_summary(user, effective_date, currency_target, digits,
     # Statement totals and classification.
     # ------------------------------------------------------------------
     fx_security = realized_fx.value + unrealized_fx.value
-    fx_total = fx_security + fxcash
+    fx_known = (
+        realized_fx.complete
+        and unrealized_fx.complete
+        and fx_cash_known
+    )
+    fx_total = (fx_security + fxcash) if fx_known else None
     net_capital = invested.value + cash_out.value
     control_total = nav_known - net_capital
     attributed = (
@@ -563,6 +590,7 @@ def build_reconciled_summary(user, effective_date, currency_target, digits,
         and other_flows.complete and cash_component.complete
         and realized_price.complete and realized_fx.complete
         and unrealized_price.complete and unrealized_fx.complete
+        and fx_cash_known
         and not in_kind_present
         and not coin_fee_gap
     )
@@ -578,10 +606,10 @@ def build_reconciled_summary(user, effective_date, currency_target, digits,
         statement_status = "partial"
 
     fx_status = ("ok" if realized_fx.complete and unrealized_fx.complete
-                 and cash_component.complete else "partial")
+                 and fx_cash_known else "partial")
     fx_reason = (None if fx_status == "ok" else (
         realized_fx.first_reason or unrealized_fx.first_reason
-        or cash_component.first_reason))
+        or cash_component.first_reason or ledger.first_reason))
 
     document = {
         "version": SUMMARY_CONTRACT_VERSION,
@@ -617,8 +645,12 @@ def build_reconciled_summary(user, effective_date, currency_target, digits,
                 "income": _component_amount(income, currency_target, digits),
                 "fees": _component_amount(fees, currency_target, digits),
                 "taxes": _component_amount(taxes, currency_target, digits),
-                "fx": _amount(fx_total, currency_target, digits,
-                              status=fx_status, reason=fx_reason),
+                "fx": (
+                    _amount(fx_total, currency_target, digits,
+                            status=fx_status, reason=fx_reason)
+                    if fx_known
+                    else _unknown_amount(fx_reason or REASON_MISSING_FX)
+                ),
                 "otherFlows": _component_amount(
                     other_flows, currency_target, digits),
             },
@@ -632,12 +664,17 @@ def build_reconciled_summary(user, effective_date, currency_target, digits,
                             (realized_fx.first_reason
                              or unrealized_fx.first_reason)),
                 ),
-                "cashFlows": _component_amount(
-                    cash_component, currency_target, digits)
-                if cash_component.value != 0 or not cash_component.complete
-                else _amount(fxcash, currency_target, digits,
-                             status=cash_component.status,
-                             reason=cash_component.first_reason),
+                "cashFlows": (
+                    _amount(fxcash, currency_target, digits,
+                            status="ok" if fx_cash_known else "partial",
+                            reason=(None if fx_cash_known else
+                                    (ledger.first_reason
+                                     or cash_component.first_reason)))
+                    if fx_cash_known
+                    else _unknown_amount(ledger.first_reason
+                                         or cash_component.first_reason
+                                         or REASON_MISSING_FX)
+                ),
             },
             "attributedSum": _amount(attributed, currency_target, digits),
             "unexplainedDifference": _amount(unexplained, currency_target,

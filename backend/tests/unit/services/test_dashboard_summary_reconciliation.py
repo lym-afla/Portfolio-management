@@ -903,6 +903,82 @@ def test_no_accounts_selected_is_unavailable(user):
 
 
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Historical cash-flow FX completeness (review round: finding 2)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_missing_historical_coin_conversion_keeps_cash_fx_partial_and_uncertified(user):
+    """A coin leg converted at a date with NO coin price, while the ending
+    date HAS one: the own-date conversion fails (deterministic crypto lookup)
+    so the ledger is incomplete and cash FX is UNKNOWN - raw null, status
+    partial, never a fabricated number and never a certified reconciliation.
+
+    Hand derivation (BTC USD price 50,000 exists only from 2046-01-01):
+      Cash in 50,000 USDT (peg 1.0); FX tx 50,000 USDT -> 1 BTC at 2044.
+      Balances at EOP: USDT 0, BTC 1 x 50,000 = cash EOP 50,000.
+      Known own-date flows: +50,000 (peg) - 50,000 (peg) = 0; the BTC leg at
+      2044 is UNKNOWN -> a certified fxCash cannot be computed.
+      NAV 50,000; net capital 50,000; control 0; the arithmetic happens to
+      close but the bridge is NOT certified (reconciliation incomplete).
+    """
+    from common.models import FXTransaction
+
+    broker = make_broker(user, name="OKX", precision=8)
+    account = make_account(broker)
+    btc = make_asset(user, type="Crypto", name="BTC", currency="USD")
+    make_tx(account, date(2046, 1, 2), "Cash in", currency="USDT",
+            cash_flow=Decimal("50000"))
+    FXTransaction.objects.create(
+        investor=user,
+        account=account,
+        date=date(2044, 6, 1),
+        from_currency="USDT",
+        to_currency="BTC",
+        from_amount=Decimal("50000"),
+        to_amount=Decimal("1"),
+        exchange_rate=Decimal("0.00002"),
+    )
+    make_price(btc, date(2046, 1, 1), "50000")
+    doc = build_reconciled_summary(user, date(2046, 1, 15), "USD", 2, [account.id])
+    cash_fx = doc["netResult"]["fxDetail"]["cashFlows"]
+    assert cash_fx["status"] == "partial"
+    assert cash_fx["reason"] == "missing_fx"
+    assert cash_fx["raw"] is None
+    assert doc["netResult"]["components"]["fx"]["status"] == "partial"
+    assert doc["netResult"]["components"]["fx"]["raw"] is None
+    assert "missing_fx" in doc["reasons"]
+    assert doc["netResult"]["reconciliation"] == "incomplete"
+    assert doc["status"] == "partial"
+    assert Decimal(doc["netResult"]["controlTotal"]["raw"]) == Decimal("0")
+
+
+@pytest.mark.django_db
+def test_in_kind_fmv_conversion_failure_propagates_to_diagnostics(user):
+    """An external transfer whose FMV cannot be converted at the transfer
+    date (the reporting currency needs the coin price, which only exists
+    later) must mark the in-kind diagnostic fmvKnown=false and surface
+    missing_fx - the reporting-currency FMV is unknown, not zero."""
+    broker = make_broker(user, name="OKX", precision=8)
+    account = make_account(broker)
+    btc = make_asset(user, type="Crypto", name="BTC", currency="USD")
+    make_tx(account, date(2044, 6, 1), "Cash in", currency="USDT",
+            cash_flow=Decimal("1000"))
+    make_tx(account, date(2044, 6, 1), "Crypto transfer in", currency="BTC",
+            security=btc, quantity=Decimal("1"), price=Decimal("50000"))
+    make_price(btc, date(2045, 6, 1), "50000")
+    doc = build_reconciled_summary(user, date(2045, 6, 15), "BTC", 8, [account.id])
+    in_kind = doc["diagnostics"]["unclassifiedInKindFlows"]
+    assert in_kind["present"] is True
+    assert in_kind.get("fmvKnown") is False
+    assert "signedFmv" not in in_kind
+    assert "missing_fx" in doc["reasons"]
+    assert doc["status"] == "partial"
+    assert doc["netResult"]["reconciliation"] == "incomplete"
+    assert doc["capital"]["invested"]["status"] == "partial"
+
+# ---------------------------------------------------------------------------
 # Reconciliation classifier: a deliberately omitted component must fail
 # ---------------------------------------------------------------------------
 
