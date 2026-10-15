@@ -10,7 +10,7 @@ import DashboardPage from '@/views/DashboardPage.vue'
 import { useAppStore } from '@/stores/app'
 
 const api = vi.hoisted(() => ({
-  getDashboardSummary: vi.fn(),
+  getDashboardSummaryV2: vi.fn(),
   getDashboardSummaryOverTime: vi.fn(),
 }))
 vi.mock('@/services/api', () => api)
@@ -31,7 +31,7 @@ const legacyOnlyResult = (labels: string[] = ['2026-09-08']) => ({
   legacy: { labels, currency: 'USDk', datasets: [{ label: 'NAV', type: 'bar', data: [1000] }] },
 })
 const fixtures = {
-  getDashboardSummary: summaryFixture,
+  getDashboardSummaryV2: { capability: 'legacy_only', legacy: summaryFixture },
   fetchBreakdownChart: {
     capability: 'legacy_only',
     legacy: { assetType: { data: { Stocks: '1,000.00' }, percentage: { Stocks: '100%' } }, assetClass: {}, currency: {}, totalNAV: '1,000.00' },
@@ -65,7 +65,7 @@ beforeEach(() => {
 })
 
 it.each([
-  ['getDashboardSummary', 0, 'Total NAV'],
+  ['getDashboardSummaryV2', 0, 'Total NAV'],
   ['fetchBreakdownChart', 2, 'Stocks'],
   ['getDashboardSummaryOverTime', 5, 'EoP NAV'],
   ['fetchNavChart', 1, '2026-09-08'],
@@ -80,8 +80,8 @@ it.each([
   await flushPromises()
   expect(wrapper.text()).not.toContain(`${name} temporarily failed`)
   expect(wrapper.text()).toContain(content)
-  if (name === 'getDashboardSummary') expect(wrapper.text()).toContain(summaryFixture['Current NAV'])
-  const other = name === 'getDashboardSummary' ? 'fetchBreakdownChart' : 'getDashboardSummary'
+  if (name === 'getDashboardSummaryV2') expect(wrapper.text()).toContain(summaryFixture['Current NAV'])
+  const other = name === 'getDashboardSummaryV2' ? 'fetchBreakdownChart' : 'getDashboardSummaryV2'
   expect(wrapper.text()).toContain(`${other} temporarily failed`)
   expect(mock).toHaveBeenCalledTimes(2)
   wrapper.unmount()
@@ -141,11 +141,11 @@ it.each(['ytd', 'custom', 'all_time'])('invalidates old context content and rede
   const context = usePortfolioContextStore()
   const app = useAppStore()
   app.updateNavChartParams({ dateRange, dateFrom: '2024-02-01', dateTo: '2024-07-01' })
-  const old = deferred<typeof fixtures.getDashboardSummary>()
-  api.getDashboardSummary.mockReturnValueOnce(old.promise)
+  const old = deferred<{ capability: string; legacy: typeof summaryFixture }>()
+  api.getDashboardSummaryV2.mockReturnValueOnce(old.promise)
   context.triggerDataRefresh()
   await flushPromises()
-  const oldSignal = api.getDashboardSummary.mock.calls[1][0].signal
+  const oldSignal = api.getDashboardSummaryV2.mock.calls[1][0].signal
   const change = context.changeContext({ effectiveCurrentDate: '2025-12-31' })
   expect(oldSignal.aborted).toBe(true)
   await wrapper.vm.$nextTick()
@@ -157,10 +157,10 @@ it.each(['ytd', 'custom', 'all_time'])('invalidates old context content and rede
   expect([query.fromDate, query.toDate]).toEqual(dateRange === 'custom' ? ['2024-02-01', '2024-07-01'] : [dateRange === 'all_time' ? null : '2025-01-01', '2025-12-31'])
   expect(app.navChartParams.dateFrom).toBe(query.fromDate)
   expect(app.navChartParams.dateTo).toBe(query.toDate)
-  old.resolve({ ...summaryFixture, 'Current NAV': 'old context NAV' })
+  old.resolve({ capability: 'legacy_only', legacy: { ...summaryFixture, 'Current NAV': 'old context NAV' } })
   await flushPromises()
   expect(wrapper.text()).not.toContain('old context NAV')
-  expect(api.getDashboardSummary).toHaveBeenCalledTimes(3)
+  expect(api.getDashboardSummaryV2).toHaveBeenCalledTimes(3)
   wrapper.unmount()
 })
 

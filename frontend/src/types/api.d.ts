@@ -96,7 +96,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description Get dashboard summary API. */
+        /**
+         * @description Get dashboard summary API.
+         *
+         *     Without ``summary_contract`` the legacy five-field payload is returned
+         *     unchanged. With ``summary_contract=2`` the SAME legacy keys are returned
+         *     plus the additive ``summaryV2`` reconciled statement document; an
+         *     unsupported version is an explicit 400 (never a silent downgrade).
+         */
         get: operations["dashboard_api_get_summary_retrieve"];
         put?: never;
         post?: never;
@@ -1902,12 +1909,15 @@ export interface components {
          * @description Response of ``dashboard/api/get-summary/``.
          *
          *     Keys are dynamic metric names (e.g. ``Current NAV``, ``Invested``) mapped to
-         *     formatted string values.
+         *     formatted string values. With ``summary_contract=2`` the additive
+         *     ``summaryV2`` reconciled statement document is included; its typed shape
+         *     is owned by the frontend dashboard feature, not this schema.
          */
         DashboardSummaryResponse: {
             metrics: {
                 [key: string]: string | null;
             };
+            summaryV2?: unknown;
         };
         /** @description Serializer for FX (foreign exchange) model. */
         FX: {

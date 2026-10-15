@@ -25,7 +25,7 @@
   },
   {
     "file": "src/services/api.ts",
-    "line": 697,
+    "line": 704,
     "column": 7,
     "ruleId": "preserve-caught-error",
     "message": "There is no `cause` attached to the symptom error being thrown.",
@@ -33,7 +33,7 @@
   },
   {
     "file": "src/services/api.ts",
-    "line": 699,
+    "line": 706,
     "column": 7,
     "ruleId": "preserve-caught-error",
     "message": "There is no `cause` attached to the symptom error being thrown.",
@@ -41,7 +41,7 @@
   },
   {
     "file": "src/services/api.ts",
-    "line": 1076,
+    "line": 1083,
     "column": 7,
     "ruleId": "preserve-caught-error",
     "message": "There is no `cause` attached to the symptom error being thrown.",

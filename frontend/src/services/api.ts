@@ -1,5 +1,12 @@
 export { getOpenPositions, getClosedPositions } from '@/services/api/portfolio'
-export { getDashboardSummary } from '@/services/api/dashboard'
+export { getDashboardSummaryV2 } from '@/services/api/dashboard'
+export type {
+  DashboardSummary,
+  DashboardSummaryResult,
+  ReconciledStatement,
+  StatementAmount,
+  StatementReturn,
+} from '@/services/api/dashboard'
 export { getTransactions } from '@/services/api/transactions'
 export { getAccountsTable, getBrokersTable, getPrices, getSecuritiesForDatabase, getFXData, getYearOptions, calendarYearOptions } from '@/services/api/database'
 

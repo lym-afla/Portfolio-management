@@ -6,12 +6,30 @@
       class="my-4"
     />
     <template v-else>
-      <PortfolioMetrics
-        v-if="!loading.summary && !error.summary"
-        data-testid="summary-card"
-        :metrics="metrics"
+      <PortfolioValueStatement
+        v-if="summaryCapability === 'v2'"
+        :statement="summaryStatement"
         :context-label="contextLabel"
       />
+      <template v-else-if="summaryCapability === 'legacy_only'">
+        <PortfolioMetrics
+          v-if="!loading.summary && !error.summary"
+          data-testid="summary-card"
+          :metrics="metrics"
+          :context-label="contextLabel"
+        />
+        <v-alert
+          v-if="!loading.summary && !error.summary"
+          type="info"
+          variant="tonal"
+          density="compact"
+          class="mb-4"
+          data-testid="statement-capability-notice"
+        >
+          The reconciled statement is unavailable from this server; showing the
+          legacy summary metrics without component detail.
+        </v-alert>
+      </template>
       <v-skeleton-loader v-else-if="loading.summary" type="card" />
       <v-alert v-else type="error" data-testid="summary-error">
         {{ error.summary }}
@@ -153,12 +171,13 @@ import { committedAccountLabel } from '@/utils/accountUtils'
 import WorkspacePage from '@/components/workspace/WorkspacePage.vue'
 import WorkspaceSection from '@/components/workspace/WorkspaceSection.vue'
 import PortfolioMetrics from '@/components/dashboard/PortfolioMetrics.vue'
+import PortfolioValueStatement from '@/components/dashboard/PortfolioValueStatement.vue'
 import { summaryMetrics } from '@/components/dashboard/summaryMetrics'
 import BreakdownChart from '@/components/dashboard/BreakdownChart.vue'
 import SummaryOverTimeTable from '@/components/dashboard/SummaryOverTimeTable.vue'
 import NavChartPanel from '@/features/charts/NavChartPanel.vue'
 import {
-  getDashboardSummary,
+  getDashboardSummaryV2,
   getDashboardSummaryOverTime,
 } from '@/services/api'
 import { useNavChart, requireReadyChartContext } from '@/features/charts/useNavChart'
@@ -194,7 +213,7 @@ const appStore = useAppStore()
 const context = usePortfolioContextStore()
 const historyTable = ref<{ openUpdateDialog: () => void } | null>(null)
 const summaryQuery = usePortfolioRequest(
-  (_params: PortfolioContext, options) => getDashboardSummary(options),
+  (_params: PortfolioContext, options) => getDashboardSummaryV2(options),
   snapshotContext
 )
 const breakdownQuery = useBreakdownChart()
@@ -211,9 +230,17 @@ const historyQuery = usePortfolioRequest(
   snapshotContext
 )
 const navChartQuery = useNavChart()
-const metrics = computed(() =>
-  summaryQuery.data.value ? summaryMetrics(summaryQuery.data.value) : []
+// The negotiated summary: v2 renders the reconciled statement; a legacy-only
+// response keeps the five-metric card with an honest unavailable notice.
+const summaryCapability = computed(() => summaryQuery.data.value?.capability ?? null)
+const summaryStatement = computed(() =>
+  summaryQuery.data.value?.capability === 'v2' ? summaryQuery.data.value.statement : null
 )
+const metrics = computed(() => {
+  const data = summaryQuery.data.value
+  if (data?.capability === 'legacy_only') return summaryMetrics(data.legacy)
+  return []
+})
 // The negotiated breakdown feeds both surfaces from ONE request: the
 // incumbent cards render the legacy fields; the gated modern path renders the
 // three validated allocation documents.

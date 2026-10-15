@@ -16,6 +16,245 @@ export function decodeDashboardSummary(value: unknown): DashboardSummary {
   }
   return value as DashboardSummary
 }
-export async function getDashboardSummary(options?: RequestOptions): Promise<DashboardSummary> {
-  return decodeDashboardSummary(await apiGet('/dashboard/api/get-summary/', options))
+
+// ---------------------------------------------------------------------------
+// Opt-in summary contract v2: the reconciled statement document. The request
+// stays the dashboard's single summary fetch; the response carries the legacy
+// five fields unchanged plus the additive ``summaryV2`` document. A present-
+// but-invalid document is an error, never a silent downgrade.
+// ---------------------------------------------------------------------------
+
+export type StatementStatus = 'ok' | 'partial' | 'unavailable'
+
+export interface StatementAmount {
+  raw: string | null
+  display: string
+  status: StatementStatus
+  reason?: string
+  knownSubtotal?: string
+}
+
+export interface StatementReturn {
+  value: string | null
+  display: string
+  status: 'ok' | 'partial' | 'not_available' | 'not_relevant'
+  reason: string
+}
+
+export interface StatementContext {
+  accountSelection: { type: string; id: number | null }
+  accountIds: number[]
+  effectiveDate: string
+  currency: string
+  digits: number
+}
+
+export interface ReconciledStatement {
+  version: number
+  kind: string
+  context: StatementContext
+  status: 'complete' | 'partial' | 'unavailable'
+  reasons: string[]
+  capital: {
+    invested: StatementAmount
+    cashOut: StatementAmount
+    netInvestedCapital: StatementAmount
+  }
+  netResult: {
+    nav: StatementAmount
+    controlTotal: StatementAmount
+    components: {
+      realizedPrice: StatementAmount
+      unrealizedPrice: StatementAmount
+      income: StatementAmount
+      fees: StatementAmount
+      taxes: StatementAmount
+      fx: StatementAmount
+      otherFlows: StatementAmount
+    }
+    fxDetail: { security: StatementAmount; cashFlows: StatementAmount }
+    attributedSum: StatementAmount
+    unexplainedDifference: StatementAmount
+    toleranceRaw: string
+    toleranceBasis: string
+    reconciliation: 'reconciled' | 'unreconciled' | 'incomplete'
+  }
+  returns: { totalReturn: StatementReturn; irr: StatementReturn }
+  diagnostics: {
+    omittedValuations: Record<string, unknown>[]
+    unclassifiedInKindFlows: { present: boolean; count: number; signedFmv?: string; fmvKnown?: boolean }
+    notes: string[]
+  }
+}
+
+export type DashboardSummaryResult =
+  | { capability: 'v2'; legacy: DashboardSummary; statement: ReconciledStatement }
+  // An older backend ignoring the negotiation parameter answers with the
+  // legacy payload alone; the UI keeps the five metrics with an honest
+  // unavailable-breakdown notice.
+  | { capability: 'legacy_only'; legacy: DashboardSummary }
+
+function decodeAmount(value: unknown, field: string): StatementAmount {
+  if (!isRecord(value) || typeof value.display !== 'string') {
+    throw new ApiError(`Invalid dashboard statement response: ${field}`)
+  }
+  const status = value.status
+  if (status !== 'ok' && status !== 'partial' && status !== 'unavailable') {
+    throw new ApiError(`Invalid dashboard statement response: ${field}.status`)
+  }
+  if (value.raw !== null && typeof value.raw !== 'string') {
+    throw new ApiError(`Invalid dashboard statement response: ${field}.raw`)
+  }
+  const amount: StatementAmount = {
+    raw: value.raw as string | null,
+    display: value.display,
+    status,
+  }
+  if (value.reason !== undefined) {
+    if (typeof value.reason !== 'string') throw new ApiError(`Invalid dashboard statement response: ${field}.reason`)
+    amount.reason = value.reason
+  }
+  if (value.knownSubtotal !== undefined) {
+    if (typeof value.knownSubtotal !== 'string') {
+      throw new ApiError(`Invalid dashboard statement response: ${field}.knownSubtotal`)
+    }
+    amount.knownSubtotal = value.knownSubtotal
+  }
+  return amount
+}
+
+function decodeReturn(value: unknown, field: string): StatementReturn {
+  if (
+    !isRecord(value) ||
+    typeof value.display !== 'string' ||
+    typeof value.reason !== 'string' ||
+    (value.value !== null && typeof value.value !== 'string')
+  ) {
+    throw new ApiError(`Invalid dashboard statement response: ${field}`)
+  }
+  const status = value.status
+  if (status !== 'ok' && status !== 'partial' && status !== 'not_available' && status !== 'not_relevant') {
+    throw new ApiError(`Invalid dashboard statement response: ${field}.status`)
+  }
+  return {
+    value: value.value as string | null,
+    display: value.display,
+    status,
+    reason: value.reason,
+  }
+}
+
+function decodeStatement(value: unknown): ReconciledStatement {
+  if (!isRecord(value) || value.version !== 2 || value.kind !== 'statement') {
+    throw new ApiError('Invalid dashboard statement response: version/kind')
+  }
+  const context = value.context
+  if (
+    !isRecord(context) ||
+    !isRecord(context.accountSelection) ||
+    typeof context.accountSelection.type !== 'string' ||
+    (context.accountSelection.id !== null && typeof context.accountSelection.id !== 'number') ||
+    !Array.isArray(context.accountIds) ||
+    !context.accountIds.every((id) => typeof id === 'number') ||
+    typeof context.effectiveDate !== 'string' ||
+    typeof context.currency !== 'string' ||
+    typeof context.digits !== 'number'
+  ) {
+    throw new ApiError('Invalid dashboard statement response: context')
+  }
+  if (value.status !== 'complete' && value.status !== 'partial' && value.status !== 'unavailable') {
+    throw new ApiError('Invalid dashboard statement response: status')
+  }
+  if (!Array.isArray(value.reasons) || !value.reasons.every((reason) => typeof reason === 'string')) {
+    throw new ApiError('Invalid dashboard statement response: reasons')
+  }
+  const capital = value.capital
+  const netResult = value.netResult
+  const components = isRecord(netResult) ? netResult.components : undefined
+  const fxDetail = isRecord(netResult) ? netResult.fxDetail : undefined
+  const returns = value.returns
+  const diagnostics = value.diagnostics
+  if (!isRecord(capital)) throw new ApiError('Invalid dashboard statement response: capital')
+  if (!isRecord(netResult) || !isRecord(components) || !isRecord(fxDetail)) {
+    throw new ApiError('Invalid dashboard statement response: netResult')
+  }
+  if (
+    netResult.reconciliation !== 'reconciled' &&
+    netResult.reconciliation !== 'unreconciled' &&
+    netResult.reconciliation !== 'incomplete'
+  ) {
+    throw new ApiError('Invalid dashboard statement response: reconciliation')
+  }
+  if (typeof netResult.toleranceRaw !== 'string' || typeof netResult.toleranceBasis !== 'string') {
+    throw new ApiError('Invalid dashboard statement response: tolerance')
+  }
+  if (!isRecord(returns) || !isRecord(diagnostics) || !Array.isArray(diagnostics.omittedValuations)) {
+    throw new ApiError('Invalid dashboard statement response: returns/diagnostics')
+  }
+  const inKind = diagnostics.unclassifiedInKindFlows
+  if (!isRecord(inKind) || typeof inKind.present !== 'boolean' || typeof inKind.count !== 'number') {
+    throw new ApiError('Invalid dashboard statement response: unclassifiedInKindFlows')
+  }
+  const amountField = (name: string): StatementAmount => {
+    const source = name.split('.').reduce<unknown>(
+      (node, key) => (isRecord(node) ? node[key] : undefined),
+      value,
+    )
+    return decodeAmount(source, name)
+  }
+  return {
+    version: 2,
+    kind: 'statement',
+    context: context as unknown as StatementContext,
+    status: value.status,
+    reasons: value.reasons as string[],
+    capital: {
+      invested: amountField('capital.invested'),
+      cashOut: amountField('capital.cashOut'),
+      netInvestedCapital: amountField('capital.netInvestedCapital'),
+    },
+    netResult: {
+      nav: amountField('netResult.nav'),
+      controlTotal: amountField('netResult.controlTotal'),
+      components: {
+        realizedPrice: amountField('netResult.components.realizedPrice'),
+        unrealizedPrice: amountField('netResult.components.unrealizedPrice'),
+        income: amountField('netResult.components.income'),
+        fees: amountField('netResult.components.fees'),
+        taxes: amountField('netResult.components.taxes'),
+        fx: amountField('netResult.components.fx'),
+        otherFlows: amountField('netResult.components.otherFlows'),
+      },
+      fxDetail: {
+        security: amountField('netResult.fxDetail.security'),
+        cashFlows: amountField('netResult.fxDetail.cashFlows'),
+      },
+      attributedSum: amountField('netResult.attributedSum'),
+      unexplainedDifference: amountField('netResult.unexplainedDifference'),
+      toleranceRaw: netResult.toleranceRaw,
+      toleranceBasis: netResult.toleranceBasis,
+      reconciliation: netResult.reconciliation,
+    },
+    returns: {
+      totalReturn: decodeReturn(returns.totalReturn, 'returns.totalReturn'),
+      irr: decodeReturn(returns.irr, 'returns.irr'),
+    },
+    diagnostics: {
+      omittedValuations: diagnostics.omittedValuations as Record<string, unknown>[],
+      unclassifiedInKindFlows: inKind as ReconciledStatement['diagnostics']['unclassifiedInKindFlows'],
+      notes: Array.isArray(diagnostics.notes)
+        ? (diagnostics.notes as string[]).filter((note) => typeof note === 'string')
+        : [],
+    },
+  }
+}
+
+export async function getDashboardSummaryV2(options?: RequestOptions): Promise<DashboardSummaryResult> {
+  const value = await apiGet('/dashboard/api/get-summary/?summary_contract=2', options)
+  const legacy = decodeDashboardSummary(value)
+  if (!isRecord(value) || !('summaryV2' in value)) {
+    return { capability: 'legacy_only', legacy }
+  }
+  // Present-but-invalid v2 must error here, never downgrade the UI.
+  return { capability: 'v2', legacy, statement: decodeStatement(value.summaryV2) }
 }

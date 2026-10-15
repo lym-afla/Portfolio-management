@@ -17,7 +17,7 @@ import type { NavQuery, NavResult } from '../contracts'
 import { navWireFixture } from './navFixtures'
 
 const api = vi.hoisted(() => ({
-  getDashboardSummary: vi.fn(),
+  getDashboardSummaryV2: vi.fn(),
   getDashboardSummaryOverTime: vi.fn(),
 }))
 vi.mock('@/services/api', () => api)
@@ -127,7 +127,7 @@ beforeEach(() => {
   vi.resetAllMocks()
   configureContextFixture('2026-09-08')
   pilot.enabled = false
-  api.getDashboardSummary.mockResolvedValue(summaryFixture)
+  api.getDashboardSummaryV2.mockResolvedValue({ capability: 'legacy_only', legacy: summaryFixture })
   chartApi.fetchBreakdownChart.mockResolvedValue(breakdownFixture)
   api.getDashboardSummaryOverTime.mockResolvedValue(historyFixture)
   chartApi.fetchNavChart.mockResolvedValue(v2Result())
@@ -212,7 +212,7 @@ describe('flag-on dashboard (pilot)', () => {
     })
     await flushPromises()
     expect(chartApi.fetchNavChart).toHaveBeenCalledTimes(2)
-    expect(api.getDashboardSummary).toHaveBeenCalledTimes(1)
+    expect(api.getDashboardSummaryV2).toHaveBeenCalledTimes(1)
     const context = usePortfolioContextStore()
     context.triggerDataRefresh()
     await flushPromises()

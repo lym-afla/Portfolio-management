@@ -42,7 +42,7 @@ vi.mock('vue-router', () => ({
 }))
 
 const dashboardWidgets = vi.hoisted(() => ({
-  getDashboardSummary: vi.fn(),
+  getDashboardSummaryV2: vi.fn(),
   getDashboardSummaryOverTime: vi.fn(),
   getSecurityDetail: vi.fn(),
   getSecurityTransactions: vi.fn(),
@@ -52,7 +52,7 @@ vi.mock('@/services/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/services/api')>()
   return {
     ...actual,
-    getDashboardSummary: dashboardWidgets.getDashboardSummary,
+    getDashboardSummaryV2: dashboardWidgets.getDashboardSummaryV2,
     getDashboardSummaryOverTime: dashboardWidgets.getDashboardSummaryOverTime,
     // The security page's non-chart resources also ride the broad axios
     // instance; only the two chart histories stay on the shared transport.
@@ -437,9 +437,9 @@ describe('DashboardPage allocation wiring', () => {
   beforeEach(() => {
     pieState.captured = []
     respondBreakdown = null
-    dashboardWidgets.getDashboardSummary.mockReset()
+    dashboardWidgets.getDashboardSummaryV2.mockReset()
     dashboardWidgets.getDashboardSummaryOverTime.mockReset()
-    dashboardWidgets.getDashboardSummary.mockResolvedValue({
+    dashboardWidgets.getDashboardSummaryV2.mockResolvedValue({
       'Current NAV': '$1,000.00', Invested: '$900.00', 'Cash-out': '$0.00', total_return: '11.11%', irr: 'N/R',
     })
     dashboardWidgets.getDashboardSummaryOverTime.mockResolvedValue({ lines: [], years: [], currentYear: 2026 })
