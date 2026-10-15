@@ -54,6 +54,23 @@ All four findings verified against the code, RED-first, corrected on the same PR
 
 Review-round gates on the final committed head (sequential, actual exit codes): unit 115 files / 1124 passed (0); type-check (0); lint 0 errors / 8 warnings (0, after fixing two genuine errors the round introduced — a control-character regex and a duplicate helper); focused charts-c (0), charts-c3 (0 — one daemon-wedge failure between clean runs, recorded), charts-c5 (0), charts-c4 (0); FULL 18×4 matrix 500 fixture requests, zero mismatches (0); backend 1416 passed / 10 skipped, coverage 83.68% (0).
 
+## Review round 2 — account-scope regression (15 October 2026)
+
+The reviewer correctly identified that the round-1 string normalization regressed the request scope: an unmatched account identity became the string 'Unavailable', which `selectedAccountId` resolved to null — a display fallback silently BROADENED the request to all accounts and destroyed the selected identity.
+
+Fix — canonical identity separated from the Vuetify display model:
+
+- `selectedAccount` is the canonical identity `{type, id, displayName}` and is NEVER a string; `selectedAccountId` derives from it alone, so display fallbacks cannot touch the scope. Only explicit All-accounts/Clear sets the unfiltered identity.
+- `selectModel`/`selectLabel` are DERIVED: the matched option's own value (the input then shows the item title) or a safe fallback string (the identity's displayName — carried by holdings clicks — else 'Unavailable', else 'All accounts'). Choices arriving re-derive the model onto the matched option automatically: identity untouched, no extra scope change.
+- The holdings filter carries the row's displayName through the identity; the base fixture lists the holdings accounts so a matched selection is the norm.
+- The incumbent characterization ("account changes refetch detail+price+position+transactions, never accounts") now drives the change through `applyAccountSelection` — assertions unchanged.
+
+RED-first regressions (real Vuetify + actual request-owner wiring, `SecurityDetailPage.selector.scope.spec.js`): (1) select account A, then the A option disappears — visible/input fall back safely while the refreshed scoped requests STILL carry account 11; (2) a holdings click while choices are pending keeps and requests that account (account 11, never unfiltered) and the late choices restore the matched label with every subsequent request still scoped; (3) choices restored return the matched label with no unfiltered request; (4) explicit Clear intentionally requests the unfiltered scope. Every state asserts the input contains no object/JSON text.
+
+The round-1 string-normalization behavior is thereby REVERTED and superseded; its real-Vuetify input-safety guarantees are retained by the derived model.
+
+Gates on the final committed head (sequential, actual exit codes): unit 116 files / 1128 passed (0); type-check (0); lint 0 errors / 8 warnings (0); focused charts-c (0), charts-c4 (0); FULL 18×4 matrix 496 fixture requests, zero mismatches (0); backend 1416 passed / 10 skipped, coverage 83.71% (0). charts-c3/charts-c5 passed on the pre-scope-fix head and are unaffected by it (security-page selector only; their next runs ride the full matrix).
+
 ## Investigated harness/environment limitations (recorded, not application defects)
 
 - **Pie DOM tooltip in the charts-c flow**: eight investigation runs (dispatch recipe, real pointer hovers, textContent/visibility probes) could not reproduce a FILLED tooltip node in the charts-c flow — the node renders visible but empty — while the identical recipe passes end-to-end in the charts-c4 case ON THE SAME MODIFIED WRAPPERS (charts-c4 exit 0 in this worktree today, including its mobile pie tooltip). The certified share display is pinned by the unit formatter tests; charts-c keeps the three-pie render + capture (canvas internals: no leader lines, white separators, certified labels — inspected on `charts-c-pies.png`); the DOM tooltip assertion stays owned by charts-c4.
