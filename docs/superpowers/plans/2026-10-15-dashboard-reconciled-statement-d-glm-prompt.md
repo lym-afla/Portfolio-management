@@ -1,0 +1,7 @@
+Implement the approved Phase D reconciled dashboard statement.
+
+Fetch origin/codex/frontend-modernization, create an isolated worktree and codex/dashboard-reconciled-statement-d branch, and execute docs/superpowers/plans/2026-10-15-dashboard-reconciled-statement-d.md. The approved visual is docs/design/assets/dashboard-summary-d/approved-statement.png. The earlier design-options assignment is superseded; no more options are needed.
+
+Build backend-first: canonical NAV, signed net capital, net result control total, independently derived realized/unrealized price results, income, fees, taxes and FX, with completeness and explicit reconciliation diagnostics. Existing performance.py computes FX as a residual: do not reuse that as certified FX or hide missing attribution in it. Preserve formulas, scopes, Decimal precision, exact displays and legacy consumers. Pin numeric behavior RED-first, including transfers, cash FX, bonds, crypto, incomplete data and display rounding.
+
+Then implement the approved compact statement, expandable net-result breakdown and separate returns, preserving chart/request ownership and current navigation/palette. Run the plan's committed-code gates and synthetic visual checks. Update ledger/tracker, push, open a needs-approval draft PR into codex/frontend-modernization and stop for financial/design review. No merge, deployment, navigation redesign, Chart.js removal/C5b or original-database writes. Report actual tested SHAs, exit codes and remaining unsupported reconciliation cases. English only.

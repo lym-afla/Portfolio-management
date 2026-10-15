@@ -57,3 +57,6 @@ The owner must be able to compare like-for-like designs without running the app.
 ## After owner selection (not authorized in this assignment)
 
 Write the selected composition's implementation plan, covering existing request ownership, field/string parity, loading/error/empty states, layout tests, focused dashboard/chart cases, full route/D8 acceptance and delivery budget. Implement only after the owner selects a direction. C5b still requires its separate release-validation acceptance and removal approval.
+
+## Superseded — owner decision 15 October 2026
+The owner selected and refined the compact statement with a reconciled net-result breakdown. Execute 2026-10-15-dashboard-reconciled-statement-d.md instead; do not produce another options package. Approved visual: docs/design/assets/dashboard-summary-d/approved-statement.png.
