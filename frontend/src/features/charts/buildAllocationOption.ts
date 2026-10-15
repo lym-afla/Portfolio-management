@@ -77,6 +77,16 @@ function allocationTooltip(document: ChartDocument, params: unknown): string {
   return lines.join('<br/>')
 }
 
+/** The slice's certified share display for its dataIndex — markup-escaped for
+    ECharts, never params.percent, never recomputed. */
+function shareLabel(document: ChartDocument, params: unknown): string {
+  const index = typeof (params as { dataIndex?: unknown }).dataIndex === 'number'
+    ? (params as { dataIndex: number }).dataIndex
+    : -1
+  const allocation: ChartAllocation | undefined = document.allocations?.[index]
+  return allocation ? escapeHtml(allocation.share.display) : ''
+}
+
 export function buildAllocationOption(
   document: ChartDocument,
   resolveContainer?: () => HTMLElement | null,
@@ -91,8 +101,19 @@ export function buildAllocationOption(
     id: allocation.seriesId,
     name: labelById.get(allocation.seriesId) ?? allocation.seriesId,
     value: toPlotNumber(allocation.amount) as number,
-    itemStyle: { color: seriesColor(allocation.seriesId) },
+    itemStyle: {
+      color: seriesColor(allocation.seriesId),
+      // White separators between slices (phase C).
+      borderColor: '#fff',
+      borderWidth: 2,
+    },
   }))
+  // In-slice labels are suppressed on small slices so they never overlap.
+  // The threshold is GEOMETRY ONLY (plot-value proportion — the same boundary
+  // that draws the slices); the label TEXT is always the certified share
+  // display, and suppressed shares stay in the legend, table and tooltip.
+  const plotTotal = data.reduce((sum, entry) => sum + entry.value, 0)
+  const SMALL_SLICE = 0.05
   const series: PieSeriesOption[] = [
     {
       id: `allocation-pie:${summary.dimension}`,
@@ -101,10 +122,19 @@ export function buildAllocationOption(
       radius: [0, '68%'],
       center: ['50%', '50%'],
       selectedMode: false,
-      // Percent labels derived from geometry are forbidden; the category
-      // name is server identity, exact shares live in tooltips and table.
-      label: { formatter: '{b}' },
-      data,
+      // Phase C: certified percentage labels on the slice — the server share
+      // display string, never ECharts' own params.percent and never a
+      // recomputed share — and no leader lines.
+      label: {
+        position: 'inside',
+        color: '#fff',
+        formatter: (params: unknown) => shareLabel(document, params),
+      },
+      labelLine: { show: false },
+      data: data.map((entry) => ({
+        ...entry,
+        label: { show: plotTotal > 0 && entry.value / plotTotal >= SMALL_SLICE },
+      })),
     },
   ]
   return {

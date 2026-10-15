@@ -1,8 +1,11 @@
 <template>
   <v-card>
     <v-card-title>Value and return over time</v-card-title>
-    <v-card-text>
-      <v-row>
+    <!-- Phase C: the chart fills the card edge-to-edge — the card text carries
+         no horizontal padding; the controls row insets itself so the canvas
+         aligns with the dashboard's WorkspaceSection content edges. -->
+    <v-card-text class="nav-chart-card-text">
+      <v-row class="nav-chart-controls">
         <v-col cols="12" sm="4">
           <v-select
             v-model="selectedBreakdown"
@@ -226,11 +229,21 @@ const dateRangeForSelector = computed(() => ({
 </script>
 
 <style scoped>
+/* Phase C: no horizontal card padding — the chart area spans the full card
+   width so the canvas aligns with the WorkspaceSection content edges. */
+.nav-chart-card-text {
+  padding: 16px 0 0;
+}
+
+/* The controls keep the inset the card text used to provide. */
+.nav-chart-controls {
+  padding: 0 16px 16px;
+}
+
 .chart-wrapper {
   position: relative;
   width: 100%;
   height: 600px;
-  padding: 16px; /* Add some padding */
 }
 
 /* Narrow pilots: the five frequency options wrap instead of overflowing the

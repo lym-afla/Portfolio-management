@@ -8,7 +8,8 @@
     <v-row class="mb-4">
       <v-col cols="12" sm="6" md="4">
         <v-select
-          v-model="selectedAccount"
+          :model-value="selectModel"
+          @update:model-value="applyAccountSelection"
           :items="accountOptions"
           item-title="title"
           item-value="value"
@@ -18,6 +19,17 @@
           clearable
           outlined
         >
+          <!-- Phase C: the unfiltered request is visible as "All accounts"
+               in the field — the model is the All-accounts selection (Vuetify
+               invokes the selection slot only for a non-null model), an
+               explicit selection shows its display name, and a selection
+               missing from the available choices normalizes to the safe
+               "Unavailable" label string (PR #54: the input value derives
+               from the model — a raw unmatched object would render
+               '[object Object]'). -->
+          <template v-slot:selection>
+            <span class="security-account-label" :title="selectLabel">{{ selectLabel }}</span>
+          </template>
           <template v-slot:item="{ props, item }">
             <v-list-item
               v-if="item.raw.type === 'option'"
@@ -153,6 +165,56 @@
 
       <SecurityMetadata :bond="bondView" :crypto="cryptoView" />
 
+      <!-- Phase C: holdings context as of the committed valuation date, from
+           the backend's canonical per-account read model. Clicking an account
+           is the explicit filter action; the selector reflects it. -->
+      <WorkspaceSection
+        v-if="holdingsView"
+        heading-id="security-holdings"
+        title="Holdings overview"
+        description="Accounts holding this security as of the valuation date, from remaining holdings."
+        data-testid="security-holdings"
+      >
+        <div class="holdings-groups">
+          <div v-if="holdingsView.current.length" class="holdings-group holdings-group--current">
+            <h3 class="holdings-group__heading">Currently held with</h3>
+            <ul class="holdings-group__accounts">
+              <li v-for="account in holdingsView.current" :key="account.accountId" class="holdings-group__row">
+                <button
+                  type="button"
+                  class="holdings-group__filter"
+                  :data-account-id="account.accountId"
+                  :title="`Raw quantity ${account.quantity}`"
+                  :aria-label="`Filter by ${account.displayName}`"
+                  @click="filterByAccount(account)"
+                >
+                  {{ account.displayName }}
+                </button>
+                <span class="holdings-group__quantity">{{ account.quantityDisplay }}</span>
+              </li>
+            </ul>
+          </div>
+          <div v-if="holdingsView.previous.length" class="holdings-group holdings-group--previous">
+            <h3 class="holdings-group__heading">Previously held with</h3>
+            <ul class="holdings-group__accounts">
+              <li v-for="account in holdingsView.previous" :key="account.accountId" class="holdings-group__row">
+                <button
+                  type="button"
+                  class="holdings-group__filter"
+                  :data-account-id="account.accountId"
+                  :title="`Raw quantity ${account.quantity}`"
+                  :aria-label="`Filter by ${account.displayName}`"
+                  @click="filterByAccount(account)"
+                >
+                  {{ account.displayName }}
+                </button>
+                <span class="holdings-group__quantity">{{ account.quantityDisplay }}</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </WorkspaceSection>
+
       <SecurityActivity
         :view="activityView"
         :items-per-page-options="itemsPerPageOptions"
@@ -223,7 +285,9 @@ const context = usePortfolioContextStore()
 // security feature owner; this entrypoint keeps the route/title surface and
 // the chart presentation unchanged.
 const {
-  selectedAccount,
+  selectModel,
+  selectLabel,
+  applyAccountSelection,
   selectedPeriod,
   transactionOptions,
   itemsPerPageOptions,
@@ -253,6 +317,34 @@ const {
 watch(security, (value) => { emit('update-page-title', value?.name ?? '') }, { flush: 'sync' })
 
 const effectiveCurrentDate = computed(() => appStore.effectiveCurrentDate)
+
+// Phase C review round 2: the canonical identity and its request scope live
+// in useSecurityDetail; the Vuetify select model and the visible label are
+// derived there too (matched option value / safe fallback string). The page
+// only binds them — display fallbacks can never touch the request scope.
+
+// Phase C: the backend's canonical holdings read model (open accounts first,
+// then closed) split into the two compact groups. Display strings stay
+// verbatim; nothing is recalculated client-side.
+const holdingsView = computed(() => {
+  const holdings = security.value?.holdings
+  if (!Array.isArray(holdings) || holdings.length === 0) return null
+  const rows = holdings.map((row) => ({
+    accountId: row.account_id,
+    displayName: asText(row.display_name),
+    quantity: asText(row.quantity),
+    quantityDisplay: asText(row.quantity_display) || asText(row.quantity),
+    status: row.status === 'closed' ? 'closed' : 'open',
+  }))
+  return {
+    current: rows.filter((row) => row.status === 'open'),
+    previous: rows.filter((row) => row.status === 'closed'),
+  }
+})
+
+function filterByAccount(account) {
+  applyAccountSelection({ type: 'account', id: account.accountId, displayName: account.displayName })
+}
 
 // C4: the gated modern history renderers — active only while the security
 // gate is on and the negotiated result is a validated v2 document; legacy_only
@@ -641,5 +733,60 @@ const positionChartOptions = computed(() => ({
   padding-top: 12px;
   padding-bottom: 12px;
   background-color: #f5f5f5;
+}
+
+/* Phase C: compact holdings groups. */
+.holdings-groups {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.holdings-group__heading {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0 0 6px;
+}
+
+.holdings-group__accounts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.holdings-group__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.holdings-group__filter {
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 4px;
+  padding: 2px 6px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: #172b4d;
+  text-align: left;
+}
+
+.holdings-group__filter:hover,
+.holdings-group__filter:focus-visible {
+  border-color: rgba(23, 43, 77, 0.24);
+}
+
+.holdings-group__filter:focus-visible {
+  outline: 2px solid #0f4c81;
+  outline-offset: 2px;
+}
+
+.holdings-group__quantity {
+  font-variant-numeric: tabular-nums;
+  color: #526477;
+  font-size: 0.875rem;
 }
 </style>

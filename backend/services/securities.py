@@ -11,14 +11,14 @@ from decimal import ROUND_HALF_UP, Decimal
 from django.db.models import Prefetch, Q
 from django.shortcuts import get_object_or_404
 
-from common.models import Assets, Transactions
+from common.models import Accounts, Assets, Transactions
 from constants import ASSET_TYPE_CRYPTO, TRANSACTION_TYPE_CRYPTO_REWARD
 from services.nav import IRR
 from services.bonds import calculate_bond_ytm, get_current_aci, get_current_notional
 from services.capital import get_capital_distribution
 from services.fx import get_rate as fx_get_rate
 from services.pricing import calculate_value_at_date, price_at_date
-from services.positions import investment_date, position
+from services.positions import get_account_holdings, investment_date, position
 from services.realized import (
     calculate_buy_in_price,
     realized_gain_loss,
@@ -29,6 +29,7 @@ from services.transactions import reward_value as get_reward_value
 from core.formatting_utils import format_table_data, format_value
 from core.pagination_utils import paginate_table
 from core.sorting_utils import sort_entries
+from core.user_utils import format_account_display
 
 logger = logging.getLogger(__name__)
 
@@ -242,6 +243,33 @@ def get_security_detail(request, security_id, account_id=None):
         # Add current price (using cached value)
         "current_price": current_price,
     }
+
+    # Phase C: per-account holdings context as of the valuation date — the
+    # canonical remaining positions (services.positions), never lifetime buys.
+    # Qualified display names come from the single display source.
+    holding_rows = get_account_holdings(security, effective_current_date, user)
+    holding_accounts = {
+        account.id: account
+        for account in Accounts.objects.filter(
+            id__in=[row["account_id"] for row in holding_rows]
+        ).select_related("broker")
+    }
+    security_data["holdings"] = [
+        {
+            "account_id": row["account_id"],
+            "account_name": holding_accounts[row["account_id"]].name,
+            "broker_name": holding_accounts[row["account_id"]].broker.name,
+            "display_name": format_account_display(holding_accounts[row["account_id"]]),
+            "quantity": row["quantity"],
+            # Exact comma-grouped display for the page (Decimal format spec ','
+            # groups the integer part without any conversion or rounding —
+            # same grouping style as the established formatters).
+            "quantity_display": f"{Decimal(row['quantity']):,}",
+            "status": row["status"],
+        }
+        for row in holding_rows
+        if row["account_id"] in holding_accounts
+    ]
 
     # Add bond-specific data
     if security.is_bond and security.bond_metadata:

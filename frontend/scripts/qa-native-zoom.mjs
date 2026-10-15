@@ -51,8 +51,8 @@ const pressZoomKey = async (sessionId, virtualKeyCode) => {
     modifiers: 2, // Control
     windowsVirtualKeyCode: virtualKeyCode,
     nativeVirtualKeyCode: virtualKeyCode,
-    code: virtualKeyCode === 48 ? 'Digit0' : 'Equal',
-    key: virtualKeyCode === 48 ? '0' : '=',
+    code: virtualKeyCode === 48 ? 'Digit0' : virtualKeyCode === 189 ? 'Minus' : 'Equal',
+    key: virtualKeyCode === 48 ? '0' : virtualKeyCode === 189 ? '-' : '=',
   }
   await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...common }, sessionId)
   await send('Input.dispatchKeyEvent', { type: 'keyUp', ...common }, sessionId)
@@ -78,6 +78,16 @@ ws.onopen = async () => {
     await pressZoomKey(sessionId, 48) // Ctrl+0 resets any prior zoom
     for (let index = 0; index < steps; index++) {
       await pressZoomKey(sessionId, 187) // Ctrl+Plus
+    }
+
+    // Correction loop: long QA sessions deliver CDP keys unreliably, so a
+    // press may not register as a zoom step. Walk with Ctrl+Minus/Plus
+    // until the exact target zoom holds before reading the state.
+    for (let correction = 0; correction < 12; correction++) {
+      const probe = await send('Runtime.evaluate', { expression: 'window.devicePixelRatio', returnByValue: true }, sessionId)
+      const current = Math.round(probe.result.value * 100)
+      if (current === targetPercent) break
+      await pressZoomKey(sessionId, current > targetPercent ? 189 : 187)
     }
 
     const zoom = await send(

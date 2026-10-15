@@ -378,6 +378,38 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
       periods[0].interval.endDate = stamp
       periods[0].key = periods[0].key.replace(/^(.*:opening:).*$/, `$1${stamp}`)
     }
+    if (scenario === 'long' && !price) {
+      // Phase C: 60 same-date observations under distinct server keys — the
+      // accepted document paginates client-side (25 rows initially).
+      const longPoints = Array.from({ length: 60 }, () => ({
+        value: '1.000000000', plotValue: '1.000000000', status: 'ok', reason: 'observed', display: '1.000000000',
+      }))
+      envelope.legacy = longPoints.map((_entry, index) => ({ date: '2026-08-15', position: '1.000000000', key: `security:${securityId}:position:row:${index + 1}` }))
+      envelope.chartV2 = {
+        version: 2,
+        kind: 'position',
+        outcome: 'ready',
+        partition: 'complete',
+        context: { accountSelection: { type: 'all', id: null }, accountIds: [], effectiveDate: '2026-09-08', currency: 'USD', digits: 2 },
+        security: { id: securityId, instrumentType: 'Stock' },
+        periods: longPoints.map((_entry, index) => ({
+          key: `security:${securityId}:position:row:${index + 1}`,
+          endDate: '2026-08-15',
+          displayLabel: '15 Aug 2026',
+          interval: { startDate: '2026-08-15', endDate: '2026-08-15', kind: 'sample_interval' },
+          partialPeriod: false,
+        })),
+        series: [{
+          id: `security:${securityId}:position`,
+          label: 'Position',
+          metric: 'position',
+          role: 'line',
+          axis: 'quantity',
+          unit: { kind: 'quantity', plotDivisor: '1' },
+          points: longPoints,
+        }],
+      }
+    }
     if (scenario === `malformed-${kind}`) envelope.chartV2.version = 3
     if (scenario === `outrange-${kind}`) envelope.chartV2.series[0].points[0].plotValue = '9'.repeat(400)
     if (scenario === 'empty') {
@@ -1137,6 +1169,10 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
             unrealized: '$7.50',
             capital_distribution: '$0.00',
             irr: '1.25%',
+            holdings: [
+              { account_id: 11, account_name: 'Main', broker_name: 'IBKR', display_name: 'IBKR \u2013 Main', quantity: '10.000000000', status: 'open' },
+              { account_id: 12, account_name: 'IIS', broker_name: 'Tinkoff', display_name: 'Tinkoff \u2013 IIS', quantity: '0.000000000', status: 'closed' },
+            ],
           })
           return
         }

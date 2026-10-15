@@ -91,7 +91,13 @@ interface PieSeries {
   type: string
   radius: [number, string]
   selectedMode: boolean
-  data: Array<{ id: string; name: string; value: number; itemStyle?: { color?: string } }>
+  data: Array<{
+    id: string
+    name: string
+    value: number
+    itemStyle?: { color?: string; borderColor?: string; borderWidth?: number }
+    label?: { show?: boolean }
+  }>
 }
 
 function pieSeriesOf(option: ReturnType<typeof buildAllocationOption>): PieSeries {
@@ -210,6 +216,82 @@ describe('buildAllocationOption', () => {
     ))
     doc.series = doc.series.map((series) => (series.id === first.seriesId ? { ...series, points: [big] } : series))
     expect(() => buildAllocationOption(doc)).toThrow(RangeError)
+  })
+})
+
+describe('phase C: pie presentation (no leader lines, white separators, certified share labels)', () => {
+  it('draws no leader lines', () => {
+    const option = buildAllocationOption(documentFor()) as Record<string, unknown>
+    const series = pieSeriesOf(option) as unknown as Record<string, unknown>
+    expect(series.labelLine).toEqual({ show: false })
+  })
+
+  it('separates slices with white borders', () => {
+    const option = buildAllocationOption(documentFor())
+    const series = pieSeriesOf(option)
+    for (const entry of series.data) {
+      expect(entry.itemStyle?.borderColor).toBe('#fff')
+      expect(entry.itemStyle?.borderWidth).toBeGreaterThan(0)
+    }
+  })
+
+  it('labels slices with the CERTIFIED share display, never ECharts percent or recomputation', () => {
+    const doc = documentFor()
+    const option = buildAllocationOption(doc) as {
+      series: Array<{ label: { formatter: (params: unknown) => string } }>
+    }
+    const formatter = option.series[0].label.formatter
+    // The label text is the server share display for that slice, verbatim.
+    expect(formatter({ dataIndex: 0, percent: 99.9 })).toBe('75.0%')
+    expect(formatter({ dataIndex: 1, percent: 0.1 })).toBe('25.0%')
+    // ECharts' own params.percent is never rendered.
+    expect(formatter({ dataIndex: 0, percent: 42 })).not.toContain('42')
+  })
+
+  it('escapes hostile share displays in slice labels', () => {
+    const doc = documentFor()
+    doc.allocations = doc.allocations!.map((allocation, index) => (
+      index === 0
+        ? { ...allocation, share: { ...allocation.share, display: '75.0%<img src=x onerror=alert(1)>' } }
+        : allocation
+    ))
+    const option = buildAllocationOption(doc) as {
+      series: Array<{ label: { formatter: (params: unknown) => string } }>
+    }
+    const html = option.series[0].label.formatter({ dataIndex: 0 })
+    expect(html).not.toContain('<img')
+    expect(html).toContain('&lt;img')
+  })
+
+  it('hides the in-slice label on small slices, keeping the share in legend/table/tooltip', () => {
+    // 97/3 split: the 3% slice is too small for an in-slice label.
+    const doc = documentFor()
+    const stock = doc.series.find((series) => series.id === 'asset_type:Stock')!
+    const cash = doc.series.find((series) => series.id === 'asset_type:Cash')!
+    stock.points = [{ value: '3', plotValue: '3', status: 'ok', reason: 'observed', display: 'USD 3.00' }]
+    cash.points = [{ value: '97', plotValue: '97', status: 'ok', reason: 'observed', display: 'USD 97.00' }]
+    doc.allocations = [
+      { seriesId: cash.id, rank: 1, amount: cash.points[0], share: { value: '0.97', plotValue: '0.97', status: 'ok', reason: 'observed', display: '97.0%' } },
+      { seriesId: stock.id, rank: 2, amount: stock.points[0], share: { value: '0.03', plotValue: '0.03', status: 'ok', reason: 'observed', display: '3.0%' } },
+    ]
+    const option = buildAllocationOption(doc)
+    const series = pieSeriesOf(option) as unknown as {
+      data: Array<{ label?: { show?: boolean } }>
+    }
+    expect(series.data[0].label?.show).toBe(true)
+    expect(series.data[1].label?.show).toBe(false)
+    // The exact share stays available in the tooltip (and table/legend).
+    const tooltip = (buildAllocationOption(doc) as { tooltip: { formatter: (params: unknown) => string } }).tooltip
+    expect(tooltip.formatter({ dataIndex: 1 })).toContain('3.0%')
+  })
+
+  it('hides the in-slice label on an explicit zero-exposure row', () => {
+    const option = buildAllocationOption(eligibleWithZeroRow())
+    const series = pieSeriesOf(option) as unknown as {
+      data: Array<{ label?: { show?: boolean } }>
+    }
+    expect(series.data[0].label?.show).toBe(true)
+    expect(series.data[1].label?.show).toBe(false)
   })
 })
 

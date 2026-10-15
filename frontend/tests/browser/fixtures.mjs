@@ -18,6 +18,11 @@ export function backendAccountOptions({ longAccountName = false } = {}) {
       [
         [longAccountName ? 'Long' : 'First', { type: 'account', id: 1, display_name: displayName }],
         ['Second', { type: 'account', id: 2, display_name: 'Second Broker – Second account' }],
+        // Phase C: the stock detail's holdings context references these
+        // accounts; the choices must list them so an explicit holdings
+        // filter can match.
+        ['Main', { type: 'account', id: 11, display_name: 'IBKR – Main' }],
+        ['IIS', { type: 'account', id: 12, display_name: 'Tinkoff – IIS' }],
       ],
     ],
     ['__SEPARATOR__', '__SEPARATOR__'],
@@ -422,6 +427,10 @@ const fixtures = new Map([
       unrealized: '$0.00',
       capital_distribution: '$100.00',
       irr: '0.00%',
+      holdings: [
+        { account_id: 11, account_name: 'Main', broker_name: 'IBKR', display_name: 'IBKR \u2013 Main', quantity: '1.000000000', status: 'open' },
+        { account_id: 12, account_name: 'IIS', broker_name: 'Tinkoff', display_name: 'Tinkoff \u2013 IIS', quantity: '0.000000000', status: 'closed' },
+      ],
     },
   ],
   ['GET /database/api/securities/1/price-history/', []],

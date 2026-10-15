@@ -71,12 +71,12 @@
               @update:interaction="interaction = $event"
               @fallback="useFallback"
             />
-            <ChartLegend
+            <ChartZoomControls
               :document="v2Document"
               :interaction="interaction"
               @update:interaction="interaction = $event"
             />
-            <ChartInspection
+            <ChartLegend
               :document="v2Document"
               :interaction="interaction"
               @update:interaction="interaction = $event"
@@ -103,7 +103,7 @@ import { pilotRequested, resolveRenderer } from './rendererPolicy'
 import ChartHost from './ChartHost.vue'
 import ChartLegend from './ChartLegend.vue'
 import ChartDataTable from './ChartDataTable.vue'
-import ChartInspection from './ChartInspection.vue'
+import ChartZoomControls from './ChartZoomControls.vue'
 
 const props = defineProps<{
   result: NavResult | null
@@ -198,5 +198,17 @@ function forwardParams(params: object): void {
 .nav-chart-panel__pilot > * {
   min-width: 0;
   max-width: 100%;
+}
+
+/* Phase C: the pilot canvas matches the incumbent chart-wrapper height
+   (600px desktop / 360px narrow) and fills the card width. */
+.nav-chart-panel__pilot :deep(.chart-host) {
+  height: 600px;
+}
+
+@media (max-width: 599px) {
+  .nav-chart-panel__pilot :deep(.chart-host) {
+    height: 360px;
+  }
 }
 </style>

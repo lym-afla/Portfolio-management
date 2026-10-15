@@ -163,6 +163,7 @@ describe('flag-on dashboard (pilot)', () => {
     const legendText = wrapper.find('[role="group"][aria-label="Chart series visibility"]').text()
     expect(legendText).toContain('Since-inception IRR (annualized)')
     expect(legendText).toContain('Interval IRR (annualized)')
+    await wrapper.get('[data-testid="chart-table-toggle"]').trigger('click')
     expect(wrapper.find('caption').text()).toBe('Exact values by period')
     wrapper.unmount()
   })

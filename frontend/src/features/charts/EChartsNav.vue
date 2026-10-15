@@ -5,6 +5,8 @@
        from pointer/zoom events by server period keys without event loops. -->
   <div ref="host" class="echarts-nav">
     <VChart
+      :key="`dpr-${dprKey}`"
+      :init-options="dprInitOptions"
       class="echarts-nav__chart"
       :option="option"
       :update-options="{ notMerge: true }"
@@ -32,6 +34,7 @@ import type { EChartsOption } from 'echarts'
 import type { ChartDocument } from './contracts'
 import type { ChartInteraction } from './interaction'
 import { buildNavOption } from './buildNavOption'
+import { watchDevicePixelRatio } from './devicePixelRatio'
 
 use([
   BarChart,
@@ -55,6 +58,23 @@ const emit = defineEmits<{
 }>()
 
 const host = ref<HTMLElement | null>(null)
+
+// A devicePixelRatio change (native zoom, monitor switch) invalidates the
+// painter's backing-store resolution; the key bump re-initializes the chart
+// at the new dpr. Interaction state lives in the parent and survives.
+const dprKey = ref(0)
+watchDevicePixelRatio(() => {
+  dprKey.value += 1
+})
+
+// A remount must init with the CURRENT dpr: zrender’s module-level default
+// is captured at bundle load and stays stale after native zoom changes.
+// dprKey is the reactive dep: without it the computed caches its first
+// evaluation (window.devicePixelRatio is not reactive).
+const dprInitOptions = computed(() => {
+  void dprKey.value
+  return { devicePixelRatio: window.devicePixelRatio || 1 }
+})
 
 const option = computed<EChartsOption>(() => {
   try {

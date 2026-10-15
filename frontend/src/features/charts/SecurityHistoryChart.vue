@@ -126,7 +126,10 @@ function forward(interaction: SecurityInteraction): void {
 }
 
 .security-history-chart__canvas {
-  height: 320px;
+  /* Phase C: 400px matches the incumbent renderer's height on this page
+     (the skeleton and fallback boxes are 400px), so a renderer switch no
+     longer shifts the section. */
+  height: 400px;
   min-width: 0;
 }
 

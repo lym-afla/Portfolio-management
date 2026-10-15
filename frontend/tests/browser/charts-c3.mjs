@@ -45,7 +45,7 @@ const chartState = `(() => ({
     text: button.innerText.trim(),
   })),
   tableCaption: document.querySelector('[data-testid="nav-echarts-pilot"] caption')?.innerText ?? null,
-  inspection: document.querySelector('.chart-inspection')?.innerText ?? null,
+  inspectedRow: document.querySelector('[data-testid="nav-echarts-pilot"] tbody tr[aria-selected="true"]')?.innerText ?? null,
 }))()`
 
 async function legendButton(run, text) {
@@ -289,6 +289,10 @@ export async function runChartsC3PilotFlow({
   try {
     await run(['open', `${pilotServer.origin}/dashboard`])
     await waitFor(run, `document.querySelectorAll('[data-series-id]').length > 0 && document.querySelector('[data-testid="nav-echarts-pilot"] canvas') !== null`)
+    // Phase C: the exact table is collapsed by default; expand it for the
+    // table/keyboard probes below.
+await run(['eval', `(() => { for (const button of document.querySelectorAll('[data-testid="chart-table-toggle"]')) { if (button.getAttribute('aria-expanded') === 'false') button.click() } return true })()`])
+  await run(['wait', '150'])
     let state = await evalProbe(run, chartState)
     assert.equal(state.pilot, true, 'flag on: pilot composition renders')
     assert.equal(state.notice, false, 'flag on: v2 shows no capability notice')
@@ -296,8 +300,12 @@ export async function runChartsC3PilotFlow({
     const inception = await legendButton(run, 'Since-inception IRR (annualized)')
     assert.equal(interval.id, 'metric:irr_interval')
     assert.equal(inception.id, 'metric:irr_inception')
+    // Phase C: the exact table is a collapsed disclosure — expand it and
+    // assert the caption there; the separate inspection panel is gone.
+    await run(['eval', `(() => { for (const button of document.querySelectorAll('[data-testid="chart-table-toggle"]')) { if (button.getAttribute('aria-expanded') === 'false') button.click() } return true })()`])
+    await run(['wait', '150'])
+    state = await evalProbe(run, chartState)
     assert.equal(state.tableCaption, 'Exact values by period')
-    assert.match(String(state.inspection), /Select a table row|Inspection/, 'inspection panel present')
 
     // --- independent IRR toggles; legend/zoom never request data ----------
     const beforeLegend = navRequestCount(fixtureServer)
@@ -311,18 +319,22 @@ export async function runChartsC3PilotFlow({
     assert.equal(navRequestCount(fixtureServer) - beforeLegend, 0, 'legend toggles issue no requests')
 
     // --- keyboard/table inspection into the shared model ------------------
-    await run(['eval', `(() => { const row = document.querySelectorAll('[data-testid="nav-echarts-pilot"] tbody tr')[1]; row.focus(); row.click(); document.querySelector('.chart-inspection').scrollIntoView({ block: 'center' }); return true })()`])
+    // Click the Jul-26 row by CONTENT (the fixture's period count is not
+    // part of the contract): the clicked row must become the selected one.
+    const clicked = await evalProbe(run, `(() => { const row = [...document.querySelectorAll('[data-testid="nav-echarts-pilot"] tbody tr')].find((entry) => /Jul-26/.test(entry.innerText)); if (!row) return null; row.focus(); row.click(); document.querySelector('[data-testid="nav-echarts-pilot"] .chart-table').scrollIntoView({ block: 'center' }); return row.innerText })()`)
+    assert.ok(clicked, 'a Jul-26 row exists to click')
     await run(['wait', '150'])
     state = await evalProbe(run, chartState)
-    assert.match(String(state.inspection), /Jul-26/, 'inspection shows the selected period')
+    const diag = await evalProbe(run, `({ rows: document.querySelectorAll('[data-testid="nav-echarts-pilot"] tbody tr').length, selected: document.querySelectorAll('[data-testid="nav-echarts-pilot"] tbody tr[aria-selected="true"]').length, expanded: document.querySelector('[data-testid="chart-table-toggle"]')?.getAttribute('aria-expanded') })`)
+    assert.match(String(state.inspectedRow), /Jul-26/, `keyboard row inspection selects the row in the exact table (diag ${JSON.stringify(diag)})`)
     await run(['screenshot', resolve(DESIGN_ASSETS, 'c3-nav-keyboard.png')])
 
     // --- viewport controls: zoom is view-only ------------------------------
-    const selects = await evalProbe(run, `document.querySelectorAll('.chart-inspection select').length`)
+    const selects = await evalProbe(run, `document.querySelectorAll('[data-testid="chart-zoom-start"], [data-testid="chart-zoom-end"]').length`)
     assert.equal(selects, 2, 'native start/end period selects')
-    await run(['eval', `(() => { const select = document.querySelectorAll('.chart-inspection select')[0]; select.value = select.options[1].value; select.dispatchEvent(new Event('change', { bubbles: true })); return true })()`])
+    await run(['eval', `(() => { const select = document.querySelector('[data-testid="chart-zoom-start"]'); select.value = select.options[1].value; select.dispatchEvent(new Event('change', { bubbles: true })); return true })()`])
     await run(['wait', '150'])
-    await run(['eval', `document.querySelector('.chart-inspection__reset').click()`])
+    await run(['eval', `document.querySelector('[data-testid="chart-zoom-reset"]').click()`])
     await run(['wait', '150'])
     assert.equal(navRequestCount(fixtureServer) - beforeLegend, 0, 'viewport changes issue no requests')
 
@@ -370,7 +382,7 @@ export async function runChartsC3PilotFlow({
       const panelRect = panel ? panel.getBoundingClientRect() : null
       const controls = [...document.querySelectorAll('[data-series-id]')]
       const canvas = document.querySelector('[data-testid="nav-echarts-pilot"] canvas')
-      const viewportControls = [...document.querySelectorAll('.chart-inspection select, .chart-inspection__reset')]
+      const viewportControls = [...document.querySelectorAll('.chart-zoom select, .chart-zoom__reset')]
       const withinPanel = (element) => {
         const rect = element.getBoundingClientRect()
         return rect.width > 0 && panelRect ? rect.right <= panelRect.right + 1 : false
@@ -422,7 +434,7 @@ export async function runChartsC3PilotFlow({
     assert.deepEqual(new Set(restored.pressed), new Set(['true']), 'desktop restore: all series still visible')
     await run(['set', 'viewport', '390', '844'])
     const hit = await evalProbe(run, `(() => {
-      const targets = ['.v-btn-toggle button', '[data-series-id]', '.chart-inspection select', '.chart-inspection__reset', '.chart-table']
+      const targets = ['.v-btn-toggle button', '[data-series-id]', '.chart-zoom select', '.chart-zoom__reset', '.chart-table']
       return targets.map((selector) => {
         const elements = [...document.querySelectorAll(selector)]
         if (elements.length === 0) return { selector, present: false }
@@ -454,7 +466,8 @@ export async function runChartsC3PilotFlow({
     }
     assert.match(String(lastMobile.tooltip.text), /Since-inception IRR \(annualized\)/, 'tooltip: inception control name')
     assert.match(String(lastMobile.tooltip.text), /Interval IRR \(annualized\)/, 'tooltip: interval control name')
-    assert.match(String(lastMobile.tooltip.text), /Inception to \d{4}-\d{2}-\d{2}/, 'tooltip: inception horizon')
+    // Phase C: the per-line horizon brackets moved to the exact-value table.
+    assert.doesNotMatch(String(lastMobile.tooltip.text), /Inception to \d{4}-\d{2}-\d{2}/, 'tooltip: no horizon brackets')
     assert.match(String(lastMobile.tooltip.text), /N\/A — not_available \(solver_unavailable\)/, 'tooltip: unavailable IRR status text')
     // agent-browser's own screenshot closes the tooltip before capture, so
     // the mobile artifact is taken over CDP: hover, verify open, capture in
@@ -483,7 +496,9 @@ export async function runChartsC3PilotFlow({
     let tooltip = await waitForTooltip(run)
     assertTooltipWithinViewport(tooltip, 'mobile right-edge tooltip')
     await assertTooltipFullyVisible(run, 'mobile right-edge tooltip')
-    assert.match(String(tooltip.text), /USD|N\/A/, 'tooltip: exact server displays present')
+    // Phase C: an edge column whose values are all absent shows the control
+    // names and honest gaps (the totals line moved to the exact table).
+    assert.match(String(tooltip.text), /IRR \(annualized\)|–|\bN\/A\b/, 'tooltip: exact server displays present')
     // Sizing survives the tooltip interactions.
     const sizedAfterTooltips = await evalProbe(run, `(() => {
       const panel = document.querySelector('.nav-chart-panel__pilot')

@@ -4,8 +4,15 @@
        server display; unavailable/partial points state their status, reason
        and knownSubtotal as explicitly incomplete information. The full-NAV
        column comes only from document.totals and ignores hidden categories.
-       Text interpolation only — server names can never inject markup. -->
-  <div class="chart-table" role="region" aria-label="Exact chart values by period" tabindex="0">
+       Text interpolation only — server names can never inject markup.
+       Phase C: collapsed by default behind a labelled disclosure; totals and
+       all metadata stay intact inside. -->
+  <ChartDisclosure
+    show-label="Show exact values by period"
+    hide-label="Hide exact values by period"
+    test-id="chart-table-toggle"
+  >
+    <div class="chart-table" role="region" aria-label="Exact chart values by period" tabindex="0">
     <table>
       <caption>Exact values by period</caption>
       <thead>
@@ -13,7 +20,7 @@
           <th scope="col" class="chart-table__period">Period</th>
           <th scope="col">Interval</th>
           <th v-for="series in document.series" :key="series.id" scope="col" class="chart-table__value">
-            {{ series.label }}
+            {{ seriesControlName(series) }}
           </th>
           <th v-if="hasTotals" scope="col" class="chart-table__value">Portfolio NAV (all categories)</th>
         </tr>
@@ -36,6 +43,7 @@
           <td>{{ intervalLabel(period) }}</td>
           <td v-for="series in document.series" :key="series.id" class="chart-table__value">
             {{ pointText(series.points[index]) }}
+            <span v-if="seriesHorizon(series, period)" class="chart-table__horizon">{{ seriesHorizon(series, period) }}</span>
           </td>
           <td v-if="hasTotals" class="chart-table__value">
             {{ pointText(document.totals![index]) }}
@@ -43,13 +51,15 @@
         </tr>
       </tbody>
     </table>
-  </div>
+    </div>
+  </ChartDisclosure>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { ChartDocument, ChartPeriod, ChartValue } from './contracts'
-import type { ChartInteraction } from './interaction'
+import { seriesControlName, seriesHorizon, type ChartInteraction } from './interaction'
+import ChartDisclosure from './ChartDisclosure.vue'
 
 const props = defineProps<{
   document: ChartDocument
@@ -119,6 +129,13 @@ td {
 .chart-table__value {
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+.chart-table__horizon {
+  display: block;
+  font-size: 0.75rem;
+  color: #5c6b7a;
+  font-weight: 400;
 }
 
 .chart-table__partial {

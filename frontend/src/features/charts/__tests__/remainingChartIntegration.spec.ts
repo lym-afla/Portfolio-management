@@ -588,6 +588,11 @@ describe('SecurityDetailPage security-history wiring', () => {
       expect(pieState.captured.length).toBe(2)
       const tables = wrapper.findAll('[data-testid="security-data-table"]')
       expect(tables).toHaveLength(2)
+      // Phase C: the observation tables are collapsed disclosures; expand both
+      // before reading their exact text.
+      for (const toggle of wrapper.findAll('[data-testid="security-table-toggle"]')) {
+        await toggle.trigger('click')
+      }
       expect(tables[0].text()).toContain('98.5% of nominal')
       expect(tables[1].text()).toContain('0.000116590')
       wrapper.unmount()

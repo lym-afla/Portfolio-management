@@ -71,3 +71,22 @@ it('keeps the accepted chart renderer mounted under the updating overlay', async
   expect(wrapper.get('.chart-stub').element).toBe(renderer)
   wrapper.unmount()
 })
+
+it('phase C: the chart area fills the card — controls inset themselves, no horizontal card padding', () => {
+  const wrapper = mountNAVChart({
+    currency: 'USD', labels: ['2026-01-01'],
+    datasets: [{ label: 'NAV', type: 'bar', data: [100] }],
+  })
+  // The card text itself carries no horizontal padding; the controls row
+  // owns the inset so the chart slot spans the full card width.
+  expect(wrapper.get('.nav-chart-card-text').classes()).toContain('nav-chart-card-text')
+  expect(wrapper.get('.nav-chart-controls').exists()).toBe(true)
+  const cardText = wrapper.get('.nav-chart-card-text').element
+  const controls = wrapper.get('.nav-chart-controls').element
+  expect(cardText.contains(controls)).toBe(true)
+  // The chart region is a SIBLING of the controls, not inside their padding.
+  const chartWrapper = wrapper.get('.chart-wrapper').element
+  expect(cardText.contains(chartWrapper)).toBe(true)
+  expect(controls.contains(chartWrapper)).toBe(false)
+  wrapper.unmount()
+})

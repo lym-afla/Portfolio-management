@@ -6,6 +6,8 @@
   <div ref="host" class="echarts-security">
     <VChart
       ref="chart"
+      :key="`dpr-${dprKey}`"
+      :init-options="dprInitOptions"
       class="echarts-security__chart"
       :option="option"
       :update-options="{ notMerge: true }"
@@ -33,6 +35,7 @@ import type { ChartDocument } from './contracts'
 import type { SecurityInteraction } from './securityInteraction'
 import { reconcileSecurityInteraction } from './securityInteraction'
 import { buildSecurityOption, securityAxisKeys } from './buildSecurityOption'
+import { watchDevicePixelRatio } from './devicePixelRatio'
 
 use([
   LineChart,
@@ -59,6 +62,23 @@ const host = ref<HTMLElement | null>(null)
 // event we translate, and a disposed instance is never touched.
 const chart = ref<{ dispatchAction: (payload: Record<string, unknown>) => void } | null>(null)
 let disposed = false
+
+// A devicePixelRatio change (native zoom, monitor switch) invalidates the
+// painter's backing-store resolution; the key bump re-initializes the chart
+// at the new dpr. The view-only zoom lives in the page and survives.
+const dprKey = ref(0)
+watchDevicePixelRatio(() => {
+  dprKey.value += 1
+})
+
+// A remount must init with the CURRENT dpr: zrender’s module-level default
+// is captured at bundle load and stays stale after native zoom changes.
+// dprKey is the reactive dep: without it the computed caches its first
+// evaluation (window.devicePixelRatio is not reactive).
+const dprInitOptions = computed(() => {
+  void dprKey.value
+  return { devicePixelRatio: window.devicePixelRatio || 1 }
+})
 
 onUnmounted(() => {
   disposed = true
