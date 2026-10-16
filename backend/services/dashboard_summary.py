@@ -183,8 +183,13 @@ def _amount(value, currency, digits, status="ok", reason=None,
 
 
 def _component_amount(component, currency, digits):
-    return _amount(component.value, currency, digits,
-                   status=component.status, reason=component.first_reason)
+    amount = _amount(component.value, currency, digits,
+                     status=component.status, reason=component.first_reason)
+    if component.status == "partial":
+        # The reliable included portion of a partial component - distinct
+        # from a certified total.
+        amount["knownSubtotal"] = format(component.value, "f")
+    return amount
 
 
 def _unknown_amount(reason, known_subtotal=None):
@@ -479,8 +484,13 @@ def build_reconciled_summary(user, effective_date, currency_target, digits,
     bond_fallback_affected = []
     nav_bond_affected = False
     realized_bond_affected = False
+    bond_defective_realized_price = Decimal(0)
+    bond_defective_realized_fx = Decimal(0)
+    bond_defective_unrealized_price = Decimal(0)
+    bond_defective_unrealized_fx = Decimal(0)
     for asset in candidates:
         asset_precisions.append(_cash_precision_for(asset, account_ids))
+        bond_defective = False
         open_option = options.is_option_asset(asset)
         if asset.is_bond:
             # Detect the affected calculation path precisely: an amortizing
@@ -508,16 +518,28 @@ def build_reconciled_summary(user, effective_date, currency_target, digits,
                     asset=asset, date__lte=effective_date
                 ).exists()
             ):
-                same_currency = (
-                    (asset.currency or "").upper()
-                    == currency_target.upper()
+                # The guard must match the guarded calculation:
+                # get_current_notional treats the notional as denominated in
+                # nominal_currency or asset.currency (its source currency)
+                # and converts source -> target. The fallback omits exactly
+                # that conversion, so the no-op case is source == target.
+                source_currency = (
+                    (bond_meta.nominal_currency or asset.currency or "").upper()
                 )
-                # Same currency: the omitted conversion multiplies by
-                # fx(nominal -> nominal) = 1 - a no-op; the asset keeps its
-                # fully certified, fully computed attribution.
+                same_currency = source_currency == currency_target.upper()
+                # Same source/reporting currency: the omitted conversion
+                # multiplies by fx(source -> source) = 1 - a no-op; the
+                # asset keeps its fully certified, fully computed
+                # attribution.
                 if not same_currency:
+                    bond_defective = True
                     bond_fallback_affected.append(
-                        {"asset_id": asset.id, "currency": asset.currency}
+                        {
+                            "asset_id": asset.id,
+                            "currency": asset.currency,
+                            "nominal_currency": bond_meta.nominal_currency,
+                            "source_currency": source_currency,
+                        }
                     )
                     reasons.add(REASON_BOND_NOTIONAL_FALLBACK)
                 open_position = (
@@ -563,8 +585,15 @@ def build_reconciled_summary(user, effective_date, currency_target, digits,
             realized_fx.fail(REASON_MISSING_PRICE)
             reasons.add(REASON_MISSING_PRICE)
         if realized is not None:
-            realized_price.add(realized["all_time"]["price_appreciation"])
-            realized_fx.add(realized["all_time"]["fx_effect"])
+            if bond_defective:
+                # Provisional only: the affected path may have priced this
+                # attribution with the unconverted notional. Excluded from
+                # every known subtotal; reported as provisional diagnostics.
+                bond_defective_realized_price += realized["all_time"]["price_appreciation"]
+                bond_defective_realized_fx += realized["all_time"]["fx_effect"]
+            else:
+                realized_price.add(realized["all_time"]["price_appreciation"])
+                realized_fx.add(realized["all_time"]["fx_effect"])
 
         if open_option or realized is None:
             if open_option:
@@ -581,8 +610,12 @@ def build_reconciled_summary(user, effective_date, currency_target, digits,
             unrealized_fx.fail(REASON_MISSING_PRICE)
             reasons.add(REASON_MISSING_PRICE)
         if unrealized is not None:
-            unrealized_price.add(unrealized["price_appreciation"])
-            unrealized_fx.add(unrealized["fx_effect"])
+            if bond_defective:
+                bond_defective_unrealized_price += unrealized["price_appreciation"]
+                bond_defective_unrealized_fx += unrealized["fx_effect"]
+            else:
+                unrealized_price.add(unrealized["price_appreciation"])
+                unrealized_fx.add(unrealized["fx_effect"])
 
     if nav_bond_affected:
         # The defect lives inside the canonical NAV for the affected open
@@ -668,6 +701,7 @@ def build_reconciled_summary(user, effective_date, currency_target, digits,
         and cash_component.complete
     )
     known_total = known_components_sum + (fxcash if fx_cash_known else Decimal(0))
+    # bond_defective_* accumulators are deliberately NOT part of known_total.
     aggregate_reason = (
         realized_price.first_reason
         or realized_fx.first_reason
@@ -777,6 +811,12 @@ def build_reconciled_summary(user, effective_date, currency_target, digits,
                             and unrealized_fx.complete else
                             (realized_fx.first_reason
                              or unrealized_fx.first_reason)),
+                    known_subtotal=(
+                        fx_security
+                        if not (realized_fx.complete
+                                and unrealized_fx.complete)
+                        else None
+                    ),
                 ),
                 "cashFlows": (
                     _amount(fxcash, currency_target, digits,
@@ -820,6 +860,13 @@ def build_reconciled_summary(user, effective_date, currency_target, digits,
             **({"affectedNotionalFallbacks": [
                     dict(item) for item in bond_fallback_affected
                 ]}
+                if bond_fallback_affected else {}),
+            **({"affectedProvisionalAttribution": {
+                    "realizedPrice": format(bond_defective_realized_price, "f"),
+                    "realizedFx": format(bond_defective_realized_fx, "f"),
+                    "unrealizedPrice": format(bond_defective_unrealized_price, "f"),
+                    "unrealizedFx": format(bond_defective_unrealized_fx, "f"),
+                }}
                 if bond_fallback_affected else {}),
             "unclassifiedInKindFlows": {
                 "present": in_kind_present,

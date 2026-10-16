@@ -1261,12 +1261,14 @@ def test_bond_fallback_closed_foreign_position_warns_only_on_realized(user):
     assert realized["status"] == "partial"
     assert realized["reason"] == "bond_notional_fallback_unconverted"
     assert nr["components"]["unrealizedPrice"]["status"] == "ok"
-    # Aggregates need complete attribution: unknown, with the known share
-    # labelled (realized 6.25 + realized fx 23.75 + cash FX 26.25 = 56.25).
+    # Aggregates need complete attribution: unknown, with the KNOWN share
+    # labelled. The warned realized attribution (6.25 + 23.75) is
+    # provisional - it may depend on the affected fallback path - so only
+    # cash FX (26.25) counts toward the known subtotal.
     attributed = nr["attributedSum"]
     assert attributed["status"] == "partial"
     assert attributed["raw"] is None
-    assert Decimal(attributed["knownSubtotal"]) == Decimal("56.25")
+    assert Decimal(attributed["knownSubtotal"]) == Decimal("26.25")
     assert nr["unexplainedDifference"]["status"] == "partial"
     assert nr["unexplainedDifference"]["raw"] is None
     assert nr["reconciliation"] == "incomplete"
@@ -1274,6 +1276,177 @@ def test_bond_fallback_closed_foreign_position_warns_only_on_realized(user):
     # Warnings only on affected outputs: total return depends on NAV and
     # capital, which are both correct here, so it stays certified.
     assert doc["returns"]["totalReturn"]["status"] == "ok"
+
+
+# ---------------------------------------------------------------------------
+# Bond guard source-currency matching (review round 5)
+# ---------------------------------------------------------------------------
+# get_current_notional denominates the notional in nominal_currency or
+# asset.currency (its source currency) and converts source -> target; the
+# fallback omits exactly that conversion. The guard must therefore compare
+# the SOURCE currency with the reporting currency:
+# - quotation (asset) currency matches reporting but the nominal differs:
+#   the unconverted fallback notional is foreign-scale -> affected;
+# - the nominal matches reporting (quotation differs): the omitted
+#   conversion is x1.0 -> a no-op, never falsely flagged.
+
+
+@pytest.mark.django_db
+def test_bond_fallback_quotation_matches_reporting_nominal_differs_is_affected(user):
+    """USD-quotation bond with a RUB nominal, reported in USD: the fallback
+    returns the RUB-par notional as if it were USD (value 10,000 for a
+    12.5-USD position) - the defect is live and must not escape detection
+    because the quotation happens to match the reporting currency."""
+    broker = make_broker(user)
+    account = make_account(broker)
+    bond = make_asset(user, type="Bond", name="USD Quote RUB Nominal", currency="USD", exposure="Fixed Income")
+    BondMetadata.objects.create(
+        asset=bond, initial_notional=Decimal("1000"), nominal_currency="RUB",
+        is_amortizing=True,
+    )
+    make_fx("USD", "RUB", date(2064, 1, 5), "0.0100", user)
+    make_fx("USD", "RUB", date(2064, 10, 1), "0.0125", user)
+    make_tx(account, date(2064, 1, 5), "Cash in", currency="USD",
+            cash_flow=Decimal("20000"))
+    make_tx(account, date(2064, 1, 5), "Buy", security=bond, currency="USD",
+            quantity=Decimal("10"), price=Decimal("95"), notional=Decimal("1000"))
+    make_price(bond, date(2064, 10, 1), "100")
+    doc = build_reconciled_summary(user, date(2064, 10, 15), "USD", 2, [account.id])
+    nr = doc["netResult"]
+    # Canonical (defective) NAV preserved: notional unconverted.
+    assert Decimal(nr["nav"]["raw"]) == Decimal("20500.00")
+    assert nr["nav"]["status"] == "partial"
+    assert nr["nav"]["reason"] == "bond_notional_fallback_unconverted"
+    assert "bond_notional_fallback_unconverted" in doc["reasons"]
+    assert nr["components"]["unrealizedPrice"]["status"] == "partial"
+    assert nr["reconciliation"] == "incomplete"
+    assert doc["status"] == "partial"
+
+
+@pytest.mark.django_db
+def test_bond_fallback_nominal_matches_reporting_quotation_differs_is_no_op(user):
+    """EUR-quotation bond with a USD nominal, reported in USD:
+    get_current_notional's source is the nominal (USD), so the fallback's
+    omitted conversion is fx(USD -> USD) = 1 - a no-op. The statement must
+    not attribute a missing notional conversion just because the
+    quotation currency differs from the reporting currency.
+
+    Hand derivation (fx EUR->USD 1.0 throughout): cash 20,000 EUR - 9,500
+    EUR buy = 10,500 EUR = 10,500 USD; value = 10 x 100% x 1,000 / 100 =
+    10,000 USD; NAV 20,500; control 500 = unrealized price 500 + fx 0 +
+    cash FX 0; reconciled, complete, no bond reason."""
+    broker = make_broker(user)
+    account = make_account(broker)
+    bond = make_asset(user, type="Bond", name="EUR Quote USD Nominal", currency="EUR", exposure="Fixed Income")
+    BondMetadata.objects.create(
+        asset=bond, initial_notional=Decimal("1000"), nominal_currency="USD",
+        is_amortizing=True,
+    )
+    make_fx("EUR", "USD", date(2065, 1, 5), "1.00", user)
+    make_fx("EUR", "USD", date(2065, 10, 1), "1.00", user)
+    make_tx(account, date(2065, 1, 5), "Cash in", currency="EUR",
+            cash_flow=Decimal("20000"))
+    make_tx(account, date(2065, 1, 5), "Buy", security=bond, currency="EUR",
+            quantity=Decimal("10"), price=Decimal("95"), notional=Decimal("1000"))
+    make_price(bond, date(2065, 10, 1), "100")
+    doc = build_reconciled_summary(user, date(2065, 10, 15), "USD", 2, [account.id])
+    assert "bond_notional_fallback_unconverted" not in doc["reasons"]
+    assert doc["netResult"]["nav"]["status"] == "ok"
+    assert Decimal(doc["netResult"]["controlTotal"]["raw"]) == Decimal("500")
+    assert Decimal(doc["netResult"]["components"]["unrealizedPrice"]["raw"]) == Decimal("500")
+    assert Decimal(doc["netResult"]["components"]["fx"]["raw"]) == Decimal("0")
+    assert doc["netResult"]["reconciliation"] == "reconciled"
+    assert doc["status"] == "complete"
+
+
+# ---------------------------------------------------------------------------
+# Mixed-asset known-subtotal exclusion (review round 5, finding 2)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_mixed_assets_keep_reliable_known_subtotal_exclude_defective_bond(user):
+    """Wire-boundary regression: a known-defective bond (foreign, fallback
+    notional, open position) alongside a reliable USD stock.
+
+    Hand derivation:
+      Stock: cash in 1,000 USD; buy 10 @ 50 (500); price 60
+        -> unrealized price 100 (fx 0). RELIABLE.
+      Bond: 10 RUB bonds, par 1,000, bought 95% for 9,500 RUB funded by
+        20,000 RUB; RUB->USD 0.0100 at entry, 0.0125 at EOP; price 100.
+        Fallback notional unconverted -> NAV bond leg 10,000 (defective);
+        unrealized price 6.25, fx 9,898.75 -> PROVISIONAL/DEFECTIVE.
+      NAV = 600 (stock at market) + 10,000 (defective bond leg) + 131.25
+        = 10,731.25; net capital 1,200; control 9,531.25.
+      Cash FX = cash EOP (131.25 + 500) - own-date flows (200 + 500) =
+        -68.75 (known).
+      Known subtotal (wire `attributedSum.knownSubtotal`) = reliable
+        unrealized 100 + cash FX -68.75 = 31.25 - the defective bond
+        contributions (6.25 / 9,898.75) must be excluded, and the aggregate
+        must be unknown rather than exact.
+      Provisional diagnostics expose the excluded amounts.
+    """
+    broker = make_broker(user)
+    account = make_account(broker)
+    bond = make_asset(user, type="Bond", name="RUB Bond Mixed", currency="RUB", exposure="Fixed Income")
+    stock = make_asset(user, type="Stock", name="Clean Stock", currency="USD", exposure="Equity")
+    BondMetadata.objects.create(
+        asset=bond, initial_notional=Decimal("1000"), nominal_currency="RUB",
+        is_amortizing=True,
+    )
+    make_fx("USD", "RUB", date(2066, 1, 5), "0.0100", user)
+    make_fx("USD", "RUB", date(2066, 10, 1), "0.0125", user)
+    make_tx(account, date(2066, 1, 5), "Cash in", currency="RUB",
+            cash_flow=Decimal("20000"))
+    make_tx(account, date(2066, 1, 5), "Buy", security=bond, currency="RUB",
+            quantity=Decimal("10"), price=Decimal("95"), notional=Decimal("1000"))
+    make_tx(account, date(2066, 1, 5), "Cash in", currency="USD",
+            cash_flow=Decimal("1000"))
+    make_tx(account, date(2066, 1, 5), "Buy", security=stock, currency="USD",
+            quantity=Decimal("10"), price=Decimal("50"))
+    make_price(bond, date(2066, 10, 1), "100")
+    make_price(stock, date(2066, 10, 1), "60")
+    doc = build_reconciled_summary(user, date(2066, 10, 15), "USD", 2, [account.id])
+    nr = doc["netResult"]
+    assert Decimal(nr["nav"]["raw"]) == Decimal("11231.25")
+    assert nr["nav"]["status"] == "partial"
+    assert nr["nav"]["reason"] == "bond_notional_fallback_unconverted"
+    assert "knownSubtotal" not in nr["nav"]
+    # Wire boundary: the aggregate is unknown, and its known subtotal
+    # contains ONLY reliable contributions (stock 100 + cash FX 26.25).
+    attributed = nr["attributedSum"]
+    assert attributed["status"] == "partial"
+    assert attributed["raw"] is None
+    assert attributed["reason"] == "bond_notional_fallback_unconverted"
+    assert Decimal(attributed["knownSubtotal"]) == Decimal("126.25")
+    assert nr["unexplainedDifference"]["status"] == "partial"
+    assert nr["unexplainedDifference"]["raw"] is None
+    # The reliable stock contribution stays visible inside the labelled
+    # unrealized component; the defective bond amounts do not. The security
+    # FX pair is fully unknown (its unrealized side is provisional).
+    unrealized = nr["components"]["unrealizedPrice"]
+    assert unrealized["status"] == "partial"
+    assert unrealized["reason"] == "bond_notional_fallback_unconverted"
+    assert Decimal(unrealized["knownSubtotal"]) == Decimal("100")
+    # The security FX pair stays partial with its RELIABLE included value
+    # (stock 0 + realized 0) labelled; the bond's provisional 9,898.75 is
+    # routed out.
+    security_fx = nr["fxDetail"]["security"]
+    assert security_fx["status"] == "partial"
+    assert Decimal(security_fx["raw"]) == Decimal("0")
+    assert Decimal(security_fx["knownSubtotal"]) == Decimal("0")
+    assert nr["reconciliation"] == "incomplete"
+    assert doc["status"] == "partial"
+    # The excluded defective amounts are exposed as explicitly provisional.
+    provisional = doc["diagnostics"]["affectedProvisionalAttribution"]
+    assert Decimal(provisional["unrealizedPrice"]) == Decimal("6.25")
+    assert Decimal(provisional["unrealizedFx"]) == Decimal("9898.75")
+    # Dependent returns cannot appear certified while the bond defect is
+    # declared (they are top-level, not netResult fields). Total return is
+    # partial (NAV-driven); the IRR may additionally fail to solve on the
+    # mixed-currency provisional book, which is also an uncertified state.
+    assert doc["returns"]["totalReturn"]["status"] == "partial"
+    assert doc["returns"]["irr"]["status"] in ("partial", "not_available")
 
 
 # ---------------------------------------------------------------------------
