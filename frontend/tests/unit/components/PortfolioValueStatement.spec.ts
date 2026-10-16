@@ -87,6 +87,21 @@ describe('PortfolioValueStatement', () => {
     wrapper.unmount()
   })
 
+  it('explains the bond diagnostic in plain language and keeps it visible while collapsed', () => {
+    const statement = statementFixture()
+    statement.status = 'partial'
+    statement.reasons = ['bond_notional_fallback_unconverted']
+    const wrapper = mountStatement(statement)
+    const status = wrapper.find('[data-testid="statement-status"]')
+    expect(status.exists()).toBe(true)
+    expect(status.text()).toContain('bond currency-conversion issue')
+    expect(status.text()).toContain('NAV and returns')
+    // Collapse must not conceal the diagnostic.
+    wrapper.find('[data-testid="breakdown-toggle"]').trigger('click')
+    expect(wrapper.find('[data-testid="statement-status"]').element.style.display).not.toBe('none')
+    wrapper.unmount()
+  })
+
   it('toggles via a native button (keyboard operable) with visible focus styling', async () => {
     const wrapper = mountStatement(statementFixture())
     const toggle = wrapper.find('[data-testid="breakdown-toggle"]')

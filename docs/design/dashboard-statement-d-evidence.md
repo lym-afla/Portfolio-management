@@ -151,7 +151,7 @@ Four bounded corrections, RED-first, on the same branch (head includes
    documents with any partial/unavailable monetary dependency (nav,
    control total, attributed, unexplained, fxDetail, components, capital),
    omitted valuations, declared unclassified in-kind dependencies, remaining
-   reasons, or a non-positive tolerance bound are rejected; partial/
+   reasons, or a negative tolerance bound are rejected (zero stays valid); partial/
    unavailable amounts require a non-empty reason. Legitimate unavailable
    returns (IRR on zero capital) stay distinct from monetary completeness.
 
@@ -169,6 +169,54 @@ code - currency-consistent unrealized decomposition, fallback-branch FX
 conversion, full bond-kind/event/currency/scope matrix with independent
 Decimal expectations - NAV 256.25, net result 56.25, security FX 23.75 for
 the sanitized example - and cross-consumer integration checks).
+
+## Round 4 - bounded corrections (PR #65, pre-financial-approval)
+
+Head includes the round-4 commits; draft status and labels unchanged.
+
+1. **Bond guard refined to actual affected dependencies.** The fallback-path
+   detection now branches on the OUTPUTS the asset feeds:
+   - same nominal/reporting currency: the omitted conversion is x1.0 - a
+     no-op; the asset keeps fully certified, fully computed attribution
+     (no warning);
+   - foreign currency with an OPEN position: NAV partial + unrealized
+     partial + realized warned (prior disposals may share the path);
+   - foreign currency FULLY CLOSED: NAV stays ok (the asset is not in
+     today's valuation) and only the historical realized attribution is
+     warned - the realized bond path is internally consistent (both terms
+     convert), so total return stays certified; the aggregates still go
+     unknown (complete attribution is required for an exact difference).
+   Regressions: same-currency no-op (reconciled, complete, no reason);
+   closed-foreign (NAV ok 256.25, realized partial, aggregates unknown with
+   labelled known subtotal 56.25); the open-position case keeps its
+   existing guard assertions.
+2. **Aggregates from ALL dependencies.** attributedSum/unexplainedDifference
+   are certified only when NAV, capital, every attribution component and
+   cash FX are all complete (control total + full attribution). Otherwise
+   they are unknown (partial, reason = the first failed dependency) with
+   the known share labelled. The option-gap and incomplete cases now show
+   unknown instead of provisional numbers presented as ok.
+3. **Bond diagnostic understandable + accurately labelled.** The UI explains
+   `bond_notional_fallback_unconverted` in plain language ("a known bond
+   currency-conversion issue can affect the displayed NAV and returns"),
+   visible while the breakdown is collapsed. The partial NAV no longer
+   carries `knownSubtotal` when the reason is the bond defect - the
+   included value is known-DEFECTIVE, not a genuinely known subtotal
+   (omission-driven partials keep theirs). Backend assertion added.
+4. **Validator/evidence correction.** The validator rejects NEGATIVE
+   tolerance only; ZERO is and remains valid (exact or empty calculation).
+   A boundary case now pins zero-tolerance acceptance, and the earlier
+   evidence wording ("non-positive") is corrected to "negative".
+   Also fixed this round: the endpoint contract test silently depended on
+   "today == 2026-10-15" (the JWT middleware reads the effective date from
+   the token claim, not the test session); the token is now minted with the
+   claim, making the test date-independent.
+
+Gates on the round-4 head (actual exit codes): backend **0** (1456 passed /
+10 skipped, coverage 84.23%; 37 statement scenarios), unit **0** idle-machine
+(119 files; one concurrent-load run hit 2 chart-spec flakes - documented
+family), type-check/charts/reliability **0**, api:types **0**, lint **0**,
+build **0**, browser `dashboard-statement-d` **0** (3 viewports).
 
 ## Missing information vs reproducible engine defects
 

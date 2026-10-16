@@ -316,6 +316,33 @@ describe('getDashboardSummaryV2 boundary', () => {
     await expectRejected(brokenStatement(mutate))
   })
 
+  it('accepts a zero tolerance (valid for an exact or empty calculation)', async () => {
+    const statement = statementFixture()
+    statement.netResult.toleranceRaw = '0'
+    configureApiTransport(transportReturning({ ...legacyFive, summaryV2: statement }) as never)
+    const result = await getDashboardSummaryV2(capturedContext)
+    expect(result.capability).toBe('v2')
+  })
+
+  it('accepts a partial NAV without knownSubtotal (defective-included value)', async () => {
+    const statement = statementFixture()
+    statement.status = 'partial'
+    statement.reasons = ['bond_notional_fallback_unconverted']
+    statement.netResult.nav = {
+      raw: '10131.25',
+      display: '$10,131.25',
+      status: 'partial',
+      reason: 'bond_notional_fallback_unconverted',
+    }
+    statement.netResult.reconciliation = 'incomplete'
+    configureApiTransport(transportReturning({ ...legacyFive, summaryV2: statement }) as never)
+    const result = await getDashboardSummaryV2(capturedContext)
+    expect(result.capability).toBe('v2')
+    if (result.capability === 'v2') {
+      expect(result.statement.netResult.nav.knownSubtotal).toBeUndefined()
+    }
+  })
+
   it('accepts legitimate unavailable returns on a certified statement', async () => {
     const statement = statementFixture()
     statement.returns.irr = {

@@ -286,6 +286,15 @@ remaining reasons or non-positive tolerance are rejected. The protected
 bond-engine corrections (unrealized decomposition dimensions; fallback-branch
 FX conversion) are planned separately in
 [ bond-engine-correction-plan.md](../../design/bond-engine-correction-plan.md)
-- NOT implemented in this branch. Gates on round-3 head: backend 1455
-(84.23%, 35 statement scenarios), unit 119 files (boundary 41), tcs x3 /
-api:types / lint / build 0, dashboard-statement-d browser case 0. Stop: financial + design review pending; no merge.
+- NOT implemented in this branch. Round 4 (same day, bounded): the bond guard now branches on AFFECTED
+outputs - same-currency fallback is a certified no-op; foreign open
+positions warn NAV + unrealized + realized; foreign closed positions keep a
+correct NAV and warn only the historical realized attribution - and the
+aggregates (attributedSum/unexplainedDifference) are certified only when
+NAV, capital, every attribution component and cash FX are ALL complete
+(unknown + labelled known subtotal otherwise, with the defective NAV's
+knownSubtotal suppressed and a plain-language bond diagnostic in the UI).
+The endpoint contract test no longer depends on today's date (JWT claim).
+Gates on round-4 head: backend 1457 (84.23%, 37 statement scenarios), unit
+119 files (idle), tcs x3 / api:types / lint / build 0, dashboard-statement-d
+browser case 0. Stop: financial + design review pending; no merge.

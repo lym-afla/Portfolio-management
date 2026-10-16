@@ -718,7 +718,10 @@ def test_open_option_leaves_an_explicit_unreconciled_gap(user):
     assert doc["status"] == "partial"
     assert "option_unrealized_not_attributed" in doc["reasons"]
     assert Decimal(doc["netResult"]["nav"]["raw"]) == Decimal("7.70000000")
-    assert Decimal(doc["netResult"]["unexplainedDifference"]["raw"]) != Decimal("0")
+    # The option gap is a non-cash-FX incomplete dependency, so the exact
+    # unexplained amount is unknown - never a provisional number as ok.
+    assert doc["netResult"]["unexplainedDifference"]["status"] == "partial"
+    assert doc["netResult"]["unexplainedDifference"]["raw"] is None
     assert doc["netResult"]["reconciliation"] == "incomplete"
 
 
@@ -1160,6 +1163,9 @@ def test_rub_bond_fallback_notional_stays_uncertified_in_statement(user):
     assert Decimal(nr["nav"]["raw"]) == Decimal("10131.25")
     assert nr["nav"]["status"] == "partial"
     assert nr["nav"]["reason"] == "bond_notional_fallback_unconverted"
+    # knownSubtotal must represent genuinely known included values - a
+    # known-defective valuation is not a subtotal.
+    assert "knownSubtotal" not in nr["nav"]
     assert "bond_notional_fallback_unconverted" in doc["reasons"]
     assert nr["reconciliation"] == "incomplete"
     assert doc["status"] == "partial"
@@ -1170,6 +1176,104 @@ def test_rub_bond_fallback_notional_stays_uncertified_in_statement(user):
     assert doc["returns"]["totalReturn"]["status"] == "partial"
     affected = doc["diagnostics"].get("affectedNotionalFallbacks") or []
     assert any(item.get("asset_id") == bond.id for item in affected)
+
+
+# ---------------------------------------------------------------------------
+# Bond guard refinement (review round 4): warnings only on AFFECTED outputs
+# ---------------------------------------------------------------------------
+# The fallback path (amortizing, no NotionalHistory) returns the notional
+# unconverted. Whether that matters depends on the asset and the statement:
+#
+# - Same nominal/reporting currency: the omitted conversion is x1.0 - a
+#   no-op. No warning, fully certified.
+# - Foreign currency with an OPEN position: the current NAV and the
+#   unrealized decomposition both price the fallback notional -> NAV partial,
+#   unrealized partial, realized warned too (prior disposals may share the
+#   affected path).
+# - Foreign currency FULLY CLOSED: the current NAV does not include the
+#   asset - NAV must stay ok; only the historical realized attribution
+#   carries the warning, and the aggregates (which need a reliable control
+#   total and complete attribution) go unknown.
+
+
+@pytest.mark.django_db
+def test_bond_fallback_same_currency_is_a_no_op(user):
+    """A RUB bond reported in RUB: the fallback's omitted conversion would
+    multiply by fx(RUB->RUB) = 1 - nothing is affected. Hand derivation
+    (statement currency RUB, all rates 1): NAV = 10,500 cash + 10,000 value
+    = 20,500; control 500 = unrealized price 500 + fx 0 + cash FX 0;
+    reconciled, complete, no bond reason."""
+    broker = make_broker(user)
+    account = make_account(broker)
+    bond = make_asset(user, type="Bond", name="RUB Bond Same Ccy", currency="RUB", exposure="Fixed Income")
+    BondMetadata.objects.create(
+        asset=bond, initial_notional=Decimal("1000"), nominal_currency="RUB",
+        is_amortizing=True,
+    )
+    make_tx(account, date(2062, 1, 5), "Cash in", currency="RUB",
+            cash_flow=Decimal("20000"))
+    make_tx(account, date(2062, 1, 5), "Buy", security=bond, currency="RUB",
+            quantity=Decimal("10"), price=Decimal("95"), notional=Decimal("1000"))
+    make_price(bond, date(2062, 10, 1), "100")
+    doc = build_reconciled_summary(user, date(2062, 10, 15), "RUB", 2, [account.id])
+    assert "bond_notional_fallback_unconverted" not in doc["reasons"]
+    assert doc["netResult"]["nav"]["status"] == "ok"
+    assert Decimal(doc["netResult"]["controlTotal"]["raw"]) == Decimal("500")
+    assert Decimal(doc["netResult"]["components"]["unrealizedPrice"]["raw"]) == Decimal("500")
+    assert Decimal(doc["netResult"]["components"]["fx"]["raw"]) == Decimal("0")
+    assert doc["netResult"]["reconciliation"] == "reconciled"
+    assert doc["status"] == "complete"
+
+
+@pytest.mark.django_db
+def test_bond_fallback_closed_foreign_position_warns_only_on_realized(user):
+    """Foreign bond, fully disposed (no current position): the current NAV
+    (cash only, 20,500 x 0.0125 = 256.25) must stay ok - the asset appears
+    in historical candidates but is not in today's valuation. The historical
+    realized attribution MAY depend on the affected fallback path, so the
+    realized row is warned and the aggregates (needing complete attribution
+    plus a reliable control total) go unknown. Hand derivation: buy 9,500
+    RUB, sell at par 10,000 RUB; realized total = 125 - 95 = 30 (price 6.25
+    + fx 23.75) and cash FX 26.25; control 256.25 - 200 = 56.25."""
+    broker = make_broker(user)
+    account = make_account(broker)
+    bond = make_asset(user, type="Bond", name="RUB Bond Closed Fgn", currency="RUB", exposure="Fixed Income")
+    BondMetadata.objects.create(
+        asset=bond, initial_notional=Decimal("1000"), nominal_currency="RUB",
+        is_amortizing=True,
+    )
+    make_fx("USD", "RUB", date(2063, 1, 5), "0.0100", user)
+    make_fx("USD", "RUB", date(2063, 10, 1), "0.0125", user)
+    make_tx(account, date(2063, 1, 5), "Cash in", currency="RUB",
+            cash_flow=Decimal("20000"))
+    make_tx(account, date(2063, 1, 5), "Buy", security=bond, currency="RUB",
+            quantity=Decimal("10"), price=Decimal("95"), notional=Decimal("1000"))
+    make_tx(account, date(2063, 10, 1), "Sell", security=bond, currency="RUB",
+            quantity=Decimal("-10"), price=Decimal("100"))
+    make_price(bond, date(2063, 10, 1), "100")
+    doc = build_reconciled_summary(user, date(2063, 10, 15), "USD", 2, [account.id])
+    nr = doc["netResult"]
+    assert nr["nav"]["status"] == "ok"
+    assert Decimal(nr["nav"]["raw"]) == Decimal("256.25")
+    assert Decimal(nr["controlTotal"]["raw"]) == Decimal("56.25")
+    assert doc["capital"]["invested"]["status"] == "ok"
+    realized = nr["components"]["realizedPrice"]
+    assert realized["status"] == "partial"
+    assert realized["reason"] == "bond_notional_fallback_unconverted"
+    assert nr["components"]["unrealizedPrice"]["status"] == "ok"
+    # Aggregates need complete attribution: unknown, with the known share
+    # labelled (realized 6.25 + realized fx 23.75 + cash FX 26.25 = 56.25).
+    attributed = nr["attributedSum"]
+    assert attributed["status"] == "partial"
+    assert attributed["raw"] is None
+    assert Decimal(attributed["knownSubtotal"]) == Decimal("56.25")
+    assert nr["unexplainedDifference"]["status"] == "partial"
+    assert nr["unexplainedDifference"]["raw"] is None
+    assert nr["reconciliation"] == "incomplete"
+    assert doc["status"] == "partial"
+    # Warnings only on affected outputs: total return depends on NAV and
+    # capital, which are both correct here, so it stays certified.
+    assert doc["returns"]["totalReturn"]["status"] == "ok"
 
 
 # ---------------------------------------------------------------------------

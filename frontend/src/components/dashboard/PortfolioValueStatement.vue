@@ -144,6 +144,8 @@ const REASON_TEXT: Record<string, string> = {
   option_unrealized_not_attributed: 'open options are not attributed',
   in_kind_flows_unclassified: 'external in-kind transfers are unclassified',
   crypto_coin_fee_not_attributed: 'a coin-denominated fee is not attributed',
+  bond_notional_fallback_unconverted:
+    'a known bond currency-conversion issue can affect the displayed NAV and returns',
   unexplained_difference: 'components do not fully explain the net result',
   no_accounts_selected: 'no accounts selected',
 }

@@ -477,6 +477,8 @@ def build_reconciled_summary(user, effective_date, currency_target, digits,
     from services.positions import position as positions_position
 
     bond_fallback_affected = []
+    nav_bond_affected = False
+    realized_bond_affected = False
     for asset in candidates:
         asset_precisions.append(_cash_precision_for(asset, account_ids))
         open_option = options.is_option_asset(asset)
@@ -485,10 +487,17 @@ def build_reconciled_summary(user, effective_date, currency_target, digits,
             # bond whose effective notional resolves through
             # get_current_notional's transactions-fallback (no
             # NotionalHistory on/before the effective date). That branch
-            # returns the nominal-currency notional unconverted, so both NAV
-            # and the FX decomposition are uncertifiable for this asset.
-            # Not classified indiscriminately: converted branches
-            # (NotionalHistory present / non-amortizing) are unaffected.
+            # returns the nominal-currency notional unconverted. Whether
+            # that matters depends on the outputs the asset feeds:
+            # - same nominal/reporting currency: the omitted conversion is
+            #   x1.0 - a no-op, fully certified;
+            # - foreign currency with an OPEN position: the current NAV and
+            #   the unrealized decomposition price the fallback notional ->
+            #   NAV + unrealized partial, realized warned (prior disposals
+            #   may share the path);
+            # - foreign currency FULLY CLOSED: today's NAV does not include
+            #   the asset -> NAV stays ok; only the historical realized
+            #   attribution carries the warning.
             from common.models import BondMetadata, NotionalHistory
 
             bond_meta = BondMetadata.objects.filter(asset=asset).first()
@@ -499,12 +508,34 @@ def build_reconciled_summary(user, effective_date, currency_target, digits,
                     asset=asset, date__lte=effective_date
                 ).exists()
             ):
-                bond_fallback_affected.append(
-                    {"asset_id": asset.id, "currency": asset.currency}
+                same_currency = (
+                    (asset.currency or "").upper()
+                    == currency_target.upper()
                 )
-                reasons.add(REASON_BOND_NOTIONAL_FALLBACK)
-                unrealized_price.fail(REASON_BOND_NOTIONAL_FALLBACK)
-                unrealized_fx.fail(REASON_BOND_NOTIONAL_FALLBACK)
+                # Same currency: the omitted conversion multiplies by
+                # fx(nominal -> nominal) = 1 - a no-op; the asset keeps its
+                # fully certified, fully computed attribution.
+                if not same_currency:
+                    bond_fallback_affected.append(
+                        {"asset_id": asset.id, "currency": asset.currency}
+                    )
+                    reasons.add(REASON_BOND_NOTIONAL_FALLBACK)
+                open_position = (
+                    positions_position(
+                        asset, effective_date, user, account_ids
+                    )
+                    != 0
+                )
+                if not same_currency:
+                    if open_position:
+                        nav_bond_affected = True
+                        realized_bond_affected = True
+                        unrealized_price.fail(REASON_BOND_NOTIONAL_FALLBACK)
+                        unrealized_fx.fail(REASON_BOND_NOTIONAL_FALLBACK)
+                    else:
+                        realized_bond_affected = True
+                        realized_price.fail(REASON_BOND_NOTIONAL_FALLBACK)
+                        realized_fx.fail(REASON_BOND_NOTIONAL_FALLBACK)
         if open_option:
             if positions_position(asset, effective_date, user,
                                   account_ids) != 0:
@@ -553,13 +584,14 @@ def build_reconciled_summary(user, effective_date, currency_target, digits,
             unrealized_price.add(unrealized["price_appreciation"])
             unrealized_fx.add(unrealized["fx_effect"])
 
-    if bond_fallback_affected:
-        # The defect lives inside the canonical NAV for the affected assets;
-        # the read model never replaces canonical values - it marks them
-        # partial with an actionable reason and refuses certification.
+    if nav_bond_affected:
+        # The defect lives inside the canonical NAV for the affected open
+        # positions; the read model never replaces canonical values - it
+        # marks them partial with an actionable reason and refuses
+        # certification. Closed foreign positions keep a correct NAV: only
+        # their historical realized attribution is warned.
         nav_status = "partial"
         nav_reason = REASON_BOND_NOTIONAL_FALLBACK
-        reasons.add(REASON_BOND_NOTIONAL_FALLBACK)
 
     # ------------------------------------------------------------------
     # Unclassified external (unmatched) crypto transfers in scope.
@@ -619,26 +651,46 @@ def build_reconciled_summary(user, effective_date, currency_target, digits,
         + taxes.value
         + other_flows.value
     )
-    if fx_cash_known:
+    # An exact attributed sum and unexplained difference need a RELIABLE
+    # control total (complete NAV + capital) and COMPLETE attribution -
+    # every dependency, not just cash FX. Otherwise the aggregates stay
+    # unknown with the known share exposed as an explicitly labelled
+    # subtotal.
+    capital_complete = invested.complete and cash_out.complete
+    aggregate_dependencies = (
+        nav_status == "ok"
+        and capital_complete
+        and realized_price.complete and realized_fx.complete
+        and unrealized_price.complete and unrealized_fx.complete
+        and income.complete and fees.complete and taxes.complete
+        and other_flows.complete
+        and fx_cash_known
+        and cash_component.complete
+    )
+    known_total = known_components_sum + (fxcash if fx_cash_known else Decimal(0))
+    aggregate_reason = (
+        realized_price.first_reason
+        or realized_fx.first_reason
+        or unrealized_price.first_reason
+        or unrealized_fx.first_reason
+        or income.first_reason
+        or fees.first_reason
+        or taxes.first_reason
+        or other_flows.first_reason
+        or cash_component.first_reason
+        or nav_reason
+        or REASON_MISSING_FX
+    ) if not aggregate_dependencies else None
+    if aggregate_dependencies:
         attributed = known_components_sum + fxcash
         unexplained = control_total - attributed
     else:
-        # A difference computed from missing inputs is not an exact
-        # unexplained amount: the aggregate stays unknown with the known
-        # share exposed as an explicitly labelled subtotal.
         attributed = None
         unexplained = None
     tolerance = _reconciliation_tolerance(asset_precisions, cash_precisions)
 
-    capital_complete = invested.complete and cash_out.complete
     dependencies_complete = (
-        nav_status == "ok"
-        and capital_complete
-        and income.complete and fees.complete and taxes.complete
-        and other_flows.complete and cash_component.complete
-        and realized_price.complete and realized_fx.complete
-        and unrealized_price.complete and unrealized_fx.complete
-        and fx_cash_known
+        aggregate_dependencies
         and not in_kind_present
         and not coin_fee_gap
     )
@@ -682,12 +734,22 @@ def build_reconciled_summary(user, effective_date, currency_target, digits,
             "nav": _amount(
                 nav_known, currency_target, digits, status=nav_status,
                 reason=(nav_reason if nav_status == "partial" else None),
-                known_subtotal=nav_known if nav_status == "partial" else None,
+                # knownSubtotal must represent genuinely known included
+                # values. When the partial NAV's reason is the bond fallback
+                # defect, the included value itself is known-defective - no
+                # subtotal is emitted (omission-driven partials keep theirs).
+                known_subtotal=(
+                    nav_known
+                    if nav_status == "partial"
+                    and nav_reason != REASON_BOND_NOTIONAL_FALLBACK
+                    else None
+                ),
             ),
             "controlTotal": _amount(
                 control_total, currency_target, digits,
-                status="ok" if dependencies_complete else "partial",
-                reason=None if dependencies_complete else sorted(reasons)[0],
+                status="ok" if aggregate_dependencies else "partial",
+                reason=(None if aggregate_dependencies
+                        else (aggregate_reason or sorted(reasons)[0])),
             ),
             "components": {
                 "realizedPrice": _component_amount(
@@ -732,14 +794,14 @@ def build_reconciled_summary(user, effective_date, currency_target, digits,
                 _amount(attributed, currency_target, digits)
                 if attributed is not None
                 else _unknown_amount(
-                    REASON_MISSING_FX,
-                    known_subtotal=format(known_components_sum, "f"),
+                    aggregate_reason,
+                    known_subtotal=format(known_total, "f"),
                 )
             ),
             "unexplainedDifference": (
                 _amount(unexplained, currency_target, digits)
                 if unexplained is not None
-                else _unknown_amount(REASON_MISSING_FX)
+                else _unknown_amount(aggregate_reason)
             ),
             "toleranceRaw": format(tolerance, "f"),
             "toleranceBasis": (

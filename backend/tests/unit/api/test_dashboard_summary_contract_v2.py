@@ -88,11 +88,12 @@ class DashboardSummaryContractV2Tests(APITestCase):
         )
         self.account = Accounts.objects.create(broker=broker, name="Main")
         seed_approved_example(self.user, self.account)
+        # The JWT middleware reads the effective date from the token claim
+        # (session/database are fallbacks for the live flow only) — mint the
+        # token with the claim so the test does not silently depend on today.
         token = RefreshToken.for_user(self.user)
+        token["effective_current_date"] = "2026-10-15"
         self.client.defaults["HTTP_AUTHORIZATION"] = f"Bearer {str(token.access_token)}"
-        session = self.client.session
-        session["effective_current_date"] = "2026-10-15"
-        session.save()
 
     def test_legacy_response_is_unchanged_without_the_parameter(self):
         response = self.client.get("/dashboard/api/get-summary/")
