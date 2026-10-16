@@ -295,6 +295,15 @@ NAV, capital, every attribution component and cash FX are ALL complete
 (unknown + labelled known subtotal otherwise, with the defective NAV's
 knownSubtotal suppressed and a plain-language bond diagnostic in the UI).
 The endpoint contract test no longer depends on today's date (JWT claim).
-Gates on round-4 head: backend 1457 (84.23%, 37 statement scenarios), unit
-119 files (idle), tcs x3 / api:types / lint / build 0, dashboard-statement-d
-browser case 0. Stop: financial + design review pending; no merge.
+Round 5 (same day, bounded): the bond guard compares the EFFECTIVE notional
+source currency (nominal_currency or asset.currency - what
+get_current_notional would have converted) with the reporting currency
+(quotation-matches-reporting/nominal-differs no longer escapes; nominal-
+matches-reporting/quotation-differs no longer falsely flagged), and
+fallback-affected bonds' realized/unrealized contributions are routed to
+provisional accumulators (diagnostics.affectedProvisionalAttribution)
+excluded from every known subtotal - known subtotals carry only reliable
+contributions, labelled per partial component. Gates on round-5 head:
+backend 1460 (84.23%, 40 statement scenarios), unit 119 files, tcs x3 /
+api:types / lint / build 0, dashboard-statement-d browser case 0. Stop:
+financial + design review pending; no merge.

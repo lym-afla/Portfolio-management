@@ -218,6 +218,49 @@ Gates on the round-4 head (actual exit codes): backend **0** (1456 passed /
 family), type-check/charts/reliability **0**, api:types **0**, lint **0**,
 build **0**, browser `dashboard-statement-d` **0** (3 viewports).
 
+## Round 5 - bounded corrections (PR #65, pre-financial-approval)
+
+Two corrections, RED-first on the same branch (`097214c7`).
+
+1. **Bond guard matches the actual notional source currency.**
+   `get_current_notional` denominates the notional in
+   `nominal_currency or asset.currency` and converts source -> target; the
+   guard previously compared the quotation (`asset.currency`) with the
+   reporting currency. It now compares the SOURCE currency:
+   - quotation matches reporting, nominal differs (USD quotation, RUB
+     nominal, USD reporting): the fallback returns the RUB-par notional as
+     USD (NAV 20,500 for a 12.5-USD-scale position) - the defect is live
+     and detection no longer escapes. Regression RED under the old guard.
+   - nominal matches reporting, quotation differs (USD nominal, EUR
+     quotation, USD reporting): the omitted conversion is fx(USD->USD) = 1
+     - a no-op; the statement reconciles completely and no false bond
+     warning is raised. Regression RED under the old guard.
+   Open/closed and historical realized/unrealized distinctions are
+   preserved; `diagnostics.affectedNotionalFallbacks` entries now carry the
+   nominal and source currencies for review.
+2. **Known subtotals exclude defective contributions.** Affected bonds'
+   realized/unrealized contributions are routed to explicitly provisional
+   accumulators (exposed as
+   `diagnostics.affectedProvisionalAttribution`) instead of the certified
+   components, so they can never enter `attributedSum.knownSubtotal` or
+   the component-level known subtotals (which now label every partial
+   component's reliable included value). Mixed-asset wire regression:
+   defective RUB bond + reliable USD stock -> `attributedSum` unknown
+   (`raw` null) with `knownSubtotal` = 126.25 (stock 100 + cash FX 26.25),
+   `unrealizedPrice.knownSubtotal` = 100 (reliable stock portion only),
+   the bond's 6.25 / 9,898.75 excluded, and the provisional amounts
+   exposed in diagnostics. The closed-foreign case's known subtotal is
+   correspondingly cash-FX-only (26.25 - the warned realized attribution
+   is provisional, not certified knowledge).
+
+Gates on the round-5 head (actual exit codes): backend **0** (1460 passed /
+10 skipped; 40 statement scenarios), unit **0** idle-machine (119 files;
+one run hit the documented single chart-spec timeout flake, green on
+focused + immediate full rerun), type-check/charts/reliability **0**,
+api:types **0**, lint **0**, build **0**, browser `dashboard-statement-d`
+**0** (3 viewports). Pre-existing final-qa-d8 failure unchanged
+(base-reproduced).
+
 ## Missing information vs reproducible engine defects
 
 - **Missing information (no policy invented; statement goes incomplete):**
