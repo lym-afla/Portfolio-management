@@ -1,13 +1,17 @@
-# Bond engine correction plan — PROTECTED CODE, NOT IMPLEMENTED
+# Bond engine correction plan — IMPLEMENTED FOR REVIEW
 
-Status: **plan for review only**. This document proposes corrections to
-protected financial calculations identified by the Phase D statement
-reduction (`docs/design/dashboard-statement-d-evidence.md`, review round 3).
-Nothing here is implemented on `codex/dashboard-reconciled-statement-d`; the
-statement's guard (reason `bond_notional_fallback_unconverted`) keeps the
-affected cases uncertified until a correction PR is merged. Any implementation
-requires its own needs-approval PR touching protected code, with the
-regressions below as acceptance.
+Status: **implemented on `codex/bond-engine-correction`** (stacked draft PR
+targeting `codex/dashboard-reconciled-statement-d` at `5cbc4d0b`; needs-
+approval). The two corrections below are implemented exactly as planned; the
+acceptance regressions and integration checks in this document live in
+`backend/tests/unit/services/test_bond_engine_correction.py`, and the flipped
+statement regressions in `test_dashboard_summary_reconciliation.py`. The
+temporary statement guard (`bond_notional_fallback_unconverted`) is RETIRED
+in the same branch - the corrections demonstrably fix both boundaries, and
+the genuinely-incomplete cases (option gap, coin fees, in-kind transfers,
+missing price/FX, same-day wrap) keep their honest partial/unreconciled
+states. This implementation is NOT financial acceptance; human review of the
+protected-code changes is required.
 
 ## Defect 1 — currency-consistent unrealized bond price/FX decomposition
 
@@ -128,3 +132,33 @@ asserting the corrected reconciled outcome.
 - No re-derivation of bond price conventions (percentage-of-par stays).
 - No statement-side workaround: the read model's guard remains the only
   mitigation until this plan is implemented and reviewed.
+
+---
+
+## As implemented (this branch)
+
+1. `services/realized.py`, `unrealized_gain_loss`, bond branch: the
+   unrealized total now converts the price percentage quotation -> target at
+   EOP:
+
+       unrealized = notional_lcl x (price_target x fx_eop
+                                    - buy_in_target) x pos / 100
+
+   where `price_target` is the unconverted quotation percentage
+   (price_at_date applies fx=1 for bonds) and `buy_in_target` already
+   carries entry-date FX (calculate_buy_in_price converts per entry
+   transaction). The decomposition is now dimensionally consistent:
+   unrealized = value_target - basis_target and FX = basis_rub x
+   (fx_eop - fx_entry).
+
+2. `services/bonds.py`, `get_current_notional` transactions-fallback:
+   `return current_notional * fx_rate` - the nominal-currency remainder is
+   converted into the requested currency exactly once, matching the other
+   two branches.
+
+Verified corrected values (sanitized example, 10 RUB bonds par 1,000 at
+95%, RUB->USD 0.0100 -> 0.0125, price 100): NAV 256.25; net result 56.25;
+security FX 23.75; reconciled/complete. Consumer-path agreement:
+NAV_at_date total == statement NAV == sum of per-position values (asserted
+in `test_amortizing_fallback_statement_reconciles_at_sanitized_values` and
+the partial-disposal/mixed regressions).

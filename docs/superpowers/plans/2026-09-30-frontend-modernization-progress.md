@@ -313,7 +313,26 @@ diagnostics.affectedProvisionalAttribution exposes the excluded amounts
 (partial-disposal and mixed-asset wire regressions). Three consecutive unit
 failures were traced to a POISONED vitest transform cache (code byte-
 identical to the green run; node_modules/.vite clear + rerun green) - not
-the load-flake family. Gates on round-6 head: backend 1462 (84.23%, 42
-statement scenarios), unit 119 files, tcs x3 / api:types / lint / build 0,
-dashboard-statement-d browser case 0. Stop: financial + design review
-pending; no merge.
+the load-flake family.
+
+Bond-engine correction EXECUTED on `codex/bond-engine-correction`
+(worktree Portfolio-management-bondfix; stacked draft PR targeting this
+branch; needs-approval): both documented bond boundaries are CORRECTED in
+protected code - (1) the unrealized bond decomposition now converts the
+price percentage quotation -> target at EOP so unrealized = value_target -
+basis_target, and (2) get_current_notional's transactions-fallback converts
+the nominal remainder exactly once. The temporary statement guard
+(`bond_notional_fallback_unconverted`), its knownSubtotal suppression and
+provisional diagnostics are RETIRED with regressions proving valid
+certification. Real-data disposable-copy validation: All-accounts security
+FX moved from +$424,971.47 (RUB-par-as-USD) to -$424.04 and the unexplained
+residual from -$426,569.74 to -$1,174.22 (incomplete, honest); per-account
+sweep: 17/1/10/14 reconcile, account 2 -14.50 and account 15 -1,117.63
+unreconciled (documented residuals), accounts 18/20 incomplete on in-kind/
+coin-fee (+39,998.85/-40,040.90 nearly cancel - OKX funding<->trading
+transfers). Gates on the correction head: backend 1468 passed (84.23%+;
+new correction suite 6 tests + 10 flipped statement tests), frontend gates
+in the stacked-PR worktree pending final capture (documented machine
+degradation: chart-spec timeouts hit random specs per run; control run in
+the PR #65 worktree fails identically on identical frontend code). Stop:
+human financial review of the protected-code changes pending; no merge.

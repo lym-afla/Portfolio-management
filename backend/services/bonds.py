@@ -133,7 +133,7 @@ def get_current_notional(bond_meta, date, investor=None, account_ids=None, curre
         f"redeemed: {redemptions})"
     )
 
-    return current_notional
+    return current_notional * fx_rate
 
 
 def get_current_aci(bond_meta, date, currency=None, user=None, force_refresh=False):

@@ -1471,9 +1471,16 @@ def unrealized_gain_loss(
                 * fx_rate_eop
                 / Decimal(100)
             )
+            # The bond price percentage is quoted in the asset (quotation)
+            # currency and must be converted quotation -> target at EOP;
+            # buy_in_price_in_target_cur already carries entry-date FX (per
+            # calculate_buy_in_price). With both terms consistently in
+            # target currency, unrealized = value_target - basis_target and
+            # the FX effect collapses to basis x (fx_eop - fx_entry).
             unrealized_gain_loss = (
                 notional_lcl
-                * (current_price_in_target_cur - buy_in_price_in_target_cur)
+                * (current_price_in_target_cur * fx_rate_eop
+                   - buy_in_price_in_target_cur)
                 * current_position
                 / Decimal(100)
             )

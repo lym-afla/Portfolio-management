@@ -360,3 +360,65 @@ failure unchanged (base-reproduced).
    in `services/performance.py` is not reused and that surface is unchanged.
 4. Total return keeps the incumbent formula with signed cash-out — this is
    exactly the approved mock's arithmetic (17.50% for the mock example).
+
+## Bond-engine correction - separate stacked branch (post-round-6)
+
+Implemented on `codex/bond-engine-correction` (worktree
+`Portfolio-management-bondfix`, stacked on this branch at `5cbc4d0b`; separate
+draft PR targeting this branch; needs-approval). Both documented boundaries
+are corrected in protected code, RED-first:
+
+1. **Unrealized bond decomposition (currency-consistent).**
+   `unrealized_gain_loss`'s bond branch now converts the price percentage
+   quotation -> target at EOP: `unrealized = notional_lcl x (price_target x
+   fx_eop - buy_in_target) x pos / 100`. Corrected sanitized values:
+   unrealized total 30.00 (was 9,905.00), price 6.25, FX 23.75 (= basis
+   9,500 RUB x 0.0025 drift).
+2. **Fallback notional converts exactly once.**
+   `get_current_notional`'s transactions-fallback returns
+   `current_notional * fx_rate` (1,000 RUB x 0.0125 = 12.50 USD instead of
+   the raw 1,000).
+
+Statement flips (all hand-derived): the sanitized example reconciles at NAV
+256.25 / net result 56.25 / security FX 23.75 (complete); the amortizing
+with-history redemption case reconciles at NAV 251.25 / control 51.25
+(realized 1.25 + 4.75, unrealized 0 + 19.00, cash 26.25); the partial-
+disposal open case certifies at 56.25 (realized 12.00, unrealized 3.75 +
+14.25, cash 26.25); the mixed bond+stock case certifies at 1,356.25 /
+156.25; the closed-foreign case certifies at 56.25 (realized 30.00, cash
+26.25). The temporary statement guard (`bond_notional_fallback_unconverted`),
+its knownSubtotal suppression, and the provisional diagnostics are RETIRED -
+regressions prove valid certification, and the genuinely-incomplete cases
+(option gap, coin fees, in-kind transfers, missing price/FX, same-day wrap)
+keep their honest partial/unreconciled states.
+
+Consumer-path agreement: NAV_at_date totals == statement NAV == per-position
+values on the sanitized datasets (asserted in
+`test_amortizing_fallback_statement_reconciles_at_sanitized_values`,
+`test_amortizing_with_history_partial_then_full_redemption`, and the
+partial-disposal regression). Account and investor isolation asserted for
+the corrected fallback and history branches (redemption aggregates are
+account-filtered; NotionalHistory is asset-scoped - pre-existing behavior,
+documented, untouched).
+
+Real-data validation (disposable DB copy, uncorrected vs corrected on the
+identical dataset): All-accounts security FX moved from +$424,971.47
+(RUB-par-as-USD defect) to -$424.04 (plausible RUB drift on remaining
+holdings); the unexplained residual dropped from -$426,569.74 to
+-$1,174.22. Per-account sweep: accounts 17/1/10/14 reconcile (sub-cent
+residuals); account 2 unreconciled at -14.50 (small residual, documented);
+accounts 18/20 incomplete with honest coin-fee and in-kind reasons (their
++39,998.85 / -40,040.90 residuals nearly cancel - in-kind transfers between
+the OKX funding/trading accounts); account 15 unreconciled at -1,117.63
+(remaining real-data residual, documented for review - not forced).
+
+Gates on the correction head: backend **0** (1468 passed / 10 skipped incl.
+the new correction suite; full suite green means no other consumer depended
+on the defective values), frontend unit **0** (119 files; the recurring
+chart-spec timeouts are the documented machine-degradation family - the
+frontend tree is byte-identical to PR #65's green run, failing specs pass on
+focused rerun, and a control run in the PR #65 worktree fails identically),
+type-check/charts/reliability **0**, api:types **0**, lint **0**, build
+**0**. PR #65's branch and worktree are unchanged (the corrections were
+developed in the bondfix worktree; the PR #65 worktree was restored clean
+after an accidental in-place edit was moved over).
