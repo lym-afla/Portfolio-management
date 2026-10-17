@@ -108,7 +108,7 @@ describe('PortfolioMetrics presentation', () => {
 })
 
 const api = vi.hoisted(() => ({
-  getDashboardSummary: vi.fn(),
+  getDashboardSummaryV2: vi.fn(),
   getDashboardSummaryOverTime: vi.fn(),
 }))
 vi.mock('@/services/api', () => api)
@@ -156,7 +156,7 @@ beforeEach(() => {
   localStorage.clear()
   vi.resetAllMocks()
   configureContextFixture('2026-09-08')
-  api.getDashboardSummary.mockResolvedValue(summaryFixture)
+  api.getDashboardSummaryV2.mockResolvedValue({ capability: 'legacy_only', legacy: summaryFixture })
   chartApi.fetchBreakdownChart.mockResolvedValue({
     capability: 'legacy_only',
     legacy: {

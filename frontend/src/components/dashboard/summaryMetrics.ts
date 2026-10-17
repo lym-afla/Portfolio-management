@@ -1,7 +1,7 @@
-import type { getDashboardSummary } from '@/services/api'
+import type { DashboardSummary } from '@/services/api'
 import type { MetricDisplay } from '@/components/workspace/types'
 
-type DashboardSummaryData = Awaited<ReturnType<typeof getDashboardSummary>>
+type DashboardSummaryData = DashboardSummary
 
 // Display-only mapping of the validated direct summary dictionary. The five
 // fields arrive already formatted by the backend; this adapter assigns each

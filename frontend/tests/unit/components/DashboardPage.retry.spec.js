@@ -8,7 +8,7 @@ import { usePortfolioContextStore } from '@/stores/portfolioContext'
 
 // All dashboard services reject so every widget renders its error alert.
 const mocks = vi.hoisted(() => ({
-  getDashboardSummary: vi.fn().mockRejectedValue(new Error('summary failed')),
+  getDashboardSummaryV2: vi.fn().mockRejectedValue(new Error('summary failed')),
   getDashboardSummaryOverTime: vi
     .fn()
     .mockRejectedValue(new Error('summary over time failed')),
@@ -78,7 +78,7 @@ describe('DashboardPage widget error retry', () => {
     const wrapper = mountPage()
     await flushPromises()
 
-    expect(mocks.getDashboardSummary).toHaveBeenCalledTimes(1)
+    expect(mocks.getDashboardSummaryV2).toHaveBeenCalledTimes(1)
     expect(chartMocks.fetchBreakdownChart).toHaveBeenCalledTimes(1)
     expect(mocks.getDashboardSummaryOverTime).toHaveBeenCalledTimes(1)
     expect(chartMocks.fetchNavChart).toHaveBeenCalledTimes(1)
@@ -91,7 +91,7 @@ describe('DashboardPage widget error retry', () => {
     }
     await flushPromises()
 
-    expect(mocks.getDashboardSummary).toHaveBeenCalledTimes(2)
+    expect(mocks.getDashboardSummaryV2).toHaveBeenCalledTimes(2)
     expect(chartMocks.fetchBreakdownChart).toHaveBeenCalledTimes(2)
     expect(mocks.getDashboardSummaryOverTime).toHaveBeenCalledTimes(2)
     expect(chartMocks.fetchNavChart).toHaveBeenCalledTimes(2)

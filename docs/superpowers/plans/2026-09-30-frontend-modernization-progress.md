@@ -255,5 +255,65 @@ For each task record: baseline and final commit; exact files; RED/GREEN tests; f
 - Evidence: 31 synthetic captures plus summary/artifacts/delivery JSONs under `docs/design/assets/frontend-final-qa/`; the acceptance record with the route ledger, harness findings and the owner review checklist is [frontend-final-qa.md](../../design/frontend-final-qa.md). The existing all-false browser matrix remains the rollback acceptance and ran green in the same gate sequence.
 - Boundaries honored: no Chart.js removal, no backend/financial/API change, no merge/deploy/release tag. A live release-validation cycle was NOT performed and C5b removal is NOT approved by this work; screen-reader/AT work remains out of scope per the owner amendment.
 
-## Phase D owner decision — 15 October 2026
-Owner approved the compact statement with expandable net-result attribution and reconciliation to NAV. Implementation not started. Current handoff: docs/superpowers/plans/2026-10-15-dashboard-reconciled-statement-d.md; approved synthetic visual: docs/design/assets/dashboard-summary-d/approved-statement.png. The prior design-options assignment and MagicPath prototype are superseded as implementation targets. Backend attribution, completeness and financial review are required; C5b remains separate and pending.
+## Phase D implementation — 15 October 2026 (draft, needs-approval)
+Owner approved the compact statement with expandable net-result attribution and reconciliation to NAV; the prior design-options assignment and MagicPath prototype are RETIRED as implementation targets (superseded by the owner's selection). **Executed** on `codex/dashboard-reconciled-statement-d` (dedicated worktree, base `efca731d`): backend certified read model (`services/dashboard_summary.py`; opt-in `summary_contract=2` on the existing summary request, legacy payload byte-identical), typed frontend boundary, and the approved `PortfolioValueStatement.vue` composition with expandable breakdown, separated returns and honest partial/unreconciled/incomplete states. Heads `88f6ff87`/`e42cb1e2`/`f75f7755`/`bbb2ec5a`/`1da17090`. Gates on committed head `1da17090`: backend 1450 passed (coverage 84.14%), 28 hand-derived reconciliation scenarios + 4 endpoint contract tests, unit 1145/1145, type checks x3 / api:types / lint / build 0, `dashboard-statement-d` browser case 0 on three viewports, context/dates/recovery/requests/charts-c2..c5/charts-c/delivery/layout 0, FULL 18x4 matrix 0; final-qa-d8 has ONE failing workflow (`price table keeps exact dollar displays`) that reproduces identically on the untouched base `efca731d` — pre-existing, owned by the D8 workstream; charts-c twice produced clean PASS logs with an anomalous process exit (documented wedge family). Real-data validation on a disposable DB copy: multi-account rendering, legacy parity, and honest gap surfacing (unmatched crypto transfers, coin fees) verified read-only. OPEN items for review: RUB-bond engine FX decomposition does not compose with the ledger identity (unexplained difference surfaced verbatim), coin-fee and in-kind gaps, same-day wrap, amortizing-bond drift — all recorded in [the evidence record](../../design/dashboard-statement-d-evidence.md) with the financial-review callouts (gross-of-tax income, USD-based reward conversion, certified FX = engine FX + cash-flow FX, no performance.py reuse). Review round executed the same day (findings 1-5 RED-first): display rounding
+claimed only under backend certification with N/A never treated as zero and
+material unexplained differences visible for incomplete statements too; cash-FX
+completeness requires BOTH own-date conversions and ending-balance valuation
+(unknown, never fabricated); document context validated against the captured
+request (SummaryContextMismatchError + one bounded reconcile); retained
+statements show explicit stale/busy markers with their own failure + Retry;
+the validator rejects non-fixed-notation decimals, invalid dates/ids/digits,
+selection shapes and status/value coherence (no silent filtering). The RUB-bond
+real-data discrepancy is REDUCED to two exact engine boundaries
+(unrealized_gain_loss bond FX term: local notional x target prices;
+get_current_notional fallback branch: notional unconverted - the two CANCEL in
+the fallback case, falsely reporting complete/reconciled), pinned as sanitized
+hand-derived regressions with expected post-correction numbers; corrections are
+protected-code decisions kept OUT of this branch. Gates on review head
+`9d057b44`: backend 1455 (84.23%), unit 119 files, tcs x3 / api:types / lint /
+build 0, dashboard-statement-d browser case 0 (3 viewports). Round 3 (same day, bounded): the false-certification case is prevented -
+amortizing bonds on the unconverted fallback notional path are detected per
+asset and keep the statement explicitly uncertified (NAV partial with reason
+`bond_notional_fallback_unconverted`, affected assets in diagnostics,
+reconciliation incomplete, dependent returns uncertified; canonical NAV never
+replaced); unknown cash FX propagates into attributedSum/unexplainedDifference
+as UNKNOWN with a labelled knownSubtotal instead of exact values from missing
+inputs (rendered as N/A (partial)); account-type selections validate the
+resolved set exactly once-over; complete/reconciled documents with any
+partial monetary dependency, omitted valuations, in-kind dependencies,
+remaining reasons or non-positive tolerance are rejected. The protected
+bond-engine corrections (unrealized decomposition dimensions; fallback-branch
+FX conversion) are planned separately in
+[ bond-engine-correction-plan.md](../../design/bond-engine-correction-plan.md)
+- NOT implemented in this branch. Round 4 (same day, bounded): the bond guard now branches on AFFECTED
+outputs - same-currency fallback is a certified no-op; foreign open
+positions warn NAV + unrealized + realized; foreign closed positions keep a
+correct NAV and warn only the historical realized attribution - and the
+aggregates (attributedSum/unexplainedDifference) are certified only when
+NAV, capital, every attribution component and cash FX are ALL complete
+(unknown + labelled known subtotal otherwise, with the defective NAV's
+knownSubtotal suppressed and a plain-language bond diagnostic in the UI).
+The endpoint contract test no longer depends on today's date (JWT claim).
+Round 5 (same day, bounded): the bond guard compares the EFFECTIVE notional
+source currency (nominal_currency or asset.currency - what
+get_current_notional would have converted) with the reporting currency
+(quotation-matches-reporting/nominal-differs no longer escapes; nominal-
+matches-reporting/quotation-differs no longer falsely flagged), and
+fallback-affected bonds' realized/unrealized contributions are routed to
+provisional accumulators (diagnostics.affectedProvisionalAttribution)
+excluded from every known subtotal - known subtotals carry only reliable
+contributions, labelled per partial component. Round 6 (same day, bounded): the open-position bond guard now also marks
+realizedPrice/realizedFx partial (previously the partially disposed bond's
+realized result was routed to provisional accumulators while the component
+stayed ok - silently certifying an excluded contribution as zero); the
+never-consumed realized_bond_affected flag was removed; partial components
+label their reliable included values via knownSubtotal and
+diagnostics.affectedProvisionalAttribution exposes the excluded amounts
+(partial-disposal and mixed-asset wire regressions). Three consecutive unit
+failures were traced to a POISONED vitest transform cache (code byte-
+identical to the green run; node_modules/.vite clear + rerun green) - not
+the load-flake family. Gates on round-6 head: backend 1462 (84.23%, 42
+statement scenarios), unit 119 files, tcs x3 / api:types / lint / build 0,
+dashboard-statement-d browser case 0. Stop: financial + design review
+pending; no merge.

@@ -18,7 +18,7 @@ import type { NavQuery, NavResult } from '../contracts'
 import { navSeriesFixture } from './fixtures'
 
 const api = vi.hoisted(() => ({
-  getDashboardSummary: vi.fn(),
+  getDashboardSummaryV2: vi.fn(),
   getDashboardSummaryOverTime: vi.fn(),
 }))
 vi.mock('@/services/api', () => api)
@@ -123,7 +123,7 @@ beforeEach(() => {
   localStorage.clear()
   vi.resetAllMocks()
   configureContextFixture('2026-09-08')
-  api.getDashboardSummary.mockResolvedValue(summaryFixture)
+  api.getDashboardSummaryV2.mockResolvedValue({ capability: 'legacy_only', legacy: summaryFixture })
   api.getDashboardSummaryOverTime.mockResolvedValue(historyFixture)
   chartApi.fetchNavChart.mockResolvedValue(v2Result())
   chartApi.fetchBreakdownChart.mockResolvedValue(breakdownFixture)
@@ -207,7 +207,7 @@ describe('DashboardPage NAV chart wiring', () => {
     await flushPromises()
     expect(chartApi.fetchNavChart).toHaveBeenCalledTimes(2)
     expect((chartApi.fetchNavChart.mock.calls[1][0] as NavQuery).frequency).toBe('M')
-    expect(api.getDashboardSummary).toHaveBeenCalledTimes(1)
+    expect(api.getDashboardSummaryV2).toHaveBeenCalledTimes(1)
     expect(wrapper.get('[data-testid="nav-chart"]').element).toBe(element)
     release(legacyOnlyResult(['Feb-26']))
     await flushPromises()
@@ -221,7 +221,7 @@ describe('DashboardPage NAV chart wiring', () => {
     context.triggerDataRefresh()
     await flushPromises()
     expect(chartApi.fetchNavChart).toHaveBeenCalledTimes(2)
-    expect(api.getDashboardSummary).toHaveBeenCalledTimes(2)
+    expect(api.getDashboardSummaryV2).toHaveBeenCalledTimes(2)
     expect(chartApi.fetchBreakdownChart).toHaveBeenCalledTimes(2)
     expect(api.getDashboardSummaryOverTime).toHaveBeenCalledTimes(2)
     wrapper.unmount()

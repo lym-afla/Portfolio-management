@@ -6,12 +6,79 @@
       class="my-4"
     />
     <template v-else>
-      <PortfolioMetrics
-        v-if="!loading.summary && !error.summary"
-        data-testid="summary-card"
-        :metrics="metrics"
-        :context-label="contextLabel"
-      />
+      <template v-if="summaryCapability === 'v2'">
+        <PortfolioValueStatement
+          :statement="summaryStatement"
+          :context-label="contextLabel"
+          :stale="summaryRetained"
+        />
+        <v-alert
+          v-if="error.summary"
+          type="error"
+          density="compact"
+          class="mt-2"
+          data-testid="summary-error"
+        >
+          {{ error.summary }}
+          <v-btn
+            color="error"
+            variant="outlined"
+            class="ml-2"
+            data-testid="summary-retry"
+            @click="fetchSummaryData"
+          >
+            Retry
+          </v-btn>
+        </v-alert>
+        <p
+          v-else-if="summaryRetained"
+          class="workspace-meta mt-2"
+          data-testid="summary-updating"
+        >
+          Updating the statement…
+        </p>
+      </template>
+      <template v-else-if="summaryCapability === 'legacy_only'">
+        <PortfolioMetrics
+          data-testid="summary-card"
+          :metrics="metrics"
+          :context-label="contextLabel"
+        />
+        <v-alert
+          type="info"
+          variant="tonal"
+          density="compact"
+          class="mb-4"
+          data-testid="statement-capability-notice"
+        >
+          The reconciled statement is unavailable from this server; showing the
+          legacy summary metrics without component detail.
+        </v-alert>
+        <v-alert
+          v-if="error.summary"
+          type="error"
+          density="compact"
+          data-testid="summary-error"
+        >
+          {{ error.summary }}
+          <v-btn
+            color="error"
+            variant="outlined"
+            class="ml-2"
+            data-testid="summary-retry"
+            @click="fetchSummaryData"
+          >
+            Retry
+          </v-btn>
+        </v-alert>
+        <p
+          v-else-if="summaryRetained"
+          class="workspace-meta"
+          data-testid="summary-updating"
+        >
+          Updating the summary…
+        </p>
+      </template>
       <v-skeleton-loader v-else-if="loading.summary" type="card" />
       <v-alert v-else type="error" data-testid="summary-error">
         {{ error.summary }}
@@ -153,12 +220,13 @@ import { committedAccountLabel } from '@/utils/accountUtils'
 import WorkspacePage from '@/components/workspace/WorkspacePage.vue'
 import WorkspaceSection from '@/components/workspace/WorkspaceSection.vue'
 import PortfolioMetrics from '@/components/dashboard/PortfolioMetrics.vue'
+import PortfolioValueStatement from '@/components/dashboard/PortfolioValueStatement.vue'
 import { summaryMetrics } from '@/components/dashboard/summaryMetrics'
 import BreakdownChart from '@/components/dashboard/BreakdownChart.vue'
 import SummaryOverTimeTable from '@/components/dashboard/SummaryOverTimeTable.vue'
 import NavChartPanel from '@/features/charts/NavChartPanel.vue'
 import {
-  getDashboardSummary,
+  getDashboardSummaryV2,
   getDashboardSummaryOverTime,
 } from '@/services/api'
 import { useNavChart, requireReadyChartContext } from '@/features/charts/useNavChart'
@@ -193,8 +261,42 @@ const CHART_FREQUENCIES: readonly Frequency[] = ['D', 'W', 'M', 'Q', 'Y']
 const appStore = useAppStore()
 const context = usePortfolioContextStore()
 const historyTable = ref<{ openUpdateDialog: () => void } | null>(null)
+// A response whose document context disagrees with the captured request is
+// never rendered. Following the established chart conventions, the first
+// mismatch of an episode asks the existing reliability store to reconcile
+// (bounded — never a retry loop of its own) and the failure stays visible
+// until the reconciled refetch answers.
+let summaryMismatchReconciled = false
 const summaryQuery = usePortfolioRequest(
-  (_params: PortfolioContext, options) => getDashboardSummary(options),
+  async (params: PortfolioContext, options) => {
+    try {
+      const result = await getDashboardSummaryV2(
+        {
+          accountSelection: params.accountSelection as {
+            type: string
+            id: number | null
+          },
+          effectiveCurrentDate: params.effectiveCurrentDate ?? '',
+          currency: params.currency ?? '',
+          digits: params.digits,
+        },
+        options
+      )
+      summaryMismatchReconciled = false
+      return result
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.name === 'SummaryContextMismatchError' &&
+        context.canRead &&
+        !summaryMismatchReconciled
+      ) {
+        summaryMismatchReconciled = true
+        void context.reconcileContext()
+      }
+      throw error
+    }
+  },
   snapshotContext
 )
 const breakdownQuery = useBreakdownChart()
@@ -211,9 +313,17 @@ const historyQuery = usePortfolioRequest(
   snapshotContext
 )
 const navChartQuery = useNavChart()
-const metrics = computed(() =>
-  summaryQuery.data.value ? summaryMetrics(summaryQuery.data.value) : []
+// The negotiated summary: v2 renders the reconciled statement; a legacy-only
+// response keeps the five-metric card with an honest unavailable notice.
+const summaryCapability = computed(() => summaryQuery.data.value?.capability ?? null)
+const summaryStatement = computed(() =>
+  summaryQuery.data.value?.capability === 'v2' ? summaryQuery.data.value.statement : null
 )
+const metrics = computed(() => {
+  const data = summaryQuery.data.value
+  if (data?.capability === 'legacy_only') return summaryMetrics(data.legacy)
+  return []
+})
 // The negotiated breakdown feeds both surfaces from ONE request: the
 // incumbent cards render the legacy fields; the gated modern path renders the
 // three validated allocation documents.
@@ -271,6 +381,10 @@ const error = computed(() => ({
   summaryOverTime: historyQuery.error.value?.message,
   navChart: navChartQuery.error.value?.message,
 }))
+// A parked refresh keeps the accepted statement mounted but visibly busy.
+const summaryRetained = computed(
+  () => loading.value.summary && !!summaryQuery.data.value
+)
 const historyReady = computed(() =>
   !loading.value.summaryOverTime && !error.value.summaryOverTime
 )

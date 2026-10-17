@@ -31,7 +31,7 @@ function close(server) {
   })
 }
 
-export async function startFixtureServer({ longAccount = false, contextFailures = false, dateFlow = false, requestFlow = false, recoveryFlow = false, d4Flow = false, chartsC2Flow = false, chartsC3Flow = false, chartsC4Flow = false, settingsAccountFlow = false, d5States = false, importsD6Flow = false, brokersSecurityD7Flow = false, priceImportFlow = false, port } = {}) {
+export async function startFixtureServer({ longAccount = false, contextFailures = false, dateFlow = false, requestFlow = false, recoveryFlow = false, d4Flow = false, chartsC2Flow = false, chartsC3Flow = false, chartsC4Flow = false, settingsAccountFlow = false, d5States = false, importsD6Flow = false, brokersSecurityD7Flow = false, priceImportFlow = false, statementDFlow = false, port } = {}) {
   const importsWs = importsD6Flow ? createImportsWs() : null
   // D8 final-QA: phase-scoped fixture modes. The app under test bakes ONE
   // fixture origin at build time, so every QA phase shares this server and
@@ -50,7 +50,188 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
     settingsAccountFlow,
     importsD6Flow,
     brokersSecurityD7Flow,
+    statementDFlow,
   }
+
+  // Phase D statement flow: one mutable document state behind
+  // /dashboard/api/get-summary/?summary_contract=2. The variants mirror the
+  // real backend contract (services/dashboard_summary.py): the approved
+  // mock's reconciled arithmetic, a partial NAV with knownSubtotal, an
+  // unreconciled difference, a legacy-only payload (no summaryV2) and a
+  // malformed document. Requests are recorded for the single-owner check.
+  const statementD = { variant: 'reconciled', requests: [] }
+  const legacySummary = {
+    'Current NAV': '$112,500.00',
+    Invested: '$100,000.00',
+    'Cash-out': '($5,000.00)',
+    total_return: '17.5%',
+    irr: '8.4%',
+  }
+  const statementAmount = (raw, display, status = 'ok', extra = {}) => ({
+    raw,
+    display,
+    status,
+    ...extra,
+  })
+  const statementContext = {
+    accountSelection: { type: 'all', id: null },
+    accountIds: [1],
+    effectiveDate: '2026-09-08',
+    currency: 'USD',
+    digits: 2,
+  }
+  const statementDocuments = {
+    reconciled: {
+      version: 2,
+      kind: 'statement',
+      context: statementContext,
+      status: 'complete',
+      reasons: [],
+      capital: {
+        invested: statementAmount('100000', '$100,000.00'),
+        cashOut: statementAmount('-5000', '($5,000.00)'),
+        netInvestedCapital: statementAmount('95000', '$95,000.00'),
+      },
+      netResult: {
+        nav: statementAmount('112500', '$112,500.00'),
+        controlTotal: statementAmount('17500', '$17,500.00'),
+        components: {
+          realizedPrice: statementAmount('8000', '$8,000.00'),
+          unrealizedPrice: statementAmount('7000', '$7,000.00'),
+          income: statementAmount('3500', '$3,500.00'),
+          fees: statementAmount('-1000', '($1,000.00)'),
+          taxes: statementAmount('-500', '($500.00)'),
+          fx: statementAmount('500', '$500.00'),
+          otherFlows: statementAmount('0', '–'),
+        },
+        fxDetail: {
+          security: statementAmount('500', '$500.00'),
+          cashFlows: statementAmount('0', '–'),
+        },
+        attributedSum: statementAmount('17500', '$17,500.00'),
+        unexplainedDifference: statementAmount('0', '–'),
+        toleranceRaw: '0.09',
+        toleranceBasis:
+          'Sum of rounding half-ULPs: 4 per asset (realized/unrealized price and fx at broker cash precision) plus 1 per cash currency balance re-quantization.',
+        reconciliation: 'reconciled',
+      },
+      returns: {
+        totalReturn: { value: '0.175', display: '17.5%', status: 'ok', reason: 'observed' },
+        irr: { value: '0.084', display: '8.4%', status: 'ok', reason: 'observed' },
+      },
+      diagnostics: {
+        omittedValuations: [],
+        unclassifiedInKindFlows: { present: false, count: 0 },
+        notes: [],
+      },
+    },
+    partial: {
+      version: 2,
+      kind: 'statement',
+      context: statementContext,
+      status: 'partial',
+      reasons: ['missing_fx'],
+      capital: {
+        invested: statementAmount('100000', '$100,000.00'),
+        cashOut: statementAmount('-5000', '($5,000.00)'),
+        netInvestedCapital: statementAmount('95000', '$95,000.00'),
+      },
+      netResult: {
+        nav: statementAmount('110000', '$110,000.00', 'partial', {
+          reason: 'missing_fx',
+          knownSubtotal: '110000',
+        }),
+        controlTotal: statementAmount('15000', '$15,000.00', 'partial', { reason: 'missing_fx' }),
+        components: {
+          realizedPrice: statementAmount('8000', '$8,000.00'),
+          unrealizedPrice: statementAmount('7000', '$7,000.00'),
+          income: statementAmount('3500', '$3,500.00'),
+          fees: statementAmount('-1000', '($1,000.00)'),
+          taxes: statementAmount('-500', '($500.00)'),
+          fx: statementAmount(null, 'N/A', 'partial', { reason: 'missing_fx' }),
+          otherFlows: statementAmount('0', '–'),
+        },
+        fxDetail: {
+          security: statementAmount('500', '$500.00'),
+          cashFlows: statementAmount(null, 'N/A', 'partial', { reason: 'missing_fx' }),
+        },
+        attributedSum: statementAmount(null, 'N/A', 'partial', { reason: 'missing_fx' }, { knownSubtotal: '17000' }),
+        unexplainedDifference: statementAmount(null, 'N/A', 'partial', { reason: 'missing_fx' }),
+        toleranceRaw: '0.09',
+        toleranceBasis: 'half-ULP budget',
+        reconciliation: 'incomplete',
+      },
+      returns: {
+        totalReturn: { value: '0.15', display: '15.0%', status: 'partial', reason: 'omitted_valuations' },
+        irr: { value: null, display: '8.4%', status: 'partial', reason: 'omitted_valuations' },
+      },
+      diagnostics: {
+        omittedValuations: [
+          { reason: 'missing_fx', account_id: 1, currency: 'CHF', asset_type: 'Cash', asset_class: 'Cash' },
+        ],
+        unclassifiedInKindFlows: { present: false, count: 0 },
+        notes: [],
+      },
+    },
+    unreconciled: {
+      version: 2,
+      kind: 'statement',
+      context: statementContext,
+      status: 'partial',
+      reasons: ['unexplained_difference'],
+      capital: {
+        invested: statementAmount('100000', '$100,000.00'),
+        cashOut: statementAmount('-5000', '($5,000.00)'),
+        netInvestedCapital: statementAmount('95000', '$95,000.00'),
+      },
+      netResult: {
+        nav: statementAmount('112500', '$112,500.00'),
+        controlTotal: statementAmount('17500', '$17,500.00'),
+        components: {
+          realizedPrice: statementAmount('8000', '$8,000.00'),
+          unrealizedPrice: statementAmount('7000', '$7,000.00'),
+          income: statementAmount('3500', '$3,500.00'),
+          fees: statementAmount('-1000', '($1,000.00)'),
+          taxes: statementAmount('-500', '($500.00)'),
+          fx: statementAmount('0', '–'),
+          otherFlows: statementAmount('0', '–'),
+        },
+        fxDetail: {
+          security: statementAmount('0', '–'),
+          cashFlows: statementAmount('0', '–'),
+        },
+        attributedSum: statementAmount('17000', '$17,000.00'),
+        unexplainedDifference: statementAmount('500', '$500.00'),
+        toleranceRaw: '0.09',
+        toleranceBasis: 'half-ULP budget',
+        reconciliation: 'unreconciled',
+      },
+      returns: {
+        totalReturn: { value: '0.175', display: '17.5%', status: 'ok', reason: 'observed' },
+        irr: { value: '0.084', display: '8.4%', status: 'ok', reason: 'observed' },
+      },
+      diagnostics: {
+        omittedValuations: [],
+        unclassifiedInKindFlows: { present: false, count: 0 },
+        notes: [],
+      },
+    },
+    legacy_only: null, // handled in the responder: no summaryV2 key at all
+    malformed: { version: 2, kind: 'statement', status: 'complete', reasons: [] },
+  }
+  statementDocuments.large = structuredClone(statementDocuments.reconciled)
+  statementDocuments.large.netResult.nav = statementAmount('123456789.01', '$123,456,789.01')
+  statementDocuments.large.capital.invested = statementAmount('100000000', '$100,000,000.00')
+  statementDocuments.large.capital.cashOut = statementAmount('-5000000', '($5,000,000.00)')
+  statementDocuments.large.capital.netInvestedCapital = statementAmount('95000000', '$95,000,000.00')
+  statementDocuments.large.netResult.controlTotal = statementAmount('28456789.01', '$28,456,789.01')
+  statementDocuments.large.netResult.components.realizedPrice = statementAmount('18000000', '$18,000,000.00')
+  statementDocuments.large.netResult.components.unrealizedPrice = statementAmount('9000000', '$9,000,000.00')
+  statementDocuments.large.netResult.components.income = statementAmount('1500000', '$1,500,000.00')
+  statementDocuments.large.netResult.components.fees = statementAmount('-40000', '($40,000.00)')
+  statementDocuments.large.netResult.components.taxes = statementAmount('-32010.99', '($32,010.99)')
+  statementDocuments.large.netResult.components.fx = statementAmount('289800', '$289,800.00')
+  statementDocuments.large.returns.totalReturn = { value: '0.2845678901', display: '28.5%', status: 'ok', reason: 'observed' }
   let releaseMutation
   let pendingMutation = false
   let currentDate = '2026-09-08'
@@ -878,6 +1059,28 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
         }
       }
 
+      // ---- Phase D statement flow: the negotiated summary document with
+      // one mutable variant state (reconciled/partial/unreconciled/large/
+      // legacy_only/malformed) plus request recording for the single-owner
+      // assertion. --------------------------------------------------------
+      if (
+        activeModes.statementDFlow &&
+        fixtureMethod === 'GET' &&
+        url.pathname === '/dashboard/api/get-summary/'
+      ) {
+        statementD.requests.push({ query: url.search })
+        requests.push({ method: fixtureMethod, actualMethod: requestedMethod, path: url.pathname })
+        if (statementD.variant === 'legacy_only') {
+          response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+          response.end(JSON.stringify(legacySummary))
+          return
+        }
+        const document = statementDocuments[statementD.variant] ?? statementDocuments.reconciled
+        response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+        response.end(JSON.stringify({ ...legacySummary, summaryV2: document }))
+        return
+      }
+
       // ---- Settings account-preservation flow: saved identity missing from
       // the choices, stateful confirmed mutations, recorded write bodies and
       // queued rejections. ------------------------------------------------
@@ -1377,6 +1580,8 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
     settingsAccount,
     d5State,
     setD5State: (mode) => { d5State.mode = mode },
+    statementD,
+    setStatementVariant: (variant) => { statementD.variant = variant },
     setFixtureModes: (overrides) => {
       for (const [key, value] of Object.entries(overrides ?? {})) {
         if (key in activeModes) activeModes[key] = Boolean(value)
