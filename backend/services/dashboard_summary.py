@@ -118,7 +118,6 @@ REASON_MISSING_FX = "missing_fx"
 REASON_OPTION_GAP = "option_unrealized_not_attributed"
 REASON_IN_KIND = "in_kind_flows_unclassified"
 REASON_COIN_FEE_GAP = "crypto_coin_fee_not_attributed"
-REASON_BOND_NOTIONAL_FALLBACK = "bond_notional_fallback_unconverted"
 
 
 class Component:
@@ -481,82 +480,9 @@ def build_reconciled_summary(user, effective_date, currency_target, digits,
     from services.pricing import price_at_date as pricing_price_at_date
     from services.positions import position as positions_position
 
-    bond_fallback_affected = []
-    nav_bond_affected = False
-    bond_defective_realized_price = Decimal(0)
-    bond_defective_realized_fx = Decimal(0)
-    bond_defective_unrealized_price = Decimal(0)
-    bond_defective_unrealized_fx = Decimal(0)
     for asset in candidates:
         asset_precisions.append(_cash_precision_for(asset, account_ids))
-        bond_defective = False
         open_option = options.is_option_asset(asset)
-        if asset.is_bond:
-            # Detect the affected calculation path precisely: an amortizing
-            # bond whose effective notional resolves through
-            # get_current_notional's transactions-fallback (no
-            # NotionalHistory on/before the effective date). That branch
-            # returns the nominal-currency notional unconverted. Whether
-            # that matters depends on the outputs the asset feeds:
-            # - same nominal/reporting currency: the omitted conversion is
-            #   x1.0 - a no-op, fully certified;
-            # - foreign currency with an OPEN position: the current NAV and
-            #   the unrealized decomposition price the fallback notional ->
-            #   NAV + unrealized partial, realized warned (prior disposals
-            #   may share the path);
-            # - foreign currency FULLY CLOSED: today's NAV does not include
-            #   the asset -> NAV stays ok; only the historical realized
-            #   attribution carries the warning.
-            from common.models import BondMetadata, NotionalHistory
-
-            bond_meta = BondMetadata.objects.filter(asset=asset).first()
-            if (
-                bond_meta is not None
-                and bond_meta.is_amortizing
-                and not NotionalHistory.objects.filter(
-                    asset=asset, date__lte=effective_date
-                ).exists()
-            ):
-                # The guard must match the guarded calculation:
-                # get_current_notional treats the notional as denominated in
-                # nominal_currency or asset.currency (its source currency)
-                # and converts source -> target. The fallback omits exactly
-                # that conversion, so the no-op case is source == target.
-                source_currency = (
-                    (bond_meta.nominal_currency or asset.currency or "").upper()
-                )
-                same_currency = source_currency == currency_target.upper()
-                # Same source/reporting currency: the omitted conversion
-                # multiplies by fx(source -> source) = 1 - a no-op; the
-                # asset keeps its fully certified, fully computed
-                # attribution.
-                if not same_currency:
-                    bond_defective = True
-                    bond_fallback_affected.append(
-                        {
-                            "asset_id": asset.id,
-                            "currency": asset.currency,
-                            "nominal_currency": bond_meta.nominal_currency,
-                            "source_currency": source_currency,
-                        }
-                    )
-                    reasons.add(REASON_BOND_NOTIONAL_FALLBACK)
-                open_position = (
-                    positions_position(
-                        asset, effective_date, user, account_ids
-                    )
-                    != 0
-                )
-                if not same_currency:
-                    if open_position:
-                        nav_bond_affected = True
-                        realized_price.fail(REASON_BOND_NOTIONAL_FALLBACK)
-                        realized_fx.fail(REASON_BOND_NOTIONAL_FALLBACK)
-                        unrealized_price.fail(REASON_BOND_NOTIONAL_FALLBACK)
-                        unrealized_fx.fail(REASON_BOND_NOTIONAL_FALLBACK)
-                    else:
-                        realized_price.fail(REASON_BOND_NOTIONAL_FALLBACK)
-                        realized_fx.fail(REASON_BOND_NOTIONAL_FALLBACK)
         if open_option:
             if positions_position(asset, effective_date, user,
                                   account_ids) != 0:
@@ -584,15 +510,8 @@ def build_reconciled_summary(user, effective_date, currency_target, digits,
             realized_fx.fail(REASON_MISSING_PRICE)
             reasons.add(REASON_MISSING_PRICE)
         if realized is not None:
-            if bond_defective:
-                # Provisional only: the affected path may have priced this
-                # attribution with the unconverted notional. Excluded from
-                # every known subtotal; reported as provisional diagnostics.
-                bond_defective_realized_price += realized["all_time"]["price_appreciation"]
-                bond_defective_realized_fx += realized["all_time"]["fx_effect"]
-            else:
-                realized_price.add(realized["all_time"]["price_appreciation"])
-                realized_fx.add(realized["all_time"]["fx_effect"])
+            realized_price.add(realized["all_time"]["price_appreciation"])
+            realized_fx.add(realized["all_time"]["fx_effect"])
 
         if open_option or realized is None:
             if open_option:
@@ -609,21 +528,8 @@ def build_reconciled_summary(user, effective_date, currency_target, digits,
             unrealized_fx.fail(REASON_MISSING_PRICE)
             reasons.add(REASON_MISSING_PRICE)
         if unrealized is not None:
-            if bond_defective:
-                bond_defective_unrealized_price += unrealized["price_appreciation"]
-                bond_defective_unrealized_fx += unrealized["fx_effect"]
-            else:
-                unrealized_price.add(unrealized["price_appreciation"])
-                unrealized_fx.add(unrealized["fx_effect"])
-
-    if nav_bond_affected:
-        # The defect lives inside the canonical NAV for the affected open
-        # positions; the read model never replaces canonical values - it
-        # marks them partial with an actionable reason and refuses
-        # certification. Closed foreign positions keep a correct NAV: only
-        # their historical realized attribution is warned.
-        nav_status = "partial"
-        nav_reason = REASON_BOND_NOTIONAL_FALLBACK
+            unrealized_price.add(unrealized["price_appreciation"])
+            unrealized_fx.add(unrealized["fx_effect"])
 
     # ------------------------------------------------------------------
     # Unclassified external (unmatched) crypto transfers in scope.
@@ -700,7 +606,6 @@ def build_reconciled_summary(user, effective_date, currency_target, digits,
         and cash_component.complete
     )
     known_total = known_components_sum + (fxcash if fx_cash_known else Decimal(0))
-    # bond_defective_* accumulators are deliberately NOT part of known_total.
     aggregate_reason = (
         realized_price.first_reason
         or realized_fx.first_reason
@@ -767,16 +672,7 @@ def build_reconciled_summary(user, effective_date, currency_target, digits,
             "nav": _amount(
                 nav_known, currency_target, digits, status=nav_status,
                 reason=(nav_reason if nav_status == "partial" else None),
-                # knownSubtotal must represent genuinely known included
-                # values. When the partial NAV's reason is the bond fallback
-                # defect, the included value itself is known-defective - no
-                # subtotal is emitted (omission-driven partials keep theirs).
-                known_subtotal=(
-                    nav_known
-                    if nav_status == "partial"
-                    and nav_reason != REASON_BOND_NOTIONAL_FALLBACK
-                    else None
-                ),
+                known_subtotal=nav_known if nav_status == "partial" else None,
             ),
             "controlTotal": _amount(
                 control_total, currency_target, digits,
@@ -856,17 +752,6 @@ def build_reconciled_summary(user, effective_date, currency_target, digits,
         ),
         "diagnostics": {
             "omittedValuations": [dict(item) for item in nav_diagnostics],
-            **({"affectedNotionalFallbacks": [
-                    dict(item) for item in bond_fallback_affected
-                ]}
-                if bond_fallback_affected else {}),
-            **({"affectedProvisionalAttribution": {
-                    "realizedPrice": format(bond_defective_realized_price, "f"),
-                    "realizedFx": format(bond_defective_realized_fx, "f"),
-                    "unrealizedPrice": format(bond_defective_unrealized_price, "f"),
-                    "unrealizedFx": format(bond_defective_unrealized_fx, "f"),
-                }}
-                if bond_fallback_affected else {}),
             "unclassifiedInKindFlows": {
                 "present": in_kind_present,
                 "count": in_kind_count,

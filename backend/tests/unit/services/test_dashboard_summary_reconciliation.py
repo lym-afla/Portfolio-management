@@ -1027,12 +1027,11 @@ def test_in_kind_fmv_conversion_failure_propagates_to_diagnostics(user):
 
 
 @pytest.mark.django_db
-def test_rub_bond_nonamortizing_unrealized_fx_is_dimensionally_broken(user):
-    """Boundary 1 alone (non-amortizing: value IS converted correctly, NAV
-    256.25), but the FX term = 1,000 x (100 - 0.95) x 10 / 100 = 9,905 ->
-    fx_security 9,898.75 and the honest statement refuses: unreconciled
-    -9,875.00. Expected after an engine correction: fx_security 23.75,
-    attributed 56.25, reconciled."""
+def test_rub_bond_nonamortizing_unrealized_fx_decomposition_reconciles(user):
+    """Corrected engine (boundary 1 fixed): the FX term converts the price
+    consistently (quotation -> target at EOP), so fx_security 23.75
+    (= basis 9,500 RUB x 0.0025 drift), attributed 56.25, and the
+    statement reconciles at the sanitized values."""
     broker = make_broker(user)
     account = make_account(broker)
     bond = make_asset(user, type="Bond", name="RUB Bond Series A", currency="RUB", exposure="Fixed Income")
@@ -1052,23 +1051,22 @@ def test_rub_bond_nonamortizing_unrealized_fx_is_dimensionally_broken(user):
     assert Decimal(nr["nav"]["raw"]) == Decimal("256.25")
     assert Decimal(nr["controlTotal"]["raw"]) == Decimal("56.25")
     assert Decimal(nr["components"]["unrealizedPrice"]["raw"]) == Decimal("6.25")
-    assert Decimal(nr["fxDetail"]["security"]["raw"]) == Decimal("9898.75")
+    assert Decimal(nr["fxDetail"]["security"]["raw"]) == Decimal("23.75")
     assert Decimal(nr["fxDetail"]["cashFlows"]["raw"]) == Decimal("26.25")
-    assert Decimal(nr["attributedSum"]["raw"]) == Decimal("9931.25")
-    assert Decimal(nr["unexplainedDifference"]["raw"]) == Decimal("-9875")
-    assert nr["reconciliation"] == "unreconciled"
-    assert doc["status"] == "partial"
-    assert "unexplained_difference" in doc["reasons"]
+    assert Decimal(nr["attributedSum"]["raw"]) == Decimal("56.25")
+    assert Decimal(nr["unexplainedDifference"]["raw"]) == Decimal("0")
+    assert nr["reconciliation"] == "reconciled"
+    assert doc["status"] == "complete"
 
 
 @pytest.mark.django_db
-def test_rub_bond_amortizing_redemption_fx_is_dimensionally_broken(user):
-    """Boundary 1 on an amortizing bond whose redemption created
-    NotionalHistory (value converts correctly via the history branch):
-    adding a par-200 redemption (cash 2,000 at 0.0125 = 25) keeps NAV at
-    256.25 and control at 56.25, but the FX term = 800 x (100 - 0.95) x
-    10 / 100 = 7,923.75 -> unreconciled -7,900.00. Realized price splits as
-    1.25 (redemption) and unrealized price 5.00."""
+def test_rub_bond_amortizing_redemption_fx_decomposition_reconciles(user):
+    """Corrected engine on an amortizing bond whose redemption created
+    NotionalHistory: the remaining 800-par position prices consistently
+    (value 10 x 95% x 800/100 x 0.0125 = 95.00; basis 800 x 95% x 0.01 x
+    10 / 100 = 76.00 -> unrealized fx 19.00), and the redemption realizes
+    6.00 (price 1.25 + fx 4.75). NAV 251.25 = 95.00 + cash 156.25; control
+    51.25; attributed 51.25 -> reconciled, complete."""
     broker = make_broker(user)
     account = make_account(broker)
     bond = make_asset(user, type="Bond", name="RUB Bond Series B", currency="RUB", exposure="Fixed Income")
@@ -1090,24 +1088,28 @@ def test_rub_bond_amortizing_redemption_fx_is_dimensionally_broken(user):
     make_price(bond, date(2059, 10, 1), "100")
     doc = build_reconciled_summary(user, date(2059, 10, 15), "USD", 2, [account.id])
     nr = doc["netResult"]
+    # Corrected engine: price 100% at EOP -> bond value 10 x 100% x
+    # 800/100 x 0.0125 = 100.00; cash 12,500 x 0.0125 = 156.25; NAV 256.25;
+    # realized redemption 6.00 (price 1.25 + fx 4.75); unrealized price 0,
+    # fx 19.00 (basis 76 x 0.0025 drift); cash FX 26.25; attributed 56.25.
     assert Decimal(nr["nav"]["raw"]) == Decimal("256.25")
     assert Decimal(nr["controlTotal"]["raw"]) == Decimal("56.25")
     assert Decimal(nr["components"]["realizedPrice"]["raw"]) == Decimal("1.25")
-    assert Decimal(nr["components"]["unrealizedPrice"]["raw"]) == Decimal("5")
-    assert Decimal(nr["fxDetail"]["security"]["raw"]) == Decimal("7923.75")
-    assert Decimal(nr["attributedSum"]["raw"]) == Decimal("7956.25")
-    assert Decimal(nr["unexplainedDifference"]["raw"]) == Decimal("-7900")
-    assert nr["reconciliation"] == "unreconciled"
-    assert doc["status"] == "partial"
+    assert Decimal(nr["components"]["unrealizedPrice"]["raw"]) == Decimal("5.00")
+    assert Decimal(nr["fxDetail"]["security"]["raw"]) == Decimal("23.75")
+    assert Decimal(nr["fxDetail"]["cashFlows"]["raw"]) == Decimal("26.25")
+    assert Decimal(nr["attributedSum"]["raw"]) == Decimal("56.25")
+    assert nr["reconciliation"] == "reconciled"
+    assert doc["status"] == "complete"
 
 
 @pytest.mark.django_db
 def test_rub_bond_fallback_notional_engine_characterization(user):
-    """ENGINE characterization (kept from the reduction): the
-    transactions-fallback branch of get_current_notional returns the
-    unconverted notional (1,000 instead of 12.5 USD) and the bond unrealized
-    FX term is dimensionally broken (9,898.75). These are the pre-existing
-    engine defects; correcting them is a protected-code decision."""
+    """ENGINE characterization (corrected): the transactions-fallback branch
+    converts the nominal-currency notional exactly once (1,000 RUB x 0.0125
+    = 12.50 USD) and the bond unrealized decomposition is currency-
+    consistent (total 30.00 = value 125 - basis 95; price 6.25 + fx
+    23.75)."""
     from services.bonds import get_current_notional
     from services.realized import unrealized_gain_loss
 
@@ -1127,21 +1129,21 @@ def test_rub_bond_fallback_notional_engine_characterization(user):
     make_price(bond, date(2059, 10, 1), "100")
     assert get_current_notional(
         meta, date(2059, 10, 15), user, [account.id], "USD"
-    ) == Decimal("1000")
+    ) == Decimal("12.50")
     unrealized = unrealized_gain_loss(
         bond, date(2059, 10, 15), user, "USD", account_ids=[account.id], start_date=None
     )
-    assert unrealized["fx_effect"] == Decimal("9898.75")
+    assert unrealized["price_appreciation"] == Decimal("6.25")
+    assert unrealized["fx_effect"] == Decimal("23.75")
+    assert unrealized["total"] == Decimal("30.00")
 
 
 @pytest.mark.django_db
-def test_rub_bond_fallback_notional_stays_uncertified_in_statement(user):
-    """STATEMENT guard (review round 3, finding 1): the affected calculation
-    path (amortizing bond, no NotionalHistory -> unconverted fallback
-    notional) must keep the statement explicitly uncertified - NAV stays
-    canonical (never replaced), the reason is actionable, and neither
-    reconciliation nor the dependent returns may claim completeness even
-    though the raw pieces cancel to zero."""
+def test_rub_bond_fallback_notional_statement_certifies_after_correction(user):
+    """STATEMENT (after the engine corrections): the fallback-notional bond
+    values and attributes correctly (value 125.00 + cash 131.25 = NAV
+    256.25; net result 56.25), the temporary guard is retired, and the
+    statement certifies with no residual bond reason or diagnostics."""
     broker = make_broker(user)
     account = make_account(broker)
     bond = make_asset(user, type="Bond", name="RUB Bond Series C", currency="RUB", exposure="Fixed Income")
@@ -1158,24 +1160,15 @@ def test_rub_bond_fallback_notional_stays_uncertified_in_statement(user):
     make_price(bond, date(2059, 10, 1), "100")
     doc = build_reconciled_summary(user, date(2059, 10, 15), "USD", 2, [account.id])
     nr = doc["netResult"]
-    # Canonical NAV is preserved verbatim (never replaced by a workaround);
-    # the guard marks it partial instead of certifying it.
-    assert Decimal(nr["nav"]["raw"]) == Decimal("10131.25")
-    assert nr["nav"]["status"] == "partial"
-    assert nr["nav"]["reason"] == "bond_notional_fallback_unconverted"
-    # knownSubtotal must represent genuinely known included values - a
-    # known-defective valuation is not a subtotal.
-    assert "knownSubtotal" not in nr["nav"]
-    assert "bond_notional_fallback_unconverted" in doc["reasons"]
-    assert nr["reconciliation"] == "incomplete"
-    assert doc["status"] == "partial"
-    # Dependent returns must not claim certification: the IRR either reports
-    # partial (nav-driven) or fails visibly as not_available on the inflated
-    # NAV - both are uncertified states, never 'ok'.
-    assert doc["returns"]["irr"]["status"] in ("partial", "not_available")
-    assert doc["returns"]["totalReturn"]["status"] == "partial"
-    affected = doc["diagnostics"].get("affectedNotionalFallbacks") or []
-    assert any(item.get("asset_id") == bond.id for item in affected)
+    assert Decimal(nr["nav"]["raw"]) == Decimal("256.25")
+    assert nr["nav"]["status"] == "ok"
+    assert "bond_notional_fallback_unconverted" not in doc["reasons"]
+    assert nr["reconciliation"] == "reconciled"
+    assert doc["status"] == "complete"
+    assert doc["returns"]["irr"]["status"] == "ok"
+    assert doc["returns"]["totalReturn"]["status"] == "ok"
+    assert "affectedNotionalFallbacks" not in doc["diagnostics"]
+    assert "affectedProvisionalAttribution" not in doc["diagnostics"]
 
 
 # ---------------------------------------------------------------------------
@@ -1253,28 +1246,23 @@ def test_bond_fallback_closed_foreign_position_warns_only_on_realized(user):
     make_price(bond, date(2063, 10, 1), "100")
     doc = build_reconciled_summary(user, date(2063, 10, 15), "USD", 2, [account.id])
     nr = doc["netResult"]
+    # Corrected engine: the fully disposed affected bond's realized
+    # attribution is exact (proceeds 125 - basis 95 = 30.00, price 6.25 +
+    # fx 23.75); the temporary warning retires and the statement certifies.
     assert nr["nav"]["status"] == "ok"
     assert Decimal(nr["nav"]["raw"]) == Decimal("256.25")
     assert Decimal(nr["controlTotal"]["raw"]) == Decimal("56.25")
     assert doc["capital"]["invested"]["status"] == "ok"
     realized = nr["components"]["realizedPrice"]
-    assert realized["status"] == "partial"
-    assert realized["reason"] == "bond_notional_fallback_unconverted"
+    assert realized["status"] == "ok"
+    assert Decimal(realized["raw"]) == Decimal("6.25")
     assert nr["components"]["unrealizedPrice"]["status"] == "ok"
-    # Aggregates need complete attribution: unknown, with the KNOWN share
-    # labelled. The warned realized attribution (6.25 + 23.75) is
-    # provisional - it may depend on the affected fallback path - so only
-    # cash FX (26.25) counts toward the known subtotal.
-    attributed = nr["attributedSum"]
-    assert attributed["status"] == "partial"
-    assert attributed["raw"] is None
-    assert Decimal(attributed["knownSubtotal"]) == Decimal("26.25")
-    assert nr["unexplainedDifference"]["status"] == "partial"
-    assert nr["unexplainedDifference"]["raw"] is None
-    assert nr["reconciliation"] == "incomplete"
-    assert doc["status"] == "partial"
-    # Warnings only on affected outputs: total return depends on NAV and
-    # capital, which are both correct here, so it stays certified.
+    assert Decimal(nr["fxDetail"]["security"]["raw"]) == Decimal("23.75")
+    assert Decimal(nr["fxDetail"]["cashFlows"]["raw"]) == Decimal("26.25")
+    assert Decimal(nr["attributedSum"]["raw"]) == Decimal("56.25")
+    assert Decimal(nr["unexplainedDifference"]["raw"]) == Decimal("0")
+    assert nr["reconciliation"] == "reconciled"
+    assert doc["status"] == "complete"
     assert doc["returns"]["totalReturn"]["status"] == "ok"
 
 
@@ -1313,14 +1301,26 @@ def test_bond_fallback_quotation_matches_reporting_nominal_differs_is_affected(u
     make_price(bond, date(2064, 10, 1), "100")
     doc = build_reconciled_summary(user, date(2064, 10, 15), "USD", 2, [account.id])
     nr = doc["netResult"]
-    # Canonical (defective) NAV preserved: notional unconverted.
-    assert Decimal(nr["nav"]["raw"]) == Decimal("20500.00")
-    assert nr["nav"]["status"] == "partial"
-    assert nr["nav"]["reason"] == "bond_notional_fallback_unconverted"
-    assert "bond_notional_fallback_unconverted" in doc["reasons"]
-    assert nr["components"]["unrealizedPrice"]["status"] == "partial"
-    assert nr["reconciliation"] == "incomplete"
+    # Corrected engine: the fallback notional converts exactly once
+    # (1,000 RUB x 0.0125 = 12.50 USD of notional -> value 12.50 at par).
+    # The dataset itself is bookkeeping-inconsistent (a USD-par cash
+    # purchase of 9,500 USD against a RUB-nominal par worth 12.50 USD), and
+    # the corrected engine surfaces that contradiction exactly: bond
+    # unrealized 6.25, cash FX 0, attributed 6.25, control -9,375,
+    # unexplained -9,381.25 -> unreconciled. No bond guard reason remains
+    # (guard retired).
+    assert Decimal(nr["nav"]["raw"]) == Decimal("10625.00")
+    assert nr["nav"]["status"] == "ok"
+    assert "bond_notional_fallback_unconverted" not in doc["reasons"]
+    assert Decimal(nr["controlTotal"]["raw"]) == Decimal("-9375.00")
+    assert Decimal(nr["components"]["unrealizedPrice"]["raw"]) == Decimal("6.25")
+    assert Decimal(nr["fxDetail"]["security"]["raw"]) == Decimal("0.00")
+    assert Decimal(nr["fxDetail"]["cashFlows"]["raw"]) == Decimal("0.00")
+    assert Decimal(nr["attributedSum"]["raw"]) == Decimal("6.25")
+    assert Decimal(nr["unexplainedDifference"]["raw"]) == Decimal("-9381.25")
+    assert nr["reconciliation"] == "unreconciled"
     assert doc["status"] == "partial"
+    assert "unexplained_difference" in doc["reasons"]
 
 
 @pytest.mark.django_db
@@ -1408,52 +1408,24 @@ def test_mixed_assets_keep_reliable_known_subtotal_exclude_defective_bond(user):
     make_price(stock, date(2066, 10, 1), "60")
     doc = build_reconciled_summary(user, date(2066, 10, 15), "USD", 2, [account.id])
     nr = doc["netResult"]
-    assert Decimal(nr["nav"]["raw"]) == Decimal("11231.25")
-    assert nr["nav"]["status"] == "partial"
-    assert nr["nav"]["reason"] == "bond_notional_fallback_unconverted"
-    assert "knownSubtotal" not in nr["nav"]
-    # Wire boundary: the aggregate is unknown, and its known subtotal
-    # contains ONLY reliable contributions (stock 100 + cash FX 26.25).
-    attributed = nr["attributedSum"]
-    assert attributed["status"] == "partial"
-    assert attributed["raw"] is None
-    assert attributed["reason"] == "bond_notional_fallback_unconverted"
-    assert Decimal(attributed["knownSubtotal"]) == Decimal("126.25")
-    assert nr["unexplainedDifference"]["status"] == "partial"
-    assert nr["unexplainedDifference"]["raw"] is None
-    # The reliable stock contribution stays visible inside the labelled
-    # unrealized component; the defective bond amounts do not. The security
-    # FX pair is fully unknown (its unrealized side is provisional).
-    unrealized = nr["components"]["unrealizedPrice"]
-    assert unrealized["status"] == "partial"
-    assert unrealized["reason"] == "bond_notional_fallback_unconverted"
-    assert Decimal(unrealized["knownSubtotal"]) == Decimal("100")
-    # The security FX pair stays partial with its RELIABLE included value
-    # (stock 0 + realized 0) labelled; the bond's provisional 9,898.75 is
-    # routed out.
-    security_fx = nr["fxDetail"]["security"]
-    assert security_fx["status"] == "partial"
-    assert Decimal(security_fx["raw"]) == Decimal("0")
-    assert Decimal(security_fx["knownSubtotal"]) == Decimal("0")
-    assert nr["reconciliation"] == "incomplete"
-    assert doc["status"] == "partial"
-    # The excluded defective amounts are exposed as explicitly provisional.
-    provisional = doc["diagnostics"]["affectedProvisionalAttribution"]
-    assert Decimal(provisional["unrealizedPrice"]) == Decimal("6.25")
-    assert Decimal(provisional["unrealizedFx"]) == Decimal("9898.75")
-    # Dependent returns cannot appear certified while the bond defect is
-    # declared (they are top-level, not netResult fields). Total return is
-    # partial (NAV-driven); the IRR may additionally fail to solve on the
-    # mixed-currency provisional book, which is also an uncertified state.
-    assert doc["returns"]["totalReturn"]["status"] == "partial"
-    assert doc["returns"]["irr"]["status"] in ("partial", "not_available")
-
-
-# ---------------------------------------------------------------------------
-# Partial disposal on an affected bond: realized stays provisional too
-# (review round 6, finding 1)
-# ---------------------------------------------------------------------------
-
+    # Corrected engine: bond value 125.00 + RUB cash 131.25 + USD cash 500
+    # + stock 600 = NAV 1,356.25; control 156.25; attribution = bond
+    # unrealized price 6.25 + stock unrealized 100 (= 106.25 component) +
+    # security FX 23.75 + cash FX 26.25 = 156.25 -> reconciled, complete.
+    # Both assets certified; no provisional diagnostics (guard retired).
+    assert Decimal(nr["nav"]["raw"]) == Decimal("1356.25")
+    assert nr["nav"]["status"] == "ok"
+    assert Decimal(nr["controlTotal"]["raw"]) == Decimal("156.25")
+    assert nr["components"]["unrealizedPrice"]["status"] == "ok"
+    assert Decimal(nr["components"]["unrealizedPrice"]["raw"]) == Decimal("106.25")
+    assert Decimal(nr["fxDetail"]["security"]["raw"]) == Decimal("23.75")
+    assert Decimal(nr["fxDetail"]["cashFlows"]["raw"]) == Decimal("26.25")
+    assert Decimal(nr["attributedSum"]["raw"]) == Decimal("156.25")
+    assert Decimal(nr["unexplainedDifference"]["raw"]) == Decimal("0")
+    assert nr["reconciliation"] == "reconciled"
+    assert doc["status"] == "complete"
+    assert "bond_notional_fallback_unconverted" not in doc["reasons"]
+    assert "affectedProvisionalAttribution" not in doc["diagnostics"]
 
 @pytest.mark.django_db
 def test_bond_fallback_partial_disposal_realized_attribution_stays_provisional(user):
@@ -1496,34 +1468,24 @@ def test_bond_fallback_partial_disposal_realized_attribution_stays_provisional(u
     make_price(bond, date(2059, 10, 1), "100")
     doc = build_reconciled_summary(user, date(2059, 10, 15), "USD", 2, [account.id])
     nr = doc["netResult"]
-    assert Decimal(nr["nav"]["raw"]) == Decimal("6181.25")
-    assert nr["nav"]["status"] == "partial"
-    assert nr["nav"]["reason"] == "bond_notional_fallback_unconverted"
+    # Corrected engine: value = 6 x 100% x 1,000/100 x 0.0125 = 75.00;
+    # cash 14,500 x 0.0125 = 181.25; NAV 256.25; realized 12.00 (price
+    # 2.50 + fx 9.50) certified; unrealized 18.00 (price 3.75 + fx 14.25);
+    # cash FX 26.25; attributed 56.25 -> reconciled, complete.
+    assert Decimal(nr["nav"]["raw"]) == Decimal("256.25")
+    assert nr["nav"]["status"] == "ok"
     realized = nr["components"]["realizedPrice"]
-    assert realized["status"] == "partial"
-    assert realized["reason"] == "bond_notional_fallback_unconverted"
-    # Realized FX has no separate component: it surfaces through the
-    # security FX pair (partial, reliable included 0.00 labelled).
-    security_fx = nr["fxDetail"]["security"]
-    assert security_fx["status"] == "partial"
-    assert security_fx["reason"] == "bond_notional_fallback_unconverted"
-    assert Decimal(security_fx["raw"]) == Decimal("0")
-    assert Decimal(security_fx["knownSubtotal"]) == Decimal("0")
-    assert nr["components"]["unrealizedPrice"]["status"] == "partial"
-    # Wire boundary: the excluded contributions are exactly the labelled
-    # provisional diagnostics; nothing certified claims them as zero.
-    provisional = doc["diagnostics"]["affectedProvisionalAttribution"]
-    assert Decimal(provisional["realizedPrice"]) == Decimal("2.50")
-    assert Decimal(provisional["realizedFx"]) == Decimal("9.50")
-    assert Decimal(provisional["unrealizedPrice"]) == Decimal("3.75")
-    assert Decimal(provisional["unrealizedFx"]) == Decimal("5939.25")
-    assert nr["attributedSum"]["status"] == "partial"
-    assert nr["attributedSum"]["raw"] is None
-    assert nr["unexplainedDifference"]["raw"] is None
-    assert nr["reconciliation"] == "incomplete"
-    assert doc["status"] == "partial"
-    assert doc["returns"]["totalReturn"]["status"] == "partial"
-    assert doc["returns"]["irr"]["status"] in ("partial", "not_available")
+    assert realized["status"] == "ok"
+    assert Decimal(realized["raw"]) == Decimal("2.50")
+    assert Decimal(nr["components"]["unrealizedPrice"]["raw"]) == Decimal("3.75")
+    assert Decimal(nr["fxDetail"]["security"]["raw"]) == Decimal("23.75")
+    assert Decimal(nr["fxDetail"]["cashFlows"]["raw"]) == Decimal("26.25")
+    assert Decimal(nr["attributedSum"]["raw"]) == Decimal("56.25")
+    assert Decimal(nr["unexplainedDifference"]["raw"]) == Decimal("0")
+    assert nr["reconciliation"] == "reconciled"
+    assert doc["status"] == "complete"
+    assert doc["returns"]["totalReturn"]["status"] == "ok"
+    assert "affectedProvisionalAttribution" not in doc["diagnostics"]
 
 
 @pytest.mark.django_db
@@ -1571,32 +1533,32 @@ def test_mixed_bond_and_stock_realized_known_subtotal_wires_reliably(user):
     make_price(stock, date(2059, 10, 1), "60")
     doc = build_reconciled_summary(user, date(2059, 10, 15), "USD", 2, [account.id])
     nr = doc["netResult"]
-    assert Decimal(nr["nav"]["raw"]) == Decimal("7281.25")
-    assert Decimal(nr["controlTotal"]["raw"]) == Decimal("6081.25")
-    realized = nr["components"]["realizedPrice"]
-    assert realized["status"] == "partial"
-    assert realized["reason"] == "bond_notional_fallback_unconverted"
-    assert Decimal(realized["raw"]) == Decimal("50")
-    assert Decimal(realized["knownSubtotal"]) == Decimal("50")
-    security_fx = nr["fxDetail"]["security"]
-    assert security_fx["status"] == "partial"
-    assert Decimal(security_fx["knownSubtotal"]) == Decimal("0")
-    unrealized = nr["components"]["unrealizedPrice"]
-    assert unrealized["status"] == "partial"
-    assert Decimal(unrealized["knownSubtotal"]) == Decimal("50")
-    attributed = nr["attributedSum"]
-    assert attributed["status"] == "partial"
-    assert attributed["raw"] is None
-    assert Decimal(attributed["knownSubtotal"]) == Decimal("126.25")
-    assert nr["unexplainedDifference"]["raw"] is None
-    assert nr["reconciliation"] == "incomplete"
-    assert doc["status"] == "partial"
-    # The excluded provisional bond amounts remain exposed for diagnosis.
-    provisional = doc["diagnostics"]["affectedProvisionalAttribution"]
-    assert Decimal(provisional["realizedPrice"]) == Decimal("2.50")
-    assert Decimal(provisional["realizedFx"]) == Decimal("9.50")
-    assert Decimal(provisional["unrealizedPrice"]) == Decimal("3.75")
-    assert Decimal(provisional["unrealizedFx"]) == Decimal("5939.25")
+    # Corrected engine: bond value 125.00 + RUB cash 131.25 + USD cash 500
+    # + stock 600 = NAV 1,356.25; control 156.25; attribution = bond
+    # unrealized price 6.25 + bond fx 23.75 + stock unrealized 100 + cash
+    # FX 26.25 = 156.25 -> reconciled, complete. Both assets certified; no
+    # provisional diagnostics remain (guard retired).
+    # Corrected engine (both assets sold partially): RUB cash 14,500 x
+    # 0.0125 = 181.25 + USD cash 800 + bond value 75 + stock 300 = NAV
+    # 1,356.25 (same total as the hold-only case, different composition);
+    # control 156.25; realized = bond 2.50 + stock 50 (= 52.50 component);
+    # unrealized = bond 3.75 + stock 50 (= 53.75); security FX = bond
+    # 9.50 + 14.25 = 23.75; cash FX = 981.25 - 955 = 26.25; attributed
+    # 52.50 + 53.75 + 23.75 + 26.25 = 156.25 -> reconciled, complete.
+    assert Decimal(nr["nav"]["raw"]) == Decimal("1356.25")
+    assert nr["nav"]["status"] == "ok"
+    assert Decimal(nr["controlTotal"]["raw"]) == Decimal("156.25")
+    assert Decimal(nr["components"]["realizedPrice"]["raw"]) == Decimal("52.50")
+    assert nr["components"]["unrealizedPrice"]["status"] == "ok"
+    assert Decimal(nr["components"]["unrealizedPrice"]["raw"]) == Decimal("53.75")
+    assert Decimal(nr["fxDetail"]["security"]["raw"]) == Decimal("23.75")
+    assert Decimal(nr["fxDetail"]["cashFlows"]["raw"]) == Decimal("26.25")
+    assert Decimal(nr["attributedSum"]["raw"]) == Decimal("156.25")
+    assert Decimal(nr["unexplainedDifference"]["raw"]) == Decimal("0")
+    assert nr["reconciliation"] == "reconciled"
+    assert doc["status"] == "complete"
+    assert "bond_notional_fallback_unconverted" not in doc["reasons"]
+    assert "affectedProvisionalAttribution" not in doc["diagnostics"]
 
 
 # ---------------------------------------------------------------------------
