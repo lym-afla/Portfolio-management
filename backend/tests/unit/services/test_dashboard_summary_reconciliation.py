@@ -1450,6 +1450,156 @@ def test_mixed_assets_keep_reliable_known_subtotal_exclude_defective_bond(user):
 
 
 # ---------------------------------------------------------------------------
+# Partial disposal on an affected bond: realized stays provisional too
+# (review round 6, finding 1)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_bond_fallback_partial_disposal_realized_attribution_stays_provisional(user):
+    """Affected foreign bond (amortizing, no NotionalHistory, USD report-
+    ing), partial disposal with a remaining open position.
+
+    Hand derivation (fx RUB->USD 0.0100 at entry, 0.0125 from the sale
+    onward; par 1,000; bought 95% for 9,500 RUB funded by 20,000 RUB;
+    sell 4 @ 100% = 4,000 RUB):
+      Realized (engine): proceeds 4,000 x 0.0125 = 50 minus basis
+        4,000 x 0.95 x 0.01 = 38 -> total 12.00; price (local)
+        4,000 x 5% = 200 RUB x 0.0125 = 2.50; fx 9.50.
+        PROVISIONAL: notional_at_sell came from the unconverted fallback.
+      Unrealized (engine): price 1,000 x 5% x 6 x 0.0125 / 100 = 3.75;
+        total = 1,000 x (100 x 0.0125 - 0.95) x 6 / 100 = 5,943.00 (the
+        dimensional defect); fx 5,939.25. PROVISIONAL.
+      NAV: cash 14,500 x 0.0125 = 181.25 + bond value 6 x 100% x 1,000 /
+        100 = 6,000 (unconverted fallback) = 6,181.25; net capital 200;
+        control 5,981.25.
+    The statement must mark BOTH realized and unrealized partial with the
+    bond reason (never silently certifying an excluded contribution as
+    zero), expose the excluded amounts as provisional, and refuse
+    certification."""
+    broker = make_broker(user)
+    account = make_account(broker)
+    bond = make_asset(user, type="Bond", name="RUB Bond Partial", currency="RUB", exposure="Fixed Income")
+    BondMetadata.objects.create(
+        asset=bond, initial_notional=Decimal("1000"), nominal_currency="RUB",
+        is_amortizing=True,
+    )
+    make_fx("USD", "RUB", date(2059, 1, 5), "0.0100", user)
+    make_fx("USD", "RUB", date(2059, 6, 1), "0.0125", user)
+    make_fx("USD", "RUB", date(2059, 10, 1), "0.0125", user)
+    make_tx(account, date(2059, 1, 5), "Cash in", currency="RUB",
+            cash_flow=Decimal("20000"))
+    make_tx(account, date(2059, 1, 5), "Buy", security=bond, currency="RUB",
+            quantity=Decimal("10"), price=Decimal("95"), notional=Decimal("1000"))
+    make_tx(account, date(2059, 6, 1), "Sell", security=bond, currency="RUB",
+            quantity=Decimal("-4"), price=Decimal("100"))
+    make_price(bond, date(2059, 10, 1), "100")
+    doc = build_reconciled_summary(user, date(2059, 10, 15), "USD", 2, [account.id])
+    nr = doc["netResult"]
+    assert Decimal(nr["nav"]["raw"]) == Decimal("6181.25")
+    assert nr["nav"]["status"] == "partial"
+    assert nr["nav"]["reason"] == "bond_notional_fallback_unconverted"
+    realized = nr["components"]["realizedPrice"]
+    assert realized["status"] == "partial"
+    assert realized["reason"] == "bond_notional_fallback_unconverted"
+    # Realized FX has no separate component: it surfaces through the
+    # security FX pair (partial, reliable included 0.00 labelled).
+    security_fx = nr["fxDetail"]["security"]
+    assert security_fx["status"] == "partial"
+    assert security_fx["reason"] == "bond_notional_fallback_unconverted"
+    assert Decimal(security_fx["raw"]) == Decimal("0")
+    assert Decimal(security_fx["knownSubtotal"]) == Decimal("0")
+    assert nr["components"]["unrealizedPrice"]["status"] == "partial"
+    # Wire boundary: the excluded contributions are exactly the labelled
+    # provisional diagnostics; nothing certified claims them as zero.
+    provisional = doc["diagnostics"]["affectedProvisionalAttribution"]
+    assert Decimal(provisional["realizedPrice"]) == Decimal("2.50")
+    assert Decimal(provisional["realizedFx"]) == Decimal("9.50")
+    assert Decimal(provisional["unrealizedPrice"]) == Decimal("3.75")
+    assert Decimal(provisional["unrealizedFx"]) == Decimal("5939.25")
+    assert nr["attributedSum"]["status"] == "partial"
+    assert nr["attributedSum"]["raw"] is None
+    assert nr["unexplainedDifference"]["raw"] is None
+    assert nr["reconciliation"] == "incomplete"
+    assert doc["status"] == "partial"
+    assert doc["returns"]["totalReturn"]["status"] == "partial"
+    assert doc["returns"]["irr"]["status"] in ("partial", "not_available")
+
+
+@pytest.mark.django_db
+def test_mixed_bond_and_stock_realized_known_subtotal_wires_reliably(user):
+    """Wire regression: the same affected bond (partial disposal, open
+    position) alongside a RELIABLE USD stock with its own realized gain.
+    The stock's realized 50.00 stays in the labelled realized known
+    subtotals; the bond's provisional realized (2.50 / 9.50) and
+    unrealized (3.75 / 5,939.25) stay out; the aggregate remains unknown
+    (incomplete). Hand derivation:
+      Bond leg: NAV 6,181.25 (as above; control contribution 5,981.25).
+      Stock: cash in 1,000; buy 10 @ 50 (500); sell 5 @ 60 (300);
+        realized 50; remaining 5 @ 60 = 300 unrealized, fx 0.
+        Stock account: cash 800 + 300 = 1,100.
+      NAV 6,181.25 + 1,100 = 7,281.25; net capital 200 + 1,000 = 1,200;
+      control 6,081.25.
+      Cash EOP 181.25 + 800 = 981.25; own-date flows 200 - 95 + 50 +
+        1,000 - 500 + 300 = 955; cash FX 26.25.
+      Known subtotal = stock realized 50 + realized fx 0 + stock
+        unrealized 50 + unrealized fx 0 + cash FX 26.25 = 126.25."""
+    broker = make_broker(user)
+    account = make_account(broker)
+    bond = make_asset(user, type="Bond", name="RUB Bond Mixed Partial", currency="RUB", exposure="Fixed Income")
+    stock = make_asset(user, type="Stock", name="Realized Stock", currency="USD", exposure="Equity")
+    BondMetadata.objects.create(
+        asset=bond, initial_notional=Decimal("1000"), nominal_currency="RUB",
+        is_amortizing=True,
+    )
+    make_fx("USD", "RUB", date(2059, 1, 5), "0.0100", user)
+    make_fx("USD", "RUB", date(2059, 6, 1), "0.0125", user)
+    make_fx("USD", "RUB", date(2059, 10, 1), "0.0125", user)
+    make_tx(account, date(2059, 1, 5), "Cash in", currency="RUB",
+            cash_flow=Decimal("20000"))
+    make_tx(account, date(2059, 1, 5), "Buy", security=bond, currency="RUB",
+            quantity=Decimal("10"), price=Decimal("95"), notional=Decimal("1000"))
+    make_tx(account, date(2059, 6, 1), "Sell", security=bond, currency="RUB",
+            quantity=Decimal("-4"), price=Decimal("100"))
+    make_tx(account, date(2059, 1, 5), "Cash in", currency="USD",
+            cash_flow=Decimal("1000"))
+    make_tx(account, date(2059, 1, 5), "Buy", security=stock, currency="USD",
+            quantity=Decimal("10"), price=Decimal("50"))
+    make_tx(account, date(2059, 6, 1), "Sell", security=stock, currency="USD",
+            quantity=Decimal("-5"), price=Decimal("60"))
+    make_price(bond, date(2059, 10, 1), "100")
+    make_price(stock, date(2059, 10, 1), "60")
+    doc = build_reconciled_summary(user, date(2059, 10, 15), "USD", 2, [account.id])
+    nr = doc["netResult"]
+    assert Decimal(nr["nav"]["raw"]) == Decimal("7281.25")
+    assert Decimal(nr["controlTotal"]["raw"]) == Decimal("6081.25")
+    realized = nr["components"]["realizedPrice"]
+    assert realized["status"] == "partial"
+    assert realized["reason"] == "bond_notional_fallback_unconverted"
+    assert Decimal(realized["raw"]) == Decimal("50")
+    assert Decimal(realized["knownSubtotal"]) == Decimal("50")
+    security_fx = nr["fxDetail"]["security"]
+    assert security_fx["status"] == "partial"
+    assert Decimal(security_fx["knownSubtotal"]) == Decimal("0")
+    unrealized = nr["components"]["unrealizedPrice"]
+    assert unrealized["status"] == "partial"
+    assert Decimal(unrealized["knownSubtotal"]) == Decimal("50")
+    attributed = nr["attributedSum"]
+    assert attributed["status"] == "partial"
+    assert attributed["raw"] is None
+    assert Decimal(attributed["knownSubtotal"]) == Decimal("126.25")
+    assert nr["unexplainedDifference"]["raw"] is None
+    assert nr["reconciliation"] == "incomplete"
+    assert doc["status"] == "partial"
+    # The excluded provisional bond amounts remain exposed for diagnosis.
+    provisional = doc["diagnostics"]["affectedProvisionalAttribution"]
+    assert Decimal(provisional["realizedPrice"]) == Decimal("2.50")
+    assert Decimal(provisional["realizedFx"]) == Decimal("9.50")
+    assert Decimal(provisional["unrealizedPrice"]) == Decimal("3.75")
+    assert Decimal(provisional["unrealizedFx"]) == Decimal("5939.25")
+
+
+# ---------------------------------------------------------------------------
 # Reward income conversion convention
 # ---------------------------------------------------------------------------
 

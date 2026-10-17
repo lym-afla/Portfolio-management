@@ -303,7 +303,17 @@ matches-reporting/quotation-differs no longer falsely flagged), and
 fallback-affected bonds' realized/unrealized contributions are routed to
 provisional accumulators (diagnostics.affectedProvisionalAttribution)
 excluded from every known subtotal - known subtotals carry only reliable
-contributions, labelled per partial component. Gates on round-5 head:
-backend 1460 (84.23%, 40 statement scenarios), unit 119 files, tcs x3 /
-api:types / lint / build 0, dashboard-statement-d browser case 0. Stop:
-financial + design review pending; no merge.
+contributions, labelled per partial component. Round 6 (same day, bounded): the open-position bond guard now also marks
+realizedPrice/realizedFx partial (previously the partially disposed bond's
+realized result was routed to provisional accumulators while the component
+stayed ok - silently certifying an excluded contribution as zero); the
+never-consumed realized_bond_affected flag was removed; partial components
+label their reliable included values via knownSubtotal and
+diagnostics.affectedProvisionalAttribution exposes the excluded amounts
+(partial-disposal and mixed-asset wire regressions). Three consecutive unit
+failures were traced to a POISONED vitest transform cache (code byte-
+identical to the green run; node_modules/.vite clear + rerun green) - not
+the load-flake family. Gates on round-6 head: backend 1462 (84.23%, 42
+statement scenarios), unit 119 files, tcs x3 / api:types / lint / build 0,
+dashboard-statement-d browser case 0. Stop: financial + design review
+pending; no merge.

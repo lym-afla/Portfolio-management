@@ -261,6 +261,54 @@ api:types **0**, lint **0**, build **0**, browser `dashboard-statement-d`
 **0** (3 viewports). Pre-existing final-qa-d8 failure unchanged
 (base-reproduced).
 
+## Round 6 - bounded correction (PR #65, pre-financial-approval)
+
+One status-propagation defect corrected RED-first (head includes the round-6
+fix; draft status and labels unchanged).
+
+**Defect.** For a foreign affected bond with an OPEN position, the guard
+marked only the unrealized components partial while `bond_defective` routed
+the asset's REALIZED contributions into the provisional accumulators. A
+partially disposed, still-open affected bond therefore had its realized
+result omitted while `realizedPrice`/`realizedFx` stayed status `ok` -
+silently certifying an excluded contribution as zero.
+`realized_bond_affected` was assigned but never consumed.
+
+**Fix.** The open branch now fails `realizedPrice`/`realizedFx` (with the
+closed branch, they already failed); the unused flag was removed
+(`grep` count 0). Reliable included values remain labelled: partial
+components carry `knownSubtotal` = their reliable included portion (zero
+for fully-routed bond components; the reliable asset's contribution stays
+in the component value and its known subtotal), and
+`diagnostics.affectedProvisionalAttribution` exposes the excluded amounts.
+
+**Regressions** (both wire-boundary, hand-derived):
+
+- Partial disposal, open position: affected bond, partial disposal of 4 of
+  10 @ par, remaining 6. Provisional (excluded) amounts: realized 2.50 /
+  fx 9.50; unrealized 3.75 / fx 5,939.25 (the dimensional defect scales
+  with the remaining position). NAV 6,181.25 (canonical, partial, no
+  knownSubtotal); realized + unrealized components partial with the bond
+  reason; aggregate unknown; returns uncertified.
+- Mixed-asset wire regression: the same bond plus a reliable USD stock
+  (realized 50 on a partial sale; unrealized 50). After the fix:
+  `realizedPrice` partial with `raw` 50.00 and `knownSubtotal` 50.00 (the
+  reliable stock realized stays labelled), security FX pair partial with
+  raw/knownSubtotal 0.00 (bond provisional routed), `attributedSum`
+  unknown with `knownSubtotal` = 126.25 (50 + 0 + 50 + 0 + cash FX 26.25),
+  provisional diagnostics expose the four bond amounts, reconciliation
+  incomplete, returns uncertified.
+
+Gates on the round-6 head (actual exit codes): backend **0** (1462 passed /
+10 skipped, coverage 84.23%; 42 statement scenarios), unit **0** (119
+files - three consecutive failing runs traced to a POISONED vitest/vite
+transform cache, not code: the frontend tree is byte-identical to the
+round-5 green run, the same specs failed in isolation, and clearing
+`node_modules/.vite` + full-suite rerun went green), type-check
+/charts/reliability **0**, api:types **0**, lint **0**, build **0**, browser
+`dashboard-statement-d` **0** (3 viewports). Pre-existing final-qa-d8
+failure unchanged (base-reproduced).
+
 ## Missing information vs reproducible engine defects
 
 - **Missing information (no policy invented; statement goes incomplete):**

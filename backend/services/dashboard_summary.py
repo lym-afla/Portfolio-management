@@ -483,7 +483,6 @@ def build_reconciled_summary(user, effective_date, currency_target, digits,
 
     bond_fallback_affected = []
     nav_bond_affected = False
-    realized_bond_affected = False
     bond_defective_realized_price = Decimal(0)
     bond_defective_realized_fx = Decimal(0)
     bond_defective_unrealized_price = Decimal(0)
@@ -551,11 +550,11 @@ def build_reconciled_summary(user, effective_date, currency_target, digits,
                 if not same_currency:
                     if open_position:
                         nav_bond_affected = True
-                        realized_bond_affected = True
+                        realized_price.fail(REASON_BOND_NOTIONAL_FALLBACK)
+                        realized_fx.fail(REASON_BOND_NOTIONAL_FALLBACK)
                         unrealized_price.fail(REASON_BOND_NOTIONAL_FALLBACK)
                         unrealized_fx.fail(REASON_BOND_NOTIONAL_FALLBACK)
                     else:
-                        realized_bond_affected = True
                         realized_price.fail(REASON_BOND_NOTIONAL_FALLBACK)
                         realized_fx.fail(REASON_BOND_NOTIONAL_FALLBACK)
         if open_option:
